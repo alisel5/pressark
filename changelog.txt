@@ -1,0 +1,178 @@
+PressArk Changelog
+==================
+
+5.0.5
+-----
+- Compliance: Aligned the main plugin version and readme stable tag.
+- Compliance: Clarified serviceware and external-service requirements in the plugin description and readme.
+- Security: Sanitized automation nonces before verification.
+- Packaging: Slimmed the readme and moved the detailed release history here.
+- Fix: Updated the checkout image reference to an existing bundled asset.
+
+5.0.0
+-----
+- New: ICU-based credit system replaces raw token counting for predictable cross-model billing.
+- New: Credit packs - one-time top-up purchases ($5/800K, $15/2.6M, $30/6M credits) for Pro plans and above.
+- New: AI proxy architecture - Token Bank manages provider calls, routing, and billing in a single service.
+- New: Reservation pipeline with budget safety - estimate, reserve, settle, reconcile cycle prevents overspend.
+- New: Cost ledger and execution tracking with per-request credit accounting.
+- New: Model policy with task-aware routing selects optimal model per task type.
+- New: Idempotent credit pack processing via Freemius webhook integration.
+- New: Team tier ($49/mo) - 15M credits, 15 automations, 5 sites.
+- Enhanced: WooCommerce tools - analytics, webhooks, alerts, and expanded product management.
+- Enhanced: Workflow engine - improved content editing, SEO, and WooCommerce operation pipelines.
+- Changed: Tier restructure - Free (100K), Pro (5M), Team (15M), Agency (40M), Enterprise (100M) credits.
+- Changed: "Tokens" terminology replaced with "credits" across the product.
+
+4.1.2
+-----
+- Fix: Multisite uninstall now removes data from every site where PressArk was activated, even when activated individually on multiple subsites.
+- Safety: Legacy network-activated installs are now hard-disabled at runtime with recovery guidance until reactivated per site.
+- Docs: Version markers and multisite uninstall wording now match the shipped behavior.
+- Test: Added multisite lifecycle coverage for activation blocking, legacy network-active detection, and tracked-site uninstall scope.
+
+4.1.1
+-----
+- Safety: Network-wide activation is now blocked with a clear error message - PressArk must be activated per-site.
+- Docs: Added multisite FAQ clarifying per-site activation requirement.
+
+4.1.0
+-----
+- Fix: Multisite uninstall now only wipes every site when PressArk was network-activated; site-level uninstall stays scoped to the current site.
+- Fix: Privacy exports now include full log old/new values, full run/task state payloads, and untruncated chat/task/run/automation content.
+- Fix: Runs and tasks retention now uses terminal timestamps instead of created_at, with legacy fallbacks for older rows.
+- Fix: Runs, tasks, and archived automations retention settings are now fully registered and rendered in Settings.
+- Test: Privacy lifecycle coverage now validates uninstall scope logic and expanded export completeness.
+
+4.0.0
+-----
+- New: Scheduled Prompts automation domain with dedicated persistence, run/task lineage, and unattended execution policy envelopes.
+- New: Telegram notification channel for automation success, failure, and policy-block events.
+- New: Automation admin screens for creation, listing, editing, manual dispatch, and notification settings.
+- Fix: Automation tasks now use schedule-owned idempotency keys so separate schedules do not collapse into one async task.
+- Fix: One-shot automations archive only after successful settlement instead of disappearing at dispatch time.
+- Fix: Unattended confirm runs fail correctly on policy-blocked writes instead of being reported as successful.
+- Fix: Privacy export and erase now cover automation run records and Telegram notification metadata.
+- Fix: Automation dispatch prefers Action Scheduler with WP-Cron fallback.
+
+3.0.0
+-----
+- Architecture: Unified orchestration pipeline - sync and async paths share a single settlement/tracking/response pipeline.
+- New: PressArk_Pipeline class - one-call finalize() replaces 4 duplicated settle/track/release/reconcile blocks.
+- New: PressArk_Router class - centralized routing decision (async -> workflow -> agent -> legacy).
+- New: PressArk_Model_Policy class - policy-driven model/provider selection with task-type extensibility.
+- Refactored: process_chat() reduced from about 230 lines to about 60 lines via pipeline + router.
+- Refactored: Task queue finalize_result() replaced by shared pipeline.
+- Refactored: AI connector resolve_model() and supports_native_tools() delegate to Model Policy.
+- No breaking changes: all response shapes, tool names, and API contracts preserved.
+
+2.8.0
+-----
+- Entitlements: Sampling-based tier system - free users get 6 non-read tool calls per week across all groups, Pro+ unlimited.
+- New: PressArk_Entitlements class - centralized tier gating, per-group usage tracking, plan info API.
+- New: Plan Capabilities section on Settings page showing per-group usage for free users.
+- New: Dashboard widget shows current plan tier label.
+- New: Chat responses include plan_info payload for real-time frontend updates.
+- Enforcement: Action engine checks group usage before execution, records successful non-read calls.
+- Frontend: Handles entitlement_denied errors with upgrade prompt in chat.
+- Deep mode remains Pro+ only; all other tools available to all tiers via sampling.
+
+2.7.0
+-----
+- Architecture: Split monolithic action engine into 7 domain handler classes plus shared base.
+- New: PressArk_Handler_Base abstract class with shared helpers (error/success, capability checks, post resolution, checkpointing, SEO meta key resolution).
+- New: PressArk_Handler_WooCommerce - products, orders, customers, coupons, shipping, taxes, payments, settings, emails, reviews, variations, attributes, refunds, analytics, webhooks, alerts.
+- Refactored: Content, System, Elementor handlers integrated with lazy-loaded delegation from engine.
+- Engine reduced from about 8,350 lines to about 840 lines (infrastructure plus discovery only).
+- No breaking changes: all tool names, response contracts, and classifications preserved.
+
+2.6.0
+-----
+- Data Retention: configurable auto-cleanup for action logs (default 90d), chat history (180d), and cost telemetry (365d).
+- New: Insights admin sub-page - cost by provider, cost by model, cache hit rate, credits by route, avg agent rounds, top failure reasons, daily volume.
+- New: Time range selector (7/30/90 day views) on Insights page.
+- New: Data Retention settings section on Settings page with minimum 7-day floor.
+- New: Daily cron pressark_retention_cleanup for batched data cleanup (LIMIT 1000 per pass).
+- Fix: GDPR eraser now deletes cost_ledger and tasks table rows for the user (previously missed).
+- Safety: Ledger cleanup never deletes in-flight reservations; chat cleanup uses updated_at to preserve active sessions.
+
+2.5.0
+-----
+- Async Infrastructure: dedicated pressark_tasks DB table replaces wp_options-based task storage.
+- New: Pluggable queue backends - Action Scheduler (primary) with WP-Cron fallback.
+- New: Atomic claim locking prevents double-processing of background tasks.
+- New: Retry with exponential backoff (30s, 60s, 120s) - up to 2 retries per task.
+- New: Automated task cleanup - delivered results expire after 24h, stale running tasks auto-fail after 60min.
+- Fix: loaded_groups (v2.3.1) and checkpoint data (v2.4.0) now preserved through async round-trip.
+- Fix: Deactivation hook clears all async cron events (pressark_process_task was previously missed).
+- Internal: PressArk_Task_Store, PressArk_Queue_Backend, PressArk_Queue_Action_Scheduler, PressArk_Queue_Cron classes.
+
+2.4.0
+-----
+- Context Discipline: tiered content reads - light (default, about 200 credits), structured (about 500 credits), full (explicit).
+- Content index promoted: search_knowledge now in core plus content tool groups (auto-available, no discover needed).
+- New: Structured conversation checkpoints - goal, entities, facts, pending, constraints, outcomes round-tripped via REST.
+- New: Checkpoint-based history compression - replaces backward scan with checkpoint header plus last 6 messages.
+- New: Tool result compaction - large results compacted before re-injection into agent loop.
+- Workflows: explicit mode:'full' on all read_content calls (preserves existing behavior).
+- Performance: 40-60% fewer input credits on typical multi-turn conversations.
+
+2.3.1
+-----
+- Architecture: AI-driven tool discovery replaces runtime keyword-based intent classifier.
+- New: discover_tools meta-tool - local text search over all tools, no AI call needed.
+- New: load_tools meta-tool - load tools by group or individual names.
+- New: Conversation-scoped loaded-tool state persists across turns (frontend/backend round-trip).
+- New: Feature-flagged fallback (PRESSARK_TOOL_LOAD_FALLBACK) sends full toolset after 3 zero-result discovers.
+- Observability: Every response includes tool_loading metadata (discover_calls, load_calls, initial/final counts).
+- Deprecated: match_groups() keyword classifier - no longer used in resolve() path.
+- Backward compat: load_tool_group meta-tool still accepted as legacy handler.
+
+2.3.0
+-----
+- New: Workflow Engine v1 - deterministic multi-phase workflows for common tasks.
+- New: Content Edit workflow - discover, plan, preview, apply, verify pipeline for post editing.
+- New: SEO Fix workflow - analyze SEO issues and apply optimized meta titles/descriptions.
+- New: WooCommerce Ops workflow - edit products, update orders, manage coupons with fewer AI calls.
+- Performance: Workflows use 40-60% fewer credits than the general agent on equivalent tasks.
+- Architecture: Abstract workflow runner with state machine, scoped AI calls, and serializable state.
+- All workflows enforce preview/confirm before mutating, with mandatory post-apply verification.
+
+2.2.0
+-----
+- Architecture: Tool catalog with centralized capability flags (read/preview/confirm) and group metadata.
+- Performance: Filtered tool loading reduces native schema overhead by about 75% per API call.
+- New: Keyword-based tool group matching sends only relevant tools to the AI provider.
+- New: load_tool_group meta-tool enables AI to request additional tools when keyword matching misses.
+- New: Anthropic tool caching via cache_control on tool definitions.
+- Prep: supports_tool_search() stub for future native tool search (GPT-5.4+).
+
+2.1.0
+-----
+- Billing: Credit reservation pipeline (estimate, reserve, settle, reconcile) replaces fire-and-forget deductions.
+- Security: Per-user and per-IP request throttling with tier-based limits (burst, hourly, concurrent).
+- Telemetry: Cost ledger table persists estimated vs actual credits, provider, model, cache metrics per request.
+- BYOK: Still subject to rate and concurrency limits, bypass credit budget only.
+- Async: Background tasks now carry reservation IDs and settle on completion.
+
+2.0.1
+-----
+- Security: Bundled API key now encrypted at rest, matching BYOK key handling.
+- Privacy: Added WordPress privacy policy suggested text, personal data exporter, and eraser.
+- Uninstall: Now removes all plugin tables, options, transients, user meta, and scheduled tasks.
+- Compliance: Accurate external-service disclosure in settings, readme, and privacy policy.
+- Fixed: readme.txt stable tag and plan descriptions aligned with actual plugin behavior.
+
+2.0.0
+-----
+- Major rewrite: credit-based billing, multi-tier plans, BYOK support.
+- Content index with full-text search.
+- Site profile for tone and style matching.
+- Async task queue with background processing.
+- Diagnostics tools (page speed, email delivery, crawlability, hook introspection).
+- Agentic multi-step AI workflows.
+- Preview system for reviewing changes before applying.
+
+1.0.0
+-----
+- Initial release.

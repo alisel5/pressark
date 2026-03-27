@@ -1,0 +1,6128 @@
+# Copyright (C) 2026 PressArk
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: PressArk 4.1.2\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/pressark\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-03-20T21:38:30+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: pressark\n"
+
+#. Plugin Name of the plugin
+#. Author of the plugin
+#: pressark.php
+#: includes/class-admin.php:23
+#: includes/class-pressark-privacy.php:51
+#: templates/chat-panel.php:32
+msgid "PressArk"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+#: pressark.php
+msgid "https://pressark.io"
+msgstr ""
+
+#. Description of the plugin
+#: pressark.php
+msgid "AI co-pilot for WordPress. Manage your site through natural language chat."
+msgstr ""
+
+#: includes/class-action-engine.php:92
+msgid "No action type specified."
+msgstr ""
+
+#: includes/class-action-engine.php:137
+msgid "Something went wrong executing that action. Please try rephrasing your request."
+msgstr ""
+
+#: includes/class-action-engine.php:144
+msgid "An unexpected error occurred. Please try again."
+msgstr ""
+
+#: includes/class-action-engine.php:151
+msgid "Something went wrong. Please try again or rephrase your request."
+msgstr ""
+
+#. translators: %s: action type
+#: includes/class-action-engine.php:174
+#, php-format
+msgid "Unknown action type: %s"
+msgstr ""
+
+#: includes/class-action-logger.php:61
+msgid "Log entry not found."
+msgstr ""
+
+#: includes/class-action-logger.php:65
+msgid "This action has already been undone."
+msgstr ""
+
+#: includes/class-action-logger.php:72
+msgid "You no longer have permission to undo this action."
+msgstr ""
+
+#: includes/class-action-logger.php:80
+msgid "Created post moved to trash."
+msgstr ""
+
+#: includes/class-action-logger.php:82
+msgid "Cannot undo: no previous value stored."
+msgstr ""
+
+#: includes/class-action-logger.php:191
+msgid "No previous Elementor data found."
+msgstr ""
+
+#: includes/class-action-logger.php:212
+msgid "Undo not supported for this action type."
+msgstr ""
+
+#: includes/class-action-logger.php:217
+msgid "Action undone successfully."
+msgstr ""
+
+#: includes/class-action-logger.php:271
+msgid "Unable to undo this action."
+msgstr ""
+
+#: includes/class-admin-activity.php:44
+#: includes/class-admin-activity.php:49
+#: includes/class-admin-activity.php:103
+#: includes/class-admin-activity.php:326
+#: includes/class-admin-activity.php:406
+msgid "Activity"
+msgstr ""
+
+#: includes/class-admin-activity.php:45
+msgid "PressArk Activity"
+msgstr ""
+
+#: includes/class-admin-activity.php:73
+msgid "You are not allowed to access PressArk Activity."
+msgstr ""
+
+#. translators: %d: unread result count
+#: includes/class-admin-activity.php:113
+#, php-format
+msgid "%d unread async result in this inbox."
+msgid_plural "%d unread async results in this inbox."
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %d: unread result count
+#: includes/class-admin-activity.php:118
+#, php-format
+msgid "%d unread async result waiting for you."
+msgid_plural "%d unread async results waiting for you."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-admin-activity.php:128
+msgid "Runs"
+msgstr ""
+
+#: includes/class-admin-activity.php:131
+msgid "Async Tasks"
+msgstr ""
+
+#: includes/class-admin-activity.php:163
+msgid "No runs found."
+msgstr ""
+
+#: includes/class-admin-activity.php:169
+#: includes/class-admin-activity.php:256
+#: includes/class-admin-activity.php:341
+#: includes/class-admin-activity.php:436
+#: includes/class-admin-automations.php:430
+#: includes/class-pressark-privacy.php:268
+#: includes/class-pressark-privacy.php:323
+#: includes/class-pressark-privacy.php:392
+#: includes/handlers/class-handler-content.php:1997
+msgid "Status"
+msgstr ""
+
+#: includes/class-admin-activity.php:170
+#: includes/class-admin-activity.php:257
+#: includes/class-admin-activity.php:342
+#: includes/class-admin-activity.php:439
+#: includes/class-pressark-privacy.php:269
+#: includes/class-pressark-privacy.php:320
+msgid "Message"
+msgstr ""
+
+#: includes/class-admin-activity.php:172
+#: includes/class-admin-activity.php:259
+#: includes/class-admin-activity.php:339
+#: includes/class-admin-activity.php:419
+#: includes/handlers/class-handler-system.php:1902
+msgid "User"
+msgstr ""
+
+#: includes/class-admin-activity.php:174
+#: includes/class-admin-activity.php:437
+#: includes/class-pressark-insights.php:332
+#: includes/class-pressark-privacy.php:267
+msgid "Route"
+msgstr ""
+
+#: includes/class-admin-activity.php:175
+#: includes/class-admin-activity.php:344
+#: includes/class-pressark-privacy.php:329
+msgid "Started"
+msgstr ""
+
+#: includes/class-admin-activity.php:176
+msgid "Duration"
+msgstr ""
+
+#: includes/class-admin-activity.php:177
+#: includes/class-admin-activity.php:265
+msgid "Error"
+msgstr ""
+
+#: includes/class-admin-activity.php:178
+msgid "IDs"
+msgstr ""
+
+#: includes/class-admin-activity.php:250
+msgid "No async tasks found."
+msgstr ""
+
+#: includes/class-admin-activity.php:261
+#: includes/class-admin-activity.php:347
+#: includes/class-pressark-privacy.php:324
+msgid "Retries"
+msgstr ""
+
+#: includes/class-admin-activity.php:262
+#: includes/class-admin-activity.php:343
+#: includes/class-admin-activity.php:440
+#: includes/class-pressark-privacy.php:179
+#: includes/class-pressark-privacy.php:277
+#: includes/class-pressark-privacy.php:328
+#: includes/class-pressark-privacy.php:396
+msgid "Created"
+msgstr ""
+
+#: includes/class-admin-activity.php:263
+#: includes/class-admin-activity.php:345
+#: includes/class-pressark-privacy.php:330
+msgid "Completed"
+msgstr ""
+
+#: includes/class-admin-activity.php:264
+#: includes/class-admin-activity.php:346
+msgid "Read"
+msgstr ""
+
+#: includes/class-admin-activity.php:266
+msgid "ID"
+msgstr ""
+
+#: includes/class-admin-activity.php:329
+msgid "Task not found or access denied."
+msgstr ""
+
+#: includes/class-admin-activity.php:335
+msgid "Async Task Detail"
+msgstr ""
+
+#: includes/class-admin-activity.php:337
+#: includes/class-pressark-privacy.php:319
+msgid "Task ID"
+msgstr ""
+
+#: includes/class-admin-activity.php:350
+#: includes/class-admin-activity.php:460
+#: includes/class-pressark-privacy.php:326
+msgid "Failure Reason"
+msgstr ""
+
+#: includes/class-admin-activity.php:356
+#: includes/class-pressark-privacy.php:275
+#: includes/class-pressark-privacy.php:327
+msgid "Result"
+msgstr ""
+
+#: includes/class-admin-activity.php:368
+msgid "Actions Applied"
+msgstr ""
+
+#: includes/class-admin-activity.php:380
+msgid "Operation Receipts"
+msgstr ""
+
+#: includes/class-admin-activity.php:382
+msgid "Operation"
+msgstr ""
+
+#: includes/class-admin-activity.php:382
+msgid "Timestamp"
+msgstr ""
+
+#: includes/class-admin-activity.php:382
+msgid "Summary"
+msgstr ""
+
+#: includes/class-admin-activity.php:409
+msgid "Run not found or access denied."
+msgstr ""
+
+#: includes/class-admin-activity.php:415
+msgid "Run Detail"
+msgstr ""
+
+#: includes/class-admin-activity.php:417
+#: includes/class-pressark-privacy.php:265
+msgid "Run ID"
+msgstr ""
+
+#: includes/class-admin-activity.php:431
+msgid "Linked Task"
+msgstr ""
+
+#: includes/class-admin-activity.php:438
+#: includes/class-pressark-privacy.php:276
+msgid "Tier"
+msgstr ""
+
+#: includes/class-admin-activity.php:441
+#: includes/class-pressark-privacy.php:278
+#: includes/class-pressark-privacy.php:397
+#: includes/handlers/class-handler-system.php:1902
+msgid "Updated"
+msgstr ""
+
+#: includes/class-admin-activity.php:442
+#: includes/class-pressark-insights.php:384
+#: includes/class-pressark-privacy.php:279
+msgid "Settled"
+msgstr ""
+
+#: includes/class-admin-activity.php:445
+#: includes/class-admin-automations.php:716
+#: includes/class-pressark-privacy.php:266
+#: includes/class-pressark-privacy.php:393
+msgid "Chat ID"
+msgstr ""
+
+#: includes/class-admin-activity.php:448
+msgid "Workflow"
+msgstr ""
+
+#: includes/class-admin-activity.php:451
+msgid "Reservation"
+msgstr ""
+
+#: includes/class-admin-activity.php:467
+#: includes/class-pressark-privacy.php:274
+msgid "Pending Actions"
+msgstr ""
+
+#: includes/class-admin-activity.php:498
+msgid "My Activity"
+msgstr ""
+
+#: includes/class-admin-activity.php:501
+msgid "All Users (Support)"
+msgstr ""
+
+#: includes/class-admin-activity.php:523
+msgid "All"
+msgstr ""
+
+#: includes/class-admin-activity.php:543
+#, php-format
+msgid "%s items"
+msgstr ""
+
+#. translators: %s: human-readable time difference
+#: includes/class-admin-activity.php:584
+#: includes/class-dashboard.php:216
+#: includes/class-dashboard.php:241
+#: includes/handlers/class-handler-diagnostics.php:123
+#, php-format
+msgid "%s ago"
+msgstr ""
+
+#: includes/class-admin-automations.php:30
+#: includes/class-admin-automations.php:31
+#: includes/class-admin-automations.php:341
+#: includes/class-admin.php:1063
+msgid "Scheduled Prompts"
+msgstr ""
+
+#: includes/class-admin-automations.php:54
+msgid "Security check failed."
+msgstr ""
+
+#: includes/class-admin-automations.php:101
+msgid "Automations require a Pro or higher plan."
+msgstr ""
+
+#: includes/class-admin-automations.php:108
+#, php-format
+msgid "You have %d active automations (limit: %d). Pause or delete one first."
+msgstr ""
+
+#: includes/class-admin-automations.php:114
+#: includes/handlers/class-handler-automation.php:97
+msgid "Prompt is required."
+msgstr ""
+
+#: includes/class-admin-automations.php:128
+#: includes/class-admin-automations.php:215
+#: includes/handlers/class-handler-automation.php:89
+#: includes/handlers/class-handler-automation.php:164
+#, php-format
+msgid "Your plan requires at least %s between automation runs. Choose a longer interval."
+msgstr ""
+
+#: includes/class-admin-automations.php:171
+msgid "Automation created successfully."
+msgstr ""
+
+#: includes/class-admin-automations.php:179
+#: includes/class-admin-automations.php:244
+#: includes/class-admin-automations.php:257
+#: includes/class-admin-automations.php:619
+#: includes/handlers/class-handler-automation.php:194
+#: includes/handlers/class-handler-automation.php:238
+#: includes/handlers/class-handler-automation.php:255
+msgid "Automation not found."
+msgstr ""
+
+#: includes/class-admin-automations.php:236
+#: includes/handlers/class-handler-automation.php:180
+msgid "Automation updated."
+msgstr ""
+
+#: includes/class-admin-automations.php:249
+#: includes/handlers/class-handler-automation.php:243
+msgid "Automation deleted."
+msgstr ""
+
+#: includes/class-admin-automations.php:283
+msgid "Automation resumed."
+msgstr ""
+
+#: includes/class-admin-automations.php:284
+#: includes/handlers/class-handler-automation.php:199
+msgid "Automation paused."
+msgstr ""
+
+#: includes/class-admin-automations.php:293
+msgid "Automation dispatched. Results will arrive shortly."
+msgstr ""
+
+#: includes/class-admin-automations.php:295
+msgid "Failed to dispatch automation."
+msgstr ""
+
+#: includes/class-admin-automations.php:315
+msgid "Notification settings saved."
+msgstr ""
+
+#: includes/class-admin-automations.php:346
+#: includes/handlers/class-handler-automation.php:59
+msgid "Scheduled automations require a Pro or higher plan."
+msgstr ""
+
+#: includes/class-admin-automations.php:348
+#: includes/class-admin.php:965
+msgid "Upgrade"
+msgstr ""
+
+#: includes/class-admin-automations.php:356
+msgid "Automations"
+msgstr ""
+
+#: includes/class-admin-automations.php:360
+msgid "+ New Automation"
+msgstr ""
+
+#: includes/class-admin-automations.php:364
+msgid "Notifications"
+msgstr ""
+
+#: includes/class-admin-automations.php:399
+#: includes/handlers/class-handler-elementor.php:922
+#: includes/handlers/class-handler-system.php:1558
+msgid "unlimited"
+msgstr ""
+
+#: includes/class-admin-automations.php:404
+msgid "No scheduled prompts yet"
+msgstr ""
+
+#: includes/class-admin-automations.php:405
+msgid "Create your first automation to run AI prompts on a schedule."
+msgstr ""
+
+#: includes/class-admin-automations.php:407
+#: includes/class-admin-automations.php:532
+#: includes/class-admin-automations.php:605
+msgid "Create Automation"
+msgstr ""
+
+#: includes/class-admin-automations.php:417
+#, php-format
+msgid "%d automation(s) (limit: %s for your %s plan)"
+msgstr ""
+
+#: includes/class-admin-automations.php:427
+#: includes/class-admin-automations.php:540
+#: includes/class-admin-automations.php:635
+#: includes/class-pressark-privacy.php:374
+msgid "Name"
+msgstr ""
+
+#: includes/class-admin-automations.php:428
+#: includes/class-admin-automations.php:547
+#: includes/class-admin-automations.php:639
+#: includes/class-pressark-privacy.php:375
+msgid "Prompt"
+msgstr ""
+
+#: includes/class-admin-automations.php:429
+#: includes/class-admin-automations.php:554
+#: includes/class-admin-automations.php:643
+msgid "Schedule"
+msgstr ""
+
+#: includes/class-admin-automations.php:431
+msgid "Next Run"
+msgstr ""
+
+#: includes/class-admin-automations.php:432
+msgid "Last Result"
+msgstr ""
+
+#: includes/class-admin-automations.php:433
+msgid "Actions"
+msgstr ""
+
+#: includes/class-admin-automations.php:457
+#, php-format
+msgid "%d failures"
+msgstr ""
+
+#: includes/class-admin-automations.php:470
+#: includes/class-pressark-insights.php:384
+msgid "Failed"
+msgstr ""
+
+#: includes/class-admin-automations.php:477
+msgid "Never run"
+msgstr ""
+
+#: includes/class-admin-automations.php:494
+msgid "Edit"
+msgstr ""
+
+#: includes/class-admin-automations.php:502
+msgid "Pause"
+msgstr ""
+
+#: includes/class-admin-automations.php:502
+msgid "Resume"
+msgstr ""
+
+#: includes/class-admin-automations.php:511
+msgid "Run Now"
+msgstr ""
+
+#: includes/class-admin-automations.php:515
+msgid "Delete this automation?"
+msgstr ""
+
+#: includes/class-admin-automations.php:519
+#: includes/handlers/class-handler-content.php:2070
+msgid "Delete"
+msgstr ""
+
+#: includes/class-admin-automations.php:542
+msgid "e.g., Weekly SEO Audit"
+msgstr ""
+
+#: includes/class-admin-automations.php:543
+msgid "Optional. Defaults to first 80 chars of prompt."
+msgstr ""
+
+#: includes/class-admin-automations.php:549
+msgid "e.g., Audit all published posts for SEO issues and fix any missing meta descriptions."
+msgstr ""
+
+#: includes/class-admin-automations.php:550
+msgid "The instruction PressArk will execute each time this automation runs."
+msgstr ""
+
+#: includes/class-admin-automations.php:557
+msgid "Once"
+msgstr ""
+
+#: includes/class-admin-automations.php:558
+msgid "Hourly"
+msgstr ""
+
+#: includes/class-admin-automations.php:559
+msgid "Daily"
+msgstr ""
+
+#: includes/class-admin-automations.php:560
+msgid "Weekly"
+msgstr ""
+
+#: includes/class-admin-automations.php:561
+msgid "Monthly"
+msgstr ""
+
+#: includes/class-admin-automations.php:562
+msgid "Yearly"
+msgstr ""
+
+#: includes/class-admin-automations.php:565
+#: includes/class-admin-automations.php:654
+msgid "hour(s)"
+msgstr ""
+
+#: includes/class-admin-automations.php:581
+msgid "First Run"
+msgstr ""
+
+#: includes/class-admin-automations.php:584
+#, php-format
+msgid "In your timezone (%s). Leave empty to start at the next scheduled slot."
+msgstr ""
+
+#: includes/class-admin-automations.php:589
+#: includes/class-admin-automations.php:663
+msgid "Trust Policy"
+msgstr ""
+
+#: includes/class-admin-automations.php:599
+msgid "Editorial: content/SEO only. Merchandising: + WooCommerce products. Full: all except destructive."
+msgstr ""
+
+#: includes/class-admin-automations.php:626
+msgid "Edit Automation"
+msgstr ""
+
+#: includes/class-admin-automations.php:659
+#: includes/class-pressark-privacy.php:376
+msgid "Timezone"
+msgstr ""
+
+#: includes/class-admin-automations.php:676
+msgid "Save Changes"
+msgstr ""
+
+#: includes/class-admin-automations.php:682
+msgid "Last Error:"
+msgstr ""
+
+#: includes/class-admin-automations.php:698
+msgid "Telegram Notifications"
+msgstr ""
+
+#: includes/class-admin-automations.php:699
+msgid "Receive automation results via Telegram. Set up a bot and enter your details below."
+msgstr ""
+
+#: includes/class-admin-automations.php:708
+msgid "Bot Token"
+msgstr ""
+
+#: includes/class-admin-automations.php:711
+msgid "Token saved (enter new to replace)"
+msgstr ""
+
+#: includes/class-admin-automations.php:711
+msgid "123456:ABC-DEF..."
+msgstr ""
+
+#: includes/class-admin-automations.php:712
+msgid "Create a bot via @BotFather on Telegram. Encrypted before storage."
+msgstr ""
+
+#: includes/class-admin-automations.php:720
+msgid "123456789"
+msgstr ""
+
+#: includes/class-admin-automations.php:721
+msgid "Send /start to @userinfobot on Telegram to get your ID. Each admin sets their own."
+msgstr ""
+
+#: includes/class-admin-automations.php:726
+#: includes/class-admin.php:348
+msgid "Save Settings"
+msgstr ""
+
+#: includes/class-admin-automations.php:731
+msgid "Telegram configured"
+msgstr ""
+
+#: includes/class-admin-automations.php:732
+#, php-format
+msgid "Chat ID: %s"
+msgstr ""
+
+#: includes/class-admin-automations.php:736
+msgid "Bot token not set"
+msgstr ""
+
+#: includes/class-admin-automations.php:737
+msgid "Automations will still run, but you won't receive Telegram notifications."
+msgstr ""
+
+#: includes/class-admin.php:22
+msgid "PressArk Settings"
+msgstr ""
+
+#: includes/class-admin.php:80
+msgid "API Configuration"
+msgstr ""
+
+#: includes/class-admin.php:87
+msgid "API Provider"
+msgstr ""
+
+#: includes/class-admin.php:95
+#: includes/class-pressark-onboarding.php:548
+msgid "API Key"
+msgstr ""
+
+#: includes/class-admin.php:103
+#: includes/class-pressark-insights.php:306
+msgid "Model"
+msgstr ""
+
+#: includes/class-admin.php:112
+msgid "License & Upgrade"
+msgstr ""
+
+#: includes/class-admin.php:119
+msgid "License Key"
+msgstr ""
+
+#: includes/class-admin.php:127
+msgid "Upgrade URL"
+msgstr ""
+
+#: includes/class-admin.php:164
+msgid "Bring Your Own Key (BYOK)"
+msgstr ""
+
+#: includes/class-admin.php:171
+msgid "Use My Own API Key"
+msgstr ""
+
+#: includes/class-admin.php:179
+msgid "BYOK Provider"
+msgstr ""
+
+#: includes/class-admin.php:187
+msgid "BYOK API Key"
+msgstr ""
+
+#: includes/class-admin.php:195
+msgid "BYOK Model"
+msgstr ""
+
+#: includes/class-admin.php:240
+#: includes/class-pressark-insights.php:401
+#: includes/class-pressark-privacy.php:76
+msgid "Data Retention"
+msgstr ""
+
+#: includes/class-admin.php:247
+msgid "Action Log Retention"
+msgstr ""
+
+#: includes/class-admin.php:255
+msgid "Chat History Retention"
+msgstr ""
+
+#: includes/class-admin.php:263
+msgid "Cost Ledger Retention"
+msgstr ""
+
+#: includes/class-admin.php:271
+msgid "Run Retention"
+msgstr ""
+
+#: includes/class-admin.php:279
+msgid "Task Retention"
+msgstr ""
+
+#: includes/class-admin.php:287
+msgid "Archived Automation Retention"
+msgstr ""
+
+#: includes/class-admin.php:320
+msgid "Site profile regenerated successfully."
+msgstr ""
+
+#: includes/class-admin.php:328
+msgid "Content index rebuild scheduled. It will process in the background."
+msgstr ""
+
+#: includes/class-admin.php:366
+msgid "Site Profile"
+msgstr ""
+
+#: includes/class-admin.php:373
+msgid "Detected Industry"
+msgstr ""
+
+#: includes/class-admin.php:374
+msgid "Content Tone"
+msgstr ""
+
+#: includes/class-admin.php:375
+msgid "Writing Voice"
+msgstr ""
+
+#: includes/class-admin.php:376
+msgid "Avg Page Length"
+msgstr ""
+
+#: includes/class-admin.php:376
+msgid "words"
+msgstr ""
+
+#: includes/class-admin.php:377
+msgid "Pages Analyzed"
+msgstr ""
+
+#: includes/class-admin.php:378
+msgid "Last Generated"
+msgstr ""
+
+#: includes/class-admin.php:381
+msgid "Regenerate Profile"
+msgstr ""
+
+#: includes/class-admin.php:382
+msgid "Re-scans all content to update the AI's understanding of your site."
+msgstr ""
+
+#: includes/class-admin.php:385
+msgid "Site profile has not been generated yet. It will be created automatically, or you can trigger it manually."
+msgstr ""
+
+#: includes/class-admin.php:386
+msgid "Generate Profile Now"
+msgstr ""
+
+#: includes/class-admin.php:399
+msgid "Content Index"
+msgstr ""
+
+#: includes/class-admin.php:403
+msgid "Posts Indexed"
+msgstr ""
+
+#: includes/class-admin.php:407
+msgid "Total Chunks"
+msgstr ""
+
+#: includes/class-admin.php:411
+msgid "Total Words"
+msgstr ""
+
+#: includes/class-admin.php:415
+msgid "Last Sync"
+msgstr ""
+
+#: includes/class-admin.php:416
+#: includes/class-pressark-content-index.php:1122
+#: includes/handlers/class-handler-content.php:1882
+msgid "Never"
+msgstr ""
+
+#: includes/class-admin.php:420
+msgid "Breakdown"
+msgstr ""
+
+#: includes/class-admin.php:436
+msgid "Indexed Types"
+msgstr ""
+
+#: includes/class-admin.php:447
+msgid "Uncheck types you don't need in AI context to reduce index size and cron load. Uncheck every type to disable indexing completely. Changes trigger a full rebuild or clear the index if disabled."
+msgstr ""
+
+#: includes/class-admin.php:455
+msgid "Rebuild the entire content index?"
+msgstr ""
+
+#: includes/class-admin.php:456
+msgid "Rebuild Index"
+msgstr ""
+
+#: includes/class-admin.php:458
+msgid "Re-indexes all published content. Usually not needed — the index auto-syncs when content changes."
+msgstr ""
+
+#: includes/class-admin.php:461
+msgid "The content index lets PressArk reference your actual site content when generating replies, creating new content, or answering questions. It syncs incrementally when you publish or edit content."
+msgstr ""
+
+#: includes/class-admin.php:481
+msgid "Invalid license key format. Must be a valid UUID."
+msgstr ""
+
+#: includes/class-admin.php:489
+msgid "License activated successfully!"
+msgstr ""
+
+#: includes/class-admin.php:493
+msgid "License validation failed."
+msgstr ""
+
+#: includes/class-admin.php:517
+msgid "Configure your AI provider and API credentials."
+msgstr ""
+
+#: includes/class-admin.php:518
+msgid "In bundled mode, PressArk routes AI requests through the selected provider (OpenRouter, OpenAI, Anthropic, DeepSeek, or Gemini) and contacts the PressArk license server and token-bank service to validate your plan and track token usage. Data sent includes your site domain, license key, and usage totals. In BYOK mode, AI requests go directly to your provider and no data is sent to PressArk services."
+msgstr ""
+
+#. translators: %s: plan tier label (e.g., Pro, Agency)
+#: includes/class-admin.php:540
+#, php-format
+msgid "%s Plan Active"
+msgstr ""
+
+#. translators: 1: sites used 2: sites allowed
+#: includes/class-admin.php:547
+#, php-format
+msgid "Sites: %1$s / %2$s"
+msgstr ""
+
+#: includes/class-admin.php:555
+#, php-format
+msgid "Last renewed: %s"
+msgstr ""
+
+#: includes/class-admin.php:558
+msgid "Tier Pricing"
+msgstr ""
+
+#: includes/class-admin.php:559
+msgid "Free: 100K tokens/mo · Pro ($19): 3M · Agency ($49): 8M · Business ($99): 20M · Enterprise ($199): unlimited"
+msgstr ""
+
+#: includes/class-admin.php:560
+msgid "Enter license key below to activate your plan."
+msgstr ""
+
+#: includes/class-admin.php:571
+#: includes/class-admin.php:790
+msgid "OpenRouter"
+msgstr ""
+
+#: includes/class-admin.php:572
+#: includes/class-admin.php:791
+#: includes/class-pressark-onboarding.php:540
+msgid "OpenAI"
+msgstr ""
+
+#: includes/class-admin.php:573
+#: includes/class-admin.php:792
+#: includes/class-pressark-onboarding.php:541
+msgid "Anthropic"
+msgstr ""
+
+#: includes/class-admin.php:574
+msgid "DeepSeek Direct"
+msgstr ""
+
+#: includes/class-admin.php:575
+#: includes/class-admin.php:794
+#: includes/class-pressark-onboarding.php:543
+msgid "Google Gemini"
+msgstr ""
+
+#: includes/class-admin.php:593
+#: includes/class-admin.php:812
+msgid "Key saved (enter new to replace)"
+msgstr ""
+
+#: includes/class-admin.php:593
+#: includes/class-admin.php:812
+msgid "Enter your API key"
+msgstr ""
+
+#: includes/class-admin.php:595
+msgid "Your API key from the selected provider. Encrypted before storage."
+msgstr ""
+
+#: includes/class-admin.php:613
+#: includes/class-admin.php:625
+msgid "Auto (recommended)"
+msgstr ""
+
+#: includes/class-admin.php:614
+msgid "DeepSeek V3 (fast, affordable)"
+msgstr ""
+
+#: includes/class-admin.php:615
+msgid "DeepSeek R1 (reasoning)"
+msgstr ""
+
+#: includes/class-admin.php:616
+msgid "Gemini 2.5 Flash Lite (fast)"
+msgstr ""
+
+#: includes/class-admin.php:617
+msgid "Claude Sonnet 4"
+msgstr ""
+
+#: includes/class-admin.php:618
+msgid "Claude Opus 4"
+msgstr ""
+
+#: includes/class-admin.php:619
+msgid "GPT-4o"
+msgstr ""
+
+#: includes/class-admin.php:620
+msgid "o3-mini"
+msgstr ""
+
+#: includes/class-admin.php:621
+#: includes/class-admin.php:646
+msgid "Custom model..."
+msgstr ""
+
+#: includes/class-admin.php:627
+msgid "Free Tier Models"
+msgstr ""
+
+#: includes/class-admin.php:636
+msgid "Pro Models (License Required)"
+msgstr ""
+
+#: includes/class-admin.php:645
+msgid "Custom"
+msgstr ""
+
+#: includes/class-admin.php:654
+msgid "e.g., meta-llama/llama-3-70b"
+msgstr ""
+
+#: includes/class-admin.php:659
+#: includes/class-admin.php:686
+msgid "Auto mode uses DeepSeek V3 for free users, Claude Sonnet for Pro users."
+msgstr ""
+
+#: includes/class-admin.php:668
+#, php-format
+msgid "Pro models require a license key. <a href=\"%s\">Upgrade to Pro</a>"
+msgstr ""
+
+#: includes/class-admin.php:687
+msgid "Fast and affordable. Great for most tasks."
+msgstr ""
+
+#: includes/class-admin.php:688
+msgid "Better at complex reasoning tasks. Slightly slower."
+msgstr ""
+
+#: includes/class-admin.php:689
+msgid "Google\\'s fastest free model. Great for quick tasks."
+msgstr ""
+
+#: includes/class-admin.php:690
+msgid "Excellent writing and analysis. Pro only."
+msgstr ""
+
+#: includes/class-admin.php:691
+msgid "Most capable model available. Pro only."
+msgstr ""
+
+#: includes/class-admin.php:692
+msgid "OpenAI\\'s flagship model. Pro only."
+msgstr ""
+
+#: includes/class-admin.php:693
+msgid "OpenAI reasoning model. Pro only."
+msgstr ""
+
+#: includes/class-admin.php:694
+msgid "Enter any OpenRouter-compatible model identifier below."
+msgstr ""
+
+#: includes/class-admin.php:719
+msgid "Checkout URL for Pro upgrades (e.g., Lemon Squeezy link). Leave empty to use \"#\"."
+msgstr ""
+
+#: includes/class-admin.php:774
+msgid "Use your own API key to bypass the token budget. You pay your API provider directly. AI requests are sent directly to your chosen provider; no data is routed through PressArk services."
+msgstr ""
+
+#: includes/class-admin.php:782
+msgid "Enable BYOK mode"
+msgstr ""
+
+#: includes/class-admin.php:784
+msgid "When enabled, PressArk uses your API key instead of the bundled one. No token budget limits apply."
+msgstr ""
+
+#: includes/class-admin.php:793
+#: includes/class-pressark-onboarding.php:542
+msgid "DeepSeek"
+msgstr ""
+
+#: includes/class-admin.php:814
+msgid "Your key is encrypted before storage."
+msgstr ""
+
+#: includes/class-admin.php:823
+msgid "Any model identifier supported by your provider (e.g., gpt-4o, claude-sonnet-4, deepseek-chat)."
+msgstr ""
+
+#: includes/class-admin.php:857
+msgid "Configure how long PressArk keeps historical data. Data older than the retention period is automatically purged daily. Runs and tasks use terminal timestamps so recently completed work is not removed just because it started earlier."
+msgstr ""
+
+#: includes/class-admin.php:865
+#: includes/class-admin.php:875
+#: includes/class-admin.php:885
+#: includes/class-admin.php:895
+#: includes/class-admin.php:905
+#: includes/class-admin.php:915
+#: includes/handlers/class-handler-elementor.php:924
+msgid "days"
+msgstr ""
+
+#: includes/class-admin.php:867
+msgid "Action log entries older than this are deleted. Default: 90 days."
+msgstr ""
+
+#: includes/class-admin.php:877
+msgid "Chat conversations not updated within this period are deleted. Default: 180 days."
+msgstr ""
+
+#: includes/class-admin.php:887
+msgid "Cost telemetry records older than this are deleted. Active reservations are never deleted. Default: 365 days."
+msgstr ""
+
+#: includes/class-admin.php:897
+msgid "Settled and failed execution runs older than this are deleted using their terminal timestamps. Default: 30 days."
+msgstr ""
+
+#: includes/class-admin.php:907
+msgid "Completed, delivered, failed, and dead-letter tasks older than this are deleted using their terminal timestamps. Default: 30 days."
+msgstr ""
+
+#: includes/class-admin.php:917
+msgid "Archived one-shot automations older than this are deleted. Active, paused, and failed automations are retained. Default: 90 days."
+msgstr ""
+
+#: includes/class-admin.php:930
+msgid "BYOK Mode Active"
+msgstr ""
+
+#: includes/class-admin.php:931
+msgid "Using your own API key. No token budget limits apply."
+msgstr ""
+
+#: includes/class-admin.php:947
+msgid "Token Budget"
+msgstr ""
+
+#. translators: 1: tokens used 2: total available 3: percentage
+#: includes/class-admin.php:955
+#, php-format
+msgid "%1$s / %2$s tokens used (%3$d%%)"
+msgstr ""
+
+#: includes/class-admin.php:962
+msgid "Top up"
+msgstr ""
+
+#: includes/class-admin.php:969
+msgid "Token bank service unreachable. Showing cached data."
+msgstr ""
+
+#: includes/class-admin.php:987
+msgid "Plan Capabilities"
+msgstr ""
+
+#: includes/class-admin.php:994
+msgid "Free plan: read tools are unlimited. Other tool groups are limited to 3 uses per month to let you experience the full power of PressArk."
+msgstr ""
+
+#: includes/class-admin.php:999
+msgid "Tool Group"
+msgstr ""
+
+#: includes/class-admin.php:1000
+msgid "Used"
+msgstr ""
+
+#: includes/class-admin.php:1001
+msgid "Limit"
+msgstr ""
+
+#: includes/class-admin.php:1019
+msgid "Upgrade to Pro for Unlimited Access"
+msgstr ""
+
+#: includes/class-admin.php:1024
+msgid "All tools unlimited — no per-group limits on your plan."
+msgstr ""
+
+#: includes/class-admin.php:1037
+msgid "Permissions"
+msgstr ""
+
+#: includes/class-admin.php:1039
+msgid "PressArk uses three custom capabilities to control access. Individual actions (editing posts, managing orders, etc.) are still governed by standard WordPress capabilities."
+msgstr ""
+
+#: includes/class-admin.php:1044
+msgid "Permission"
+msgstr ""
+
+#: includes/class-admin.php:1045
+msgid "Default Roles"
+msgstr ""
+
+#: includes/class-admin.php:1046
+msgid "Controls"
+msgstr ""
+
+#: includes/class-admin.php:1051
+msgid "Use PressArk"
+msgstr ""
+
+#: includes/class-admin.php:1052
+msgid "Administrators, Editors, Shop Managers"
+msgstr ""
+
+#: includes/class-admin.php:1053
+msgid "Chat panel, Activity feed"
+msgstr ""
+
+#: includes/class-admin.php:1056
+msgid "Manage Settings"
+msgstr ""
+
+#: includes/class-admin.php:1057
+#: includes/class-admin.php:1062
+msgid "Administrators"
+msgstr ""
+
+#: includes/class-admin.php:1058
+msgid "Settings, Insights, Dashboard widget"
+msgstr ""
+
+#: includes/class-admin.php:1061
+msgid "Manage Automations"
+msgstr ""
+
+#. translators: %1$s, %2$s, %3$s: capability slugs
+#: includes/class-admin.php:1071
+#, php-format
+msgid "To customize, use a role management plugin and assign %1$s, %2$s, or %3$s."
+msgstr ""
+
+#: includes/class-admin.php:1087
+msgid "This Month's Usage"
+msgstr ""
+
+#: includes/class-admin.php:1090
+msgid "Edits used:"
+msgstr ""
+
+#. translators: %d: number of edits used
+#: includes/class-admin.php:1095
+#, php-format
+msgid "%d (unlimited)"
+msgstr ""
+
+#. translators: 1: edits used 2: edits limit
+#: includes/class-admin.php:1098
+#, php-format
+msgid "%1$d / %2$d"
+msgstr ""
+
+#: includes/class-admin.php:1104
+msgid "SEO scans run:"
+msgstr ""
+
+#: includes/class-admin.php:1108
+msgid "Security scans run:"
+msgstr ""
+
+#: includes/class-admin.php:1112
+msgid "Total actions:"
+msgstr ""
+
+#: includes/class-ai-connector.php:255
+#: includes/class-ai-connector.php:358
+msgid "API key not configured. Go to PressArk settings to add your key."
+msgstr ""
+
+#: includes/class-ai-connector.php:327
+msgid "BYOK enabled but no API key configured. Go to PressArk settings to add your key."
+msgstr ""
+
+#: includes/class-ai-connector.php:368
+#: includes/class-ai-connector.php:412
+#: includes/class-ai-connector.php:1296
+#: includes/class-pressark-stream-connector.php:78
+msgid "BYOK enabled but no API key configured."
+msgstr ""
+
+#: includes/class-ai-connector.php:402
+#: includes/class-ai-connector.php:1245
+#: includes/class-pressark-stream-connector.php:53
+msgid "API key not configured."
+msgstr ""
+
+#: includes/class-ai-connector.php:499
+msgid "The AI provider took too long to respond. This can happen with thinking models on complex requests. Please try again or simplify your request."
+msgstr ""
+
+#. translators: %s: error message
+#: includes/class-ai-connector.php:506
+#: includes/class-ai-connector.php:588
+#, php-format
+msgid "Network error: %s"
+msgstr ""
+
+#: includes/class-ai-connector.php:516
+#: includes/class-ai-connector.php:598
+msgid "Unknown API error"
+msgstr ""
+
+#. translators: 1: HTTP status code 2: error message
+#: includes/class-ai-connector.php:525
+#: includes/class-ai-connector.php:604
+#, php-format
+msgid "API error (%1$d): %2$s"
+msgstr ""
+
+#: includes/class-chat-history.php:217
+#: includes/class-chat.php:2074
+#: templates/chat-panel.php:45
+msgid "New Chat"
+msgstr ""
+
+#: includes/class-chat.php:574
+msgid "Use the pressark_can_use filter instead."
+msgstr ""
+
+#: includes/class-chat.php:667
+msgid "Free edit limit reached."
+msgstr ""
+
+#: includes/class-chat.php:693
+msgid "PressArk encountered an internal error and could not complete your request. Please try again. If this keeps happening, check Settings > PressArk > API."
+msgstr ""
+
+#: includes/class-chat.php:904
+msgid "You already have a request in progress. Please wait for it to complete."
+msgstr ""
+
+#: includes/class-chat.php:1568
+msgid "No changes were made. The action was cancelled."
+msgstr ""
+
+#: includes/class-chat.php:1583
+msgid "A run_id is required to confirm actions. Please refresh the page and try again."
+msgstr ""
+
+#: includes/class-chat.php:1610
+msgid "Run not found. The confirmation may have expired."
+msgstr ""
+
+#: includes/class-chat.php:1617
+msgid "You do not own this run."
+msgstr ""
+
+#. translators: %s: current run status
+#: includes/class-chat.php:1626
+#, php-format
+msgid "This run is in \"%s\" state and cannot be confirmed. Only runs awaiting confirmation can be approved."
+msgstr ""
+
+#: includes/class-chat.php:1636
+msgid "Invalid action index. The requested action does not exist in this run."
+msgstr ""
+
+#: includes/class-chat.php:1688
+msgid "The changes could not be applied due to an unexpected error. No modifications were made. Please try again."
+msgstr ""
+
+#: includes/class-chat.php:1707
+#: includes/class-chat.php:1775
+msgid "Missing session ID."
+msgstr ""
+
+#: includes/class-chat.php:1758
+msgid "The preview changes could not be applied. The original content is unchanged. Please try again."
+msgstr ""
+
+#: includes/class-chat.php:1795
+msgid "Could not discard the staged preview. The live content was never modified. You can safely ignore this."
+msgstr ""
+
+#: includes/class-chat.php:2114
+#, php-format
+msgid "SEO Site Scan: %s (%d/100)"
+msgstr ""
+
+#: includes/class-chat.php:2115
+#, php-format
+msgid "Pages scanned: %d | Critical issues: %d"
+msgstr ""
+
+#: includes/class-chat.php:2119
+msgid "Top issues:"
+msgstr ""
+
+#: includes/class-chat.php:2129
+#, php-format
+msgid "SEO Score: %s (%d/100) for \"%s\""
+msgstr ""
+
+#: includes/class-chat.php:2147
+#, php-format
+msgid "Security Score: %s (%d/100)"
+msgstr ""
+
+#: includes/class-chat.php:2148
+#, php-format
+msgid "Passed: %d | Warnings: %d | Failed: %d"
+msgstr ""
+
+#: includes/class-dashboard.php:43
+msgid "PressArk Overview"
+msgstr ""
+
+#: includes/class-dashboard.php:141
+msgid "Site Overview"
+msgstr ""
+
+#: includes/class-dashboard.php:149
+#, php-format
+msgid "PressArk needs an API key to work. <a href=\"%s\">Configure it in settings</a>."
+msgstr ""
+
+#: includes/class-dashboard.php:162
+#: includes/handlers/class-handler-elementor.php:546
+msgid "Pages"
+msgstr ""
+
+#: includes/class-dashboard.php:166
+#: includes/handlers/class-handler-elementor.php:545
+msgid "Posts"
+msgstr ""
+
+#: includes/class-dashboard.php:171
+#: includes/handlers/class-handler-elementor.php:549
+msgid "Products"
+msgstr ""
+
+#: includes/class-dashboard.php:183
+msgid "Current Plan"
+msgstr ""
+
+#: includes/class-dashboard.php:190
+msgid "Quick Actions"
+msgstr ""
+
+#: includes/class-dashboard.php:192
+msgid "SEO Scan"
+msgstr ""
+
+#: includes/class-dashboard.php:193
+msgid "Security Check"
+msgstr ""
+
+#: includes/class-dashboard.php:194
+msgid "Write Blog Post"
+msgstr ""
+
+#: includes/class-dashboard.php:195
+msgid "Generate Meta Tags"
+msgstr ""
+
+#: includes/class-dashboard.php:197
+msgid "Store Health"
+msgstr ""
+
+#: includes/class-dashboard.php:205
+msgid "Recent Activity"
+msgstr ""
+
+#: includes/class-dashboard.php:227
+msgid "Recent Errors"
+msgstr ""
+
+#: includes/class-dashboard.php:248
+#: includes/class-dashboard.php:292
+msgid "Clear all errors"
+msgstr ""
+
+#: includes/class-dashboard.php:250
+#: includes/class-dashboard.php:287
+msgid "No errors recorded."
+msgstr ""
+
+#: includes/class-dashboard.php:276
+msgid "Clearing…"
+msgstr ""
+
+#: includes/class-pressark-content-index.php:1118
+msgid "Disabled"
+msgstr ""
+
+#: includes/class-pressark-cron-manager.php:31
+msgid "Every 5 Minutes"
+msgstr ""
+
+#: includes/class-pressark-insights.php:30
+#: includes/class-pressark-insights.php:254
+msgid "PressArk Insights"
+msgstr ""
+
+#: includes/class-pressark-insights.php:31
+msgid "Insights"
+msgstr ""
+
+#: includes/class-pressark-insights.php:261
+msgid "Total Requests"
+msgstr ""
+
+#: includes/class-pressark-insights.php:262
+msgid "Total Tokens"
+msgstr ""
+
+#: includes/class-pressark-insights.php:263
+msgid "Cache Hit Rate"
+msgstr ""
+
+#: includes/class-pressark-insights.php:264
+msgid "Failed Requests"
+msgstr ""
+
+#: includes/class-pressark-insights.php:270
+msgid "Tokens by Provider"
+msgstr ""
+
+#: includes/class-pressark-insights.php:275
+#: includes/class-pressark-insights.php:302
+#: includes/class-pressark-insights.php:329
+#: includes/class-pressark-insights.php:381
+msgid "No data for this period."
+msgstr ""
+
+#: includes/class-pressark-insights.php:279
+#: includes/class-pressark-onboarding.php:537
+msgid "Provider"
+msgstr ""
+
+#: includes/class-pressark-insights.php:279
+#: includes/class-pressark-insights.php:306
+#: includes/class-pressark-insights.php:332
+msgid "Requests"
+msgstr ""
+
+#: includes/class-pressark-insights.php:279
+#: includes/class-pressark-insights.php:306
+#: includes/class-pressark-insights.php:332
+msgid "Tokens"
+msgstr ""
+
+#: includes/class-pressark-insights.php:279
+#: includes/class-pressark-insights.php:306
+msgid "% of Total"
+msgstr ""
+
+#: includes/class-pressark-insights.php:297
+msgid "Tokens by Model"
+msgstr ""
+
+#: includes/class-pressark-insights.php:324
+msgid "Tokens by Route"
+msgstr ""
+
+#: includes/class-pressark-insights.php:348
+msgid "Avg Agent Rounds"
+msgstr ""
+
+#: includes/class-pressark-insights.php:353
+msgid "Top Failure Reasons"
+msgstr ""
+
+#: includes/class-pressark-insights.php:358
+msgid "No failures in this period."
+msgstr ""
+
+#: includes/class-pressark-insights.php:361
+msgid "Reason"
+msgstr ""
+
+#: includes/class-pressark-insights.php:361
+msgid "Count"
+msgstr ""
+
+#: includes/class-pressark-insights.php:376
+msgid "Daily Request Volume"
+msgstr ""
+
+#: includes/class-pressark-insights.php:384
+#: includes/class-pressark-privacy.php:225
+msgid "Date"
+msgstr ""
+
+#: includes/class-pressark-insights.php:384
+msgid "Total"
+msgstr ""
+
+#. translators: 1: log days 2: chat days 3: ledger days
+#: includes/class-pressark-insights.php:409
+#, php-format
+msgid "Action log: %1$d days · Chat history: %2$d days · Cost telemetry: %3$d days"
+msgstr ""
+
+#: includes/class-pressark-insights.php:416
+msgid "Change"
+msgstr ""
+
+#: includes/class-pressark-insights.php:431
+msgid "Last 7 days"
+msgstr ""
+
+#: includes/class-pressark-insights.php:432
+msgid "Last 30 days"
+msgstr ""
+
+#: includes/class-pressark-insights.php:433
+msgid "Last 90 days"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:63
+msgid "Invalid provider."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:67
+msgid "API key is required."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:143
+#: includes/class-pressark-onboarding.php:173
+msgid "Could not verify the API key (network error). The key has been saved — PressArk will try again when you send your first message."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:152
+msgid "API key is valid."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:159
+msgid "API key is invalid or expired. Please check and try again."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:166
+msgid "API key is valid but rate-limited. You can proceed — PressArk will retry automatically."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:524
+msgid "Welcome to PressArk"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:525
+msgid "PressArk is your AI co-pilot for WordPress. Let's get you set up in 60 seconds."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:527
+msgid "Get Started"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:533
+msgid "Connect your AI provider"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:534
+msgid "Choose a provider and enter your API key to power the AI."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:539
+msgid "OpenRouter (Recommended for beginners)"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:549
+msgid "Paste your API key here"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:553
+#: includes/class-pressark-onboarding.php:806
+msgid "Get a free OpenRouter key"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:560
+#: includes/class-pressark-onboarding.php:681
+#: includes/class-pressark-onboarding.php:709
+msgid "Test Connection"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:563
+msgid "Next"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:570
+msgid "Let's try it out"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:571
+msgid "We'll ask PressArk to analyze your site so you can see it in action."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:574
+msgid "Analyze my site and tell me what you see"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:576
+#: includes/class-pressark-onboarding.php:759
+msgid "Run"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:585
+msgid "Continue"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:591
+msgid "You're all set!"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:592
+msgid "Here are 5 things you can try:"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:595
+msgid "Run a security check on my site and fix any issues"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:596
+msgid "Security Scan"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:598
+msgid "Scan my site's SEO and suggest improvements"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:599
+msgid "SEO Audit"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:601
+msgid "Write a new blog post that matches my site's tone and style"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:602
+msgid "Write a Blog Post"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:604
+msgid "Rewrite my homepage content to be more engaging"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:605
+msgid "Update Homepage"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:607
+msgid "Check my site's performance and loading speed"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:608
+msgid "Check Speed"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:613
+#: templates/chat-panel.php:133
+msgid "Open PressArk"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:618
+msgid "Skip setup"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:663
+msgid "Please enter your API key."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:668
+msgid "Testing..."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:671
+msgid "Saving key and validating with provider..."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:691
+msgid "Connected successfully!"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:711
+msgid "Connection failed."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:723
+msgid "Analyzing..."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:726
+msgid "PressArk is analyzing your site..."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:747
+msgid "Analysis complete."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:760
+msgid "Something went wrong. You can try again or skip setup."
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:807
+msgid "Get an OpenAI key"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:808
+msgid "Get an Anthropic key"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:809
+msgid "Get a DeepSeek key"
+msgstr ""
+
+#: includes/class-pressark-onboarding.php:810
+msgid "Get a Gemini key"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:53
+msgid "PressArk stores the following personal data in custom database tables on your server:"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:56
+msgid "<strong>Chat conversations</strong> — message content, titles, and timestamps."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:57
+msgid "<strong>Action log</strong> — records of actions performed through the assistant (action type, target, timestamp)."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:58
+msgid "<strong>Execution runs</strong> — transient server-side state for in-flight requests (route, status, timestamps). Automatically cleaned up within hours to days."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:59
+msgid "<strong>Background tasks</strong> — queued async operations and their results. Automatically cleaned up within hours to days."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:60
+msgid "<strong>Scheduled automations</strong> — automation configurations including prompt text, schedule, execution metadata, and notification destinations."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:61
+msgid "<strong>Notification settings</strong> — Telegram chat ID stored as user meta when Telegram notifications are enabled."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:64
+msgid "PressArk also stores <strong>operational billing telemetry</strong> (token usage, cost estimates, provider/model metadata) in a cost ledger table. This data is linked to your user ID and is erased on request, but is not included in personal data exports as it is operational in nature."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:66
+msgid "Chat messages, screen context, and content excerpts are sent to the configured AI provider (OpenRouter, OpenAI, Anthropic, DeepSeek, or Google Gemini) to generate responses."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:68
+msgid "In bundled billing mode, PressArk contacts the PressArk license server with your license key, your site domain, and a SHA-256 hash of your site domain to validate your plan. The PressArk token-bank service receives your site domain, a numeric user identifier, and token-usage totals to enforce plan limits."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:70
+msgid "In BYOK (Bring Your Own Key) mode, AI requests are sent directly to your chosen provider. No data is sent to PressArk services for AI billing."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:72
+msgid "PressArk builds a local full-text index of published content in a custom database table. This is site content, not personal data, and does not leave your server except as context included in AI requests."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:74
+msgid "If Telegram notifications are enabled for automations, your Telegram chat ID and bot token are stored encrypted. Notification messages are sent via the Telegram Bot API and may include summaries of actions performed."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:77
+msgid "PressArk applies configurable retention policies: action logs (default 90 days), chat history (default 180 days), cost telemetry (default 365 days). Execution runs and background tasks are automatically cleaned up on shorter cycles (hours to days). You can adjust retention periods in PressArk Settings."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:79
+msgid "All API keys are encrypted at rest using Sodium authenticated encryption (XSalsa20-Poly1305). When the plugin is uninstalled, all plugin data (tables, options, transients, user meta, and scheduled events) is removed."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:89
+#: includes/class-pressark-privacy.php:100
+msgid "PressArk Data"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:172
+msgid "PressArk Chat History"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:173
+msgid "Chat conversations stored by PressArk, including message content."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:176
+msgid "Chat Title"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:177
+msgid "Messages Transcript"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:178
+msgid "Messages JSON"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:180
+msgid "Last Updated"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:215
+msgid "PressArk Action Log"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:216
+msgid "Actions performed through PressArk."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:219
+msgid "Log ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:220
+msgid "Action Type"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:221
+msgid "Target"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:222
+msgid "Previous Value"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:223
+msgid "New Value"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:224
+msgid "Undone"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:224
+msgid "Yes"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:224
+msgid "No"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:261
+msgid "PressArk Execution Runs"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:262
+msgid "Execution records for PressArk requests."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:270
+#: includes/class-pressark-privacy.php:322
+msgid "Reservation ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:271
+msgid "Workflow Class"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:272
+msgid "Workflow State"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:273
+msgid "Preview Session ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:279
+msgid "Not settled"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:315
+msgid "PressArk Background Tasks"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:316
+msgid "Asynchronous background tasks processed by PressArk."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:321
+msgid "Payload"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:325
+msgid "Max Retries"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:329
+msgid "Not started"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:330
+msgid "Not completed"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:331
+msgid "Expires"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:331
+msgid "No expiry"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:369
+msgid "PressArk Automations"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:370
+msgid "Scheduled prompt automations stored by PressArk."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:373
+msgid "Automation ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:377
+msgid "Cadence"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:378
+msgid "Cadence Value"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:379
+msgid "First Run At"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:380
+msgid "Next Run At"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:381
+msgid "Approval Policy"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:382
+msgid "Allowed Groups"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:383
+msgid "Last Run ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:384
+msgid "Last Task ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:385
+msgid "Last Success At"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:386
+msgid "Last Failure At"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:387
+msgid "Last Error"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:388
+msgid "Failure Streak"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:389
+msgid "Notification Channel"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:390
+msgid "Notification Target"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:391
+msgid "Execution Hints"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:394
+msgid "Claimed At"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:395
+msgid "Claimed By"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:410
+msgid "Telegram Chat ID"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:411
+msgid "Onboarding Completed"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:412
+msgid "Tool Group Usage"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:438
+msgid "PressArk User Settings"
+msgstr ""
+
+#: includes/class-pressark-privacy.php:439
+msgid "Per-user settings and notification destinations stored by PressArk."
+msgstr ""
+
+#: includes/class-pressark-privacy.php:535
+msgid "PressArk is still processing data removal. This may take multiple passes for large datasets."
+msgstr ""
+
+#: includes/class-pressark-task-queue.php:184
+msgid "PressArk could not queue this background job. Please try again."
+msgstr ""
+
+#: includes/class-pressark-task-queue.php:199
+msgid "PressArk saved the task but could not schedule it to run. Please try again."
+msgstr ""
+
+#: includes/class-pressark-throttle.php:82
+#, php-format
+msgid "Too many requests. Please wait %d seconds and try again."
+msgstr ""
+
+#: includes/class-pressark-throttle.php:99
+#, php-format
+msgid "Hourly request limit reached. Please wait %d minutes."
+msgstr ""
+
+#: includes/class-pressark-throttle.php:116
+#, php-format
+msgid "Too many requests from this IP. Please wait %d seconds."
+msgstr ""
+
+#: includes/class-security-scanner.php:45
+#: includes/class-security-scanner.php:55
+msgid "WordPress Version"
+msgstr ""
+
+#: includes/class-security-scanner.php:49
+#, php-format
+msgid "WordPress %s is up to date."
+msgstr ""
+
+#: includes/class-security-scanner.php:59
+#, php-format
+msgid "WordPress %s is outdated. Latest: %s"
+msgstr ""
+
+#: includes/class-security-scanner.php:60
+msgid "Update WordPress to the latest version from Dashboard > Updates."
+msgstr ""
+
+#: includes/class-security-scanner.php:72
+#: includes/class-security-scanner.php:83
+#: includes/class-security-scanner.php:93
+msgid "PHP Version"
+msgstr ""
+
+#: includes/class-security-scanner.php:76
+#, php-format
+msgid "PHP %s (supported and current)."
+msgstr ""
+
+#: includes/class-security-scanner.php:87
+#, php-format
+msgid "PHP %s is nearing end of life. Consider upgrading to 8.1+."
+msgstr ""
+
+#: includes/class-security-scanner.php:88
+msgid "Contact your hosting provider to upgrade PHP."
+msgstr ""
+
+#: includes/class-security-scanner.php:97
+#, php-format
+msgid "PHP %s is unsupported and insecure."
+msgstr ""
+
+#: includes/class-security-scanner.php:98
+msgid "Urgently upgrade to PHP 8.1 or later."
+msgstr ""
+
+#: includes/class-security-scanner.php:112
+#: includes/class-security-scanner.php:123
+#: includes/class-security-scanner.php:133
+msgid "SSL/HTTPS"
+msgstr ""
+
+#: includes/class-security-scanner.php:116
+msgid "SSL is active and site URL uses HTTPS."
+msgstr ""
+
+#: includes/class-security-scanner.php:127
+msgid "Site URL uses HTTPS but current connection is not SSL."
+msgstr ""
+
+#: includes/class-security-scanner.php:128
+msgid "Ensure your server forces HTTPS on all connections."
+msgstr ""
+
+#: includes/class-security-scanner.php:137
+msgid "Site is not using HTTPS. All traffic is unencrypted."
+msgstr ""
+
+#: includes/class-security-scanner.php:138
+msgid "Install an SSL certificate and update site URL to HTTPS."
+msgstr ""
+
+#: includes/class-security-scanner.php:151
+#: includes/class-security-scanner.php:161
+#: includes/class-security-scanner.php:172
+msgid "Debug Mode"
+msgstr ""
+
+#: includes/class-security-scanner.php:155
+msgid "WP_DEBUG is disabled."
+msgstr ""
+
+#: includes/class-security-scanner.php:165
+msgid "WP_DEBUG and WP_DEBUG_DISPLAY are enabled. Error messages are visible to the public."
+msgstr ""
+
+#: includes/class-security-scanner.php:166
+msgid "Set WP_DEBUG to false in wp-config.php, or at minimum set WP_DEBUG_DISPLAY to false."
+msgstr ""
+
+#: includes/class-security-scanner.php:176
+msgid "WP_DEBUG is enabled but display is off. OK for development, disable for production."
+msgstr ""
+
+#: includes/class-security-scanner.php:177
+msgid "Set WP_DEBUG to false on production sites."
+msgstr ""
+
+#: includes/class-security-scanner.php:188
+#: includes/class-security-scanner.php:198
+msgid "Database Prefix"
+msgstr ""
+
+#: includes/class-security-scanner.php:192
+msgid "Custom database prefix in use."
+msgstr ""
+
+#: includes/class-security-scanner.php:202
+msgid "Default database prefix \"wp_\" is in use."
+msgstr ""
+
+#: includes/class-security-scanner.php:203
+msgid "Consider using a custom prefix. Changing after setup requires a migration."
+msgstr ""
+
+#: includes/class-security-scanner.php:215
+#: includes/class-security-scanner.php:225
+msgid "Admin Username"
+msgstr ""
+
+#: includes/class-security-scanner.php:219
+msgid "No default \"admin\" username found."
+msgstr ""
+
+#: includes/class-security-scanner.php:229
+msgid "Default \"admin\" username exists. This is commonly targeted by bots."
+msgstr ""
+
+#: includes/class-security-scanner.php:230
+msgid "Create a new admin account with a unique username and delete the \"admin\" account."
+msgstr ""
+
+#: includes/class-security-scanner.php:244
+#: includes/class-security-scanner.php:255
+#: includes/class-security-scanner.php:265
+#: includes/class-security-scanner.php:277
+msgid "File Permissions"
+msgstr ""
+
+#: includes/class-security-scanner.php:248
+#, php-format
+msgid "wp-config.php permissions: %s (secure)."
+msgstr ""
+
+#: includes/class-security-scanner.php:259
+#, php-format
+msgid "wp-config.php permissions: %s (group-readable)."
+msgstr ""
+
+#: includes/class-security-scanner.php:260
+msgid "Set wp-config.php to 644 or stricter."
+msgstr ""
+
+#: includes/class-security-scanner.php:269
+#, php-format
+msgid "wp-config.php permissions: %s (too permissive!)."
+msgstr ""
+
+#: includes/class-security-scanner.php:270
+msgid "Set wp-config.php permissions to 644 or 600."
+msgstr ""
+
+#: includes/class-security-scanner.php:281
+msgid "wp-config.php located above web root (secure)."
+msgstr ""
+
+#: includes/class-security-scanner.php:305
+#: includes/class-security-scanner.php:315
+msgid "Exposed Files"
+msgstr ""
+
+#: includes/class-security-scanner.php:309
+msgid "No unnecessary exposed files found."
+msgstr ""
+
+#: includes/class-security-scanner.php:319
+#, php-format
+msgid "Exposed files: %s. These reveal WordPress version info."
+msgstr ""
+
+#: includes/class-security-scanner.php:320
+msgid "Delete readme.html, license.txt, and wp-config-sample.php from the server."
+msgstr ""
+
+#: includes/class-security-scanner.php:333
+#: includes/class-security-scanner.php:343
+msgid "XML-RPC"
+msgstr ""
+
+#: includes/class-security-scanner.php:337
+msgid "XML-RPC is disabled or filtered."
+msgstr ""
+
+#: includes/class-security-scanner.php:347
+msgid "XML-RPC is enabled. This is a common brute-force attack vector."
+msgstr ""
+
+#: includes/class-security-scanner.php:348
+msgid "Disable XML-RPC unless needed for Jetpack or mobile apps."
+msgstr ""
+
+#: includes/class-security-scanner.php:356
+msgid "User Enumeration"
+msgstr ""
+
+#: includes/class-security-scanner.php:360
+msgid "Author archives are accessible by default (allows username discovery)."
+msgstr ""
+
+#: includes/class-security-scanner.php:361
+msgid "Consider disabling author archives or using a security plugin."
+msgstr ""
+
+#: includes/class-security-scanner.php:387
+#: includes/class-security-scanner.php:397
+msgid "Login Security"
+msgstr ""
+
+#: includes/class-security-scanner.php:391
+msgid "Login protection plugin detected."
+msgstr ""
+
+#: includes/class-security-scanner.php:401
+msgid "No login protection plugin detected (no rate limiting, no 2FA)."
+msgstr ""
+
+#: includes/class-security-scanner.php:402
+msgid "Install a login security plugin like Limit Login Attempts Reloaded or Two-Factor."
+msgstr ""
+
+#: includes/class-security-scanner.php:415
+#: includes/class-security-scanner.php:425
+msgid "Plugin Updates"
+msgstr ""
+
+#: includes/class-security-scanner.php:419
+msgid "All plugins are up to date."
+msgstr ""
+
+#: includes/class-security-scanner.php:429
+#, php-format
+msgid "%d plugin(s) have updates available."
+msgstr ""
+
+#: includes/class-security-scanner.php:430
+msgid "Update all plugins from Dashboard > Updates."
+msgstr ""
+
+#: includes/class-security-scanner.php:443
+#: includes/class-security-scanner.php:453
+msgid "Theme Updates"
+msgstr ""
+
+#: includes/class-security-scanner.php:447
+msgid "All themes are up to date."
+msgstr ""
+
+#: includes/class-security-scanner.php:457
+#, php-format
+msgid "%d theme(s) have updates available."
+msgstr ""
+
+#: includes/class-security-scanner.php:458
+msgid "Update themes from Dashboard > Updates."
+msgstr ""
+
+#: includes/class-security-scanner.php:472
+#: includes/class-security-scanner.php:482
+msgid "Inactive Plugins"
+msgstr ""
+
+#: includes/class-security-scanner.php:476
+msgid "No inactive plugins installed."
+msgstr ""
+
+#: includes/class-security-scanner.php:486
+#, php-format
+msgid "%d inactive plugin(s) installed. These can still be exploited."
+msgstr ""
+
+#: includes/class-security-scanner.php:487
+msgid "Delete inactive plugins you no longer need."
+msgstr ""
+
+#: includes/class-security-scanner.php:500
+#: includes/class-security-scanner.php:510
+msgid "Debug Log Exposure"
+msgstr ""
+
+#: includes/class-security-scanner.php:504
+msgid "No publicly accessible debug log found."
+msgstr ""
+
+#: includes/class-security-scanner.php:514
+msgid "Debug log at wp-content/debug.log may be publicly accessible."
+msgstr ""
+
+#: includes/class-security-scanner.php:515
+msgid "Move the debug log outside the web root or block access via .htaccess."
+msgstr ""
+
+#: includes/class-security-scanner.php:525
+#: includes/class-security-scanner.php:535
+msgid "File Editor"
+msgstr ""
+
+#: includes/class-security-scanner.php:529
+msgid "In-admin file editor is disabled."
+msgstr ""
+
+#: includes/class-security-scanner.php:539
+msgid "In-admin file editor is enabled. If a hacker gets admin access, they can inject malicious code."
+msgstr ""
+
+#: includes/class-security-scanner.php:540
+msgid "Add define('DISALLOW_FILE_EDIT', true); to wp-config.php."
+msgstr ""
+
+#: includes/class-security-scanner.php:581
+#, php-format
+msgid "Your site has %d critical security issue(s) that should be addressed."
+msgstr ""
+
+#: includes/class-security-scanner.php:586
+#, php-format
+msgid "Your site has %d warning(s) to review, but no critical issues."
+msgstr ""
+
+#: includes/class-security-scanner.php:590
+msgid "Your site passed all security checks!"
+msgstr ""
+
+#: includes/class-security-scanner.php:635
+#, php-format
+msgid "Unknown fix type: %s"
+msgstr ""
+
+#: includes/class-security-scanner.php:668
+#, php-format
+msgid "Deleted: %s"
+msgstr ""
+
+#: includes/class-security-scanner.php:674
+msgid "No exposed files to delete."
+msgstr ""
+
+#: includes/class-security-scanner.php:695
+msgid "XML-RPC disabled via mu-plugin."
+msgstr ""
+
+#: includes/class-security-scanner.php:701
+msgid "Could not create mu-plugin to disable XML-RPC. Check file permissions."
+msgstr ""
+
+#: includes/class-seo-scanner.php:26
+#: includes/handlers/class-handler-base.php:151
+#: includes/handlers/class-handler-content.php:53
+#: includes/handlers/class-handler-content.php:432
+#: includes/handlers/class-handler-content.php:573
+#: includes/handlers/class-handler-content.php:835
+#: includes/handlers/class-handler-content.php:1265
+#: includes/handlers/class-handler-content.php:1965
+#: includes/handlers/class-handler-diagnostics.php:98
+#: includes/handlers/class-handler-diagnostics.php:690
+#: includes/handlers/class-handler-media.php:899
+#: includes/handlers/class-handler-media.php:1048
+msgid "Post not found."
+msgstr ""
+
+#: includes/class-seo-scanner.php:51
+#: includes/class-seo-scanner.php:58
+#: includes/class-seo-scanner.php:66
+msgid "Meta Title"
+msgstr ""
+
+#: includes/class-seo-scanner.php:53
+#, php-format
+msgid "Meta title set (%d chars): \"%s\""
+msgstr ""
+
+#: includes/class-seo-scanner.php:60
+#, php-format
+msgid "Meta title is %d chars. Ideal: 50-60 characters."
+msgstr ""
+
+#: includes/class-seo-scanner.php:61
+msgid "Adjust meta title length to 50-60 characters."
+msgstr ""
+
+#: includes/class-seo-scanner.php:68
+#, php-format
+msgid "No meta title set. Using default: \"%s\""
+msgstr ""
+
+#: includes/class-seo-scanner.php:69
+msgid "Set a custom meta title under 60 characters."
+msgstr ""
+
+#: includes/class-seo-scanner.php:88
+#: includes/class-seo-scanner.php:95
+#: includes/class-seo-scanner.php:103
+#: includes/handlers/class-handler-base.php:254
+#: includes/handlers/class-handler-base.php:258
+msgid "Meta Description"
+msgstr ""
+
+#: includes/class-seo-scanner.php:90
+#, php-format
+msgid "Meta description set (%d chars)."
+msgstr ""
+
+#: includes/class-seo-scanner.php:97
+#, php-format
+msgid "Meta description is %d chars. Ideal: 150-160 characters."
+msgstr ""
+
+#: includes/class-seo-scanner.php:98
+msgid "Adjust meta description to 150-160 characters."
+msgstr ""
+
+#: includes/class-seo-scanner.php:105
+msgid "No meta description found."
+msgstr ""
+
+#: includes/class-seo-scanner.php:106
+msgid "Add a meta description of 150-160 characters."
+msgstr ""
+
+#: includes/class-seo-scanner.php:135
+#: includes/class-seo-scanner.php:142
+#: includes/class-seo-scanner.php:149
+msgid "H1 Tag"
+msgstr ""
+
+#: includes/class-seo-scanner.php:137
+#, php-format
+msgid "One H1 tag found: \"%s\""
+msgstr ""
+
+#: includes/class-seo-scanner.php:144
+#, php-format
+msgid "Multiple H1 tags found (%d). Use only one H1 per page."
+msgstr ""
+
+#: includes/class-seo-scanner.php:145
+msgid "Keep only one H1 tag. Demote others to H2."
+msgstr ""
+
+#: includes/class-seo-scanner.php:151
+msgid "No H1 tag found in content."
+msgstr ""
+
+#: includes/class-seo-scanner.php:152
+msgid "Add one H1 heading to the page content."
+msgstr ""
+
+#: includes/class-seo-scanner.php:170
+#: includes/class-seo-scanner.php:177
+#: includes/class-seo-scanner.php:185
+msgid "Heading Hierarchy"
+msgstr ""
+
+#: includes/class-seo-scanner.php:172
+#, php-format
+msgid "Heading hierarchy is correct (H%s)."
+msgstr ""
+
+#: includes/class-seo-scanner.php:179
+msgid "Heading levels skip (e.g., H1 to H3 without H2)."
+msgstr ""
+
+#: includes/class-seo-scanner.php:180
+msgid "Ensure headings follow H1→H2→H3 order without gaps."
+msgstr ""
+
+#: includes/class-seo-scanner.php:187
+msgid "No headings found in content."
+msgstr ""
+
+#: includes/class-seo-scanner.php:188
+msgid "Add structured headings (H1, H2, H3) to organize content."
+msgstr ""
+
+#: includes/class-seo-scanner.php:206
+#: includes/class-seo-scanner.php:212
+#: includes/class-seo-scanner.php:221
+msgid "Image Alt Text"
+msgstr ""
+
+#: includes/class-seo-scanner.php:208
+#, php-format
+msgid "All %d images have alt text."
+msgstr ""
+
+#: includes/class-seo-scanner.php:214
+#, php-format
+msgid "%d of %d images missing alt text."
+msgstr ""
+
+#: includes/class-seo-scanner.php:215
+msgid "Add descriptive alt text to all images."
+msgstr ""
+
+#: includes/class-seo-scanner.php:223
+msgid "No images in content. Consider adding relevant images."
+msgstr ""
+
+#: includes/class-seo-scanner.php:231
+#: includes/class-seo-scanner.php:238
+#: includes/class-seo-scanner.php:244
+msgid "Content Length"
+msgstr ""
+
+#: includes/class-seo-scanner.php:233
+#, php-format
+msgid "Content has %d words (good length)."
+msgstr ""
+
+#: includes/class-seo-scanner.php:240
+#, php-format
+msgid "Content has %d words. 1000+ is ideal for SEO."
+msgstr ""
+
+#: includes/class-seo-scanner.php:246
+#, php-format
+msgid "Thin content: only %d words. Aim for 300+ minimum."
+msgstr ""
+
+#: includes/class-seo-scanner.php:247
+msgid "Add more relevant content to reach at least 300 words."
+msgstr ""
+
+#: includes/class-seo-scanner.php:264
+#: includes/class-seo-scanner.php:270
+msgid "Internal Links"
+msgstr ""
+
+#: includes/class-seo-scanner.php:266
+#, php-format
+msgid "%d internal link(s) found."
+msgstr ""
+
+#: includes/class-seo-scanner.php:272
+msgid "No internal links found."
+msgstr ""
+
+#: includes/class-seo-scanner.php:273
+msgid "Add links to related content on your site."
+msgstr ""
+
+#: includes/class-seo-scanner.php:288
+#: includes/class-seo-scanner.php:294
+msgid "External Links"
+msgstr ""
+
+#: includes/class-seo-scanner.php:290
+#, php-format
+msgid "%d external link(s) found."
+msgstr ""
+
+#: includes/class-seo-scanner.php:296
+msgid "No external links. Consider linking to authoritative sources."
+msgstr ""
+
+#: includes/class-seo-scanner.php:297
+msgid "Add links to relevant, authoritative external resources."
+msgstr ""
+
+#: includes/class-seo-scanner.php:305
+#: includes/class-seo-scanner.php:311
+msgid "Featured Image"
+msgstr ""
+
+#: includes/class-seo-scanner.php:307
+msgid "Featured image is set."
+msgstr ""
+
+#: includes/class-seo-scanner.php:313
+msgid "No featured image set."
+msgstr ""
+
+#: includes/class-seo-scanner.php:314
+msgid "Add a featured image for social sharing and visual appeal."
+msgstr ""
+
+#: includes/class-seo-scanner.php:328
+#: includes/class-seo-scanner.php:342
+#: includes/class-seo-scanner.php:350
+msgid "URL Slug"
+msgstr ""
+
+#: includes/class-seo-scanner.php:330
+#, php-format
+msgid "Clean slug: /%s"
+msgstr ""
+
+#: includes/class-seo-scanner.php:336
+msgid "contains stop words"
+msgstr ""
+
+#: includes/class-seo-scanner.php:339
+msgid "too long"
+msgstr ""
+
+#: includes/class-seo-scanner.php:344
+#, php-format
+msgid "Slug \"/%s\" %s."
+msgstr ""
+
+#: includes/class-seo-scanner.php:345
+msgid "Shorten the slug and remove stop words."
+msgstr ""
+
+#: includes/class-seo-scanner.php:352
+msgid "No slug set."
+msgstr ""
+
+#: includes/class-seo-scanner.php:353
+msgid "Set a clean, keyword-focused URL slug."
+msgstr ""
+
+#: includes/class-seo-scanner.php:385
+#: includes/class-seo-scanner.php:392
+#: includes/class-seo-scanner.php:399
+msgid "Open Graph Tags"
+msgstr ""
+
+#: includes/class-seo-scanner.php:387
+#, php-format
+msgid "%d/3 Open Graph tags set."
+msgstr ""
+
+#: includes/class-seo-scanner.php:394
+#, php-format
+msgid "Only %d/3 Open Graph tags set."
+msgstr ""
+
+#: includes/class-seo-scanner.php:395
+msgid "Add og:title, og:description, and og:image for social sharing."
+msgstr ""
+
+#: includes/class-seo-scanner.php:401
+msgid "No Open Graph tags set."
+msgstr ""
+
+#: includes/class-seo-scanner.php:402
+msgid "Add Open Graph tags for better social media previews."
+msgstr ""
+
+#: includes/class-seo-scanner.php:431
+#: includes/class-seo-scanner.php:437
+msgid "Schema Markup"
+msgstr ""
+
+#: includes/class-seo-scanner.php:433
+msgid "Schema markup detected (via plugin or JSON-LD)."
+msgstr ""
+
+#: includes/class-seo-scanner.php:439
+msgid "No schema markup detected."
+msgstr ""
+
+#: includes/class-seo-scanner.php:440
+msgid "Consider adding JSON-LD schema or installing an SEO plugin."
+msgstr ""
+
+#. translators: 1: term name, 2: taxonomy name
+#: includes/class-seo-scanner.php:485
+#: includes/handlers/class-handler-content.php:2015
+#: includes/handlers/class-handler-diagnostics.php:124
+#: includes/handlers/class-handler-elementor.php:1305
+#: includes/handlers/class-handler-media.php:1271
+#: includes/handlers/class-handler-media.php:1409
+#: includes/handlers/class-handler-seo.php:244
+#: includes/handlers/class-handler-system.php:1086
+msgid "Unknown"
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:71
+#, php-format
+msgid "You have %d active automations (limit: %d for your plan). Pause or delete an existing one."
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:79
+msgid "Invalid cadence type."
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:122
+#, php-format
+msgid "Automation \"%s\" created. First run: %s."
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:122
+msgid "Scheduled Prompt"
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:132
+msgid "automation_id is required."
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:139
+msgid "Automation not found or access denied."
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:215
+#, php-format
+msgid "Automation resumed. Next run: %s."
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:215
+msgid "none"
+msgstr ""
+
+#: includes/handlers/class-handler-automation.php:218
+msgid "Invalid action. Use \"pause\" or \"resume\"."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:129
+msgid "You do not have permission to perform this action."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:145
+#: includes/handlers/class-handler-base.php:190
+#: includes/handlers/class-handler-content.php:47
+#: includes/handlers/class-handler-content.php:413
+#: includes/handlers/class-handler-content.php:564
+#: includes/handlers/class-handler-content.php:826
+msgid "Invalid post ID."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:170
+#: includes/handlers/class-handler-content.php:27
+msgid "Could not resolve URL to a post ID. Try providing post_id directly."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:185
+#, php-format
+msgid "No %s found with slug '%s'."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:205
+#: includes/handlers/class-handler-content.php:1730
+msgid "WooCommerce is not active."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:217
+msgid "Elementor is not active."
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:236
+#: includes/handlers/class-handler-seo.php:412
+#: includes/handlers/class-handler-system.php:1855
+msgid "Current state"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:237
+msgid "Will be modified"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:253
+#: includes/handlers/class-handler-base.php:257
+msgid "SEO Title"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:255
+msgid "OG Title"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:256
+msgid "OG Description"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:259
+msgid "SEO Title (Yoast)"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:260
+msgid "Meta Description (Yoast)"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:261
+msgid "SEO Title (RankMath)"
+msgstr ""
+
+#: includes/handlers/class-handler-base.php:262
+msgid "Meta Description (RankMath)"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:42
+#, php-format
+msgid "No %1$s found with slug \"%2$s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:57
+msgid "You do not have permission to read this post."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:118
+#, php-format
+msgid "Read metadata of \"%s\" (light mode)."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:212
+#, php-format
+msgid "Read outline of \"%s\" (structured mode)."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:254
+#, php-format
+msgid "Read content of \"%s\" (full mode)."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:302
+#: includes/handlers/class-handler-content.php:1817
+msgid "Search query is required."
+msgstr ""
+
+#. translators: 1: total found 2: search query 3: optional "showing first N"
+#: includes/handlers/class-handler-content.php:382
+#, php-format
+msgid "Found %1$d result(s) for \"%2$s\"%3$s."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:386
+#: includes/handlers/class-handler-content.php:1175
+#, php-format
+msgid ", showing first %d"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:426
+#: includes/handlers/class-handler-content.php:568
+#: includes/handlers/class-handler-media.php:808
+msgid "You do not have permission to edit this post."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:453
+msgid "content"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:458
+#: includes/handlers/class-handler-seo.php:90
+msgid "title"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:463
+msgid "excerpt"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:468
+msgid "slug"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:473
+msgid "status"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:478
+msgid "scheduled date"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:490
+msgid "sticky"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:502
+msgid "post format"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:507
+#: includes/handlers/class-handler-elementor.php:735
+#: includes/handlers/class-handler-media.php:263
+#: includes/handlers/class-handler-media.php:758
+#: includes/handlers/class-handler-system.php:910
+#: includes/handlers/class-handler-woocommerce.php:986
+msgid "No changes specified."
+msgstr ""
+
+#. translators: %s: error message
+#: includes/handlers/class-handler-content.php:528
+#, php-format
+msgid "Failed to update post: %s"
+msgstr ""
+
+#. translators: 1: post title 2: changed fields
+#: includes/handlers/class-handler-content.php:546
+#, php-format
+msgid "Updated \"%1$s\" — changed: %2$s."
+msgstr ""
+
+#. translators: %s: meta key name
+#: includes/handlers/class-handler-content.php:616
+#, php-format
+msgid "Cannot update \"%s\" via raw meta on a WooCommerce product. Use edit_product instead — it keeps WC price lookup tables, stock caches, and inventory hooks in sync."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:619
+msgid "edit_product supports: name, regular_price, sale_price, sku, stock_quantity, stock_status, manage_stock, weight, and more."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:649
+msgid "No meta key/value provided."
+msgstr ""
+
+#. translators: 1: meta keys 2: post title
+#: includes/handlers/class-handler-content.php:676
+#, php-format
+msgid "Updated %1$s on \"%2$s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:694
+msgid "Invalid post type. Use \"post\" or \"page\"."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:702
+msgid "Title is required."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:707
+msgid "You do not have permission to create this content."
+msgstr ""
+
+#. translators: %s: error message
+#: includes/handlers/class-handler-content.php:748
+#, php-format
+msgid "Failed to create post: %s"
+msgstr ""
+
+#. translators: 1: post type 2: post title 3: status 4: edit URL
+#: includes/handlers/class-handler-content.php:782
+#, php-format
+msgid "Created %1$s \"%2$s\" as %3$s. Edit: %4$s"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:812
+msgid "Set page_template to one of the available template filenames if needed."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:830
+msgid "You do not have permission to delete this post."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:850
+msgid "Failed to move post to trash."
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:857
+#, php-format
+msgid "Moved \"%s\" to trash."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:871
+msgid "Post IDs array is required."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:890
+#: includes/handlers/class-handler-content.php:994
+#: includes/handlers/class-handler-content.php:1378
+#, php-format
+msgid "Post #%d not found"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:895
+#: includes/handlers/class-handler-content.php:999
+#: includes/handlers/class-handler-content.php:1383
+#, php-format
+msgid "\"%s\": no permission"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:916
+#, php-format
+msgid "\"%s\": trash failed"
+msgstr ""
+
+#. translators: 1: trashed count 2: total count
+#: includes/handlers/class-handler-content.php:931
+#, php-format
+msgid "Moved %1$d of %2$d items to trash."
+msgstr ""
+
+#. translators: %d: count of already-trashed items
+#: includes/handlers/class-handler-content.php:938
+#, php-format
+msgid "%d items were already in trash — use empty_trash to permanently delete them."
+msgstr ""
+
+#. translators: %s: semicolon-separated error list
+#: includes/handlers/class-handler-content.php:943
+#: includes/handlers/class-handler-content.php:1048
+#: includes/handlers/class-handler-content.php:1451
+#: includes/handlers/class-handler-media.php:369
+#, php-format
+msgid "Errors: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:976
+msgid "Trash is already empty."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1021
+#: includes/handlers/class-handler-media.php:357
+#, php-format
+msgid "\"%s\": delete failed"
+msgstr ""
+
+#. translators: 1: deleted count 2: total count
+#: includes/handlers/class-handler-content.php:1036
+#, php-format
+msgid "Permanently deleted %1$d of %2$d items from trash."
+msgstr ""
+
+#. translators: %d: count of skipped non-trash items
+#: includes/handlers/class-handler-content.php:1043
+#, php-format
+msgid "%d items were not in trash and were skipped."
+msgstr ""
+
+#. translators: 1: total post count 2: optional "showing first N"
+#: includes/handlers/class-handler-content.php:1172
+#, php-format
+msgid "Found %1$d post(s)%2$s."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1228
+msgid "Topic is required for content generation."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1243
+msgid "Generating content..."
+msgstr ""
+
+#. translators: 1: post title 2: word count
+#: includes/handlers/class-handler-content.php:1279
+#, php-format
+msgid "Reading content from \"%1$s\" (%2$d words)..."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1321
+msgid "All published pages already have meta titles. Nothing to generate."
+msgstr ""
+
+#. translators: %d: number of pages
+#: includes/handlers/class-handler-content.php:1345
+#, php-format
+msgid "%d pages need meta tags."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1363
+msgid "Post IDs and changes are required."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1406
+#, php-format
+msgid "\"%s\": %s"
+msgstr ""
+
+#. translators: 1: updated count 2: total count
+#: includes/handlers/class-handler-content.php:1446
+#, php-format
+msgid "Updated %1$d of %2$d items."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1466
+#: includes/handlers/class-handler-elementor.php:300
+msgid "Search text is required."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1511
+#, php-format
+msgid "No matches found for \"%s\"."
+msgstr ""
+
+#. translators: 1: search text 2: match count 3: replace text
+#: includes/handlers/class-handler-content.php:1519
+#, php-format
+msgid "Found \"%1$s\" in %2$d items. Run again with dry_run=false to replace with \"%3$s\"."
+msgstr ""
+
+#. translators: 1: find text 2: replace text 3: count
+#: includes/handlers/class-handler-content.php:1604
+#, php-format
+msgid "Replaced \"%1$s\" with \"%2$s\" in %3$d items."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1763
+msgid "Invalid report type."
+msgstr ""
+
+#. translators: %s: report type name
+#: includes/handlers/class-handler-content.php:1799
+#, php-format
+msgid "%s report generated."
+msgstr ""
+
+#. translators: %s: search query
+#: includes/handlers/class-handler-content.php:1830
+#, php-format
+msgid "No content found matching \"%s\". The index may need rebuilding, or there's no content about this topic."
+msgstr ""
+
+#. translators: 1: number of chunks 2: search query
+#: includes/handlers/class-handler-content.php:1854
+#, php-format
+msgid "%1$d relevant content chunks found for \"%2$s\"."
+msgstr ""
+
+#. translators: 1: posts indexed 2: chunks 3: words 4: last sync time 5: breakdown
+#: includes/handlers/class-handler-content.php:1878
+#, php-format
+msgid "Content Index: %1$d posts indexed, %2$d chunks, ~%3$d words. Last sync: %4$s. Breakdown: %5$s"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1898
+msgid "Content indexing is disabled. Select at least one indexed post type in PressArk settings before rebuilding."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1906
+msgid "Content index rebuild scheduled. It will run in the background."
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1976
+msgid "Title"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1983
+msgid "Content"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1990
+msgid "Excerpt"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:1991
+#: includes/handlers/class-handler-content.php:2028
+#: includes/handlers/class-handler-elementor.php:1222
+#: includes/handlers/class-handler-media.php:1296
+#: includes/handlers/class-handler-seo.php:250
+#: includes/handlers/class-handler-seo.php:262
+#: includes/handlers/class-handler-seo.php:266
+#: includes/handlers/class-handler-seo.php:274
+#: includes/handlers/class-handler-seo.php:310
+#: includes/handlers/class-handler-seo.php:317
+#: includes/handlers/class-handler-seo.php:332
+#: includes/handlers/class-handler-seo.php:336
+#: includes/handlers/class-handler-system.php:1834
+#: includes/handlers/class-handler-system.php:1895
+#: includes/handlers/class-handler-system.php:1951
+msgid "(empty)"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2040
+msgid "Untitled"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2046
+#, php-format
+msgid "New %s"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2047
+#: includes/handlers/class-handler-elementor.php:1275
+#: includes/handlers/class-handler-woocommerce.php:3659
+msgid "(does not exist)"
+msgstr ""
+
+#. translators: 1: attachment title, 2: MIME type
+#: includes/handlers/class-handler-content.php:2071
+#: includes/handlers/class-handler-media.php:1316
+#, php-format
+msgid "\"%1$s\" (%2$s)"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2072
+msgid "Moved to trash"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2094
+#: includes/handlers/class-handler-content.php:2162
+#: includes/handlers/class-handler-content.php:2208
+#, php-format
+msgid " +%d more"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2098
+#, php-format
+msgid "Bulk Edit — %d items"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2102
+msgid "Affected Items"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2104
+#, php-format
+msgid "%d items will be modified"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2113
+msgid "(various)"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2130
+#: includes/handlers/class-handler-elementor.php:1292
+msgid "Find & Replace"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2134
+msgid "Find"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2139
+msgid "Scope"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2140
+#, php-format
+msgid "Searching in: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2141
+msgid "Will replace in all matching posts"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2166
+#, php-format
+msgid "Bulk Delete — %d items"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2170
+msgid "Items to Trash"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2172
+#, php-format
+msgid "%d items will be moved to trash"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2212
+#, php-format
+msgid "Empty Trash — %d items"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2216
+msgid "Permanent Delete"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2217
+msgid "(empty trash)"
+msgstr ""
+
+#: includes/handlers/class-handler-content.php:2218
+#, php-format
+msgid "%d items will be permanently deleted — this cannot be undone"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:22
+msgid "Store health report."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:28
+msgid "Site brief."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:34
+#: includes/handlers/class-handler-media.php:805
+msgid "Post ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:41
+#, php-format
+msgid "Page audit for \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:52
+msgid "Hook inspection complete."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:61
+#, php-format
+msgid "Page speed: %dms (%s)."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:70
+msgid "Crawlability check complete."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:79
+msgid "Email delivery check complete."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:88
+msgid "Query profiling complete."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:125
+msgid "initial version"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:143
+#, php-format
+msgid "Changes detected in %s"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:158
+msgid "Use revision_id with compare_to parameter to see what changed."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:169
+#, php-format
+msgid "%d REST routes across %d namespaces."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:184
+#, php-format
+msgid "REST %s %s → %d"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:185
+msgid "REST request failed."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:210
+msgid "Comment not found."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:229
+#, php-format
+msgid "Too many links (%1$d — limit is %2$d)"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:234
+msgid "Matches a word in the comment blocklist (Settings → Discussion)"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:240
+msgid "Matches a moderation keyword (Settings → Discussion)"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:244
+msgid "Comment author has no previously approved comments"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:247
+msgid "Unknown — may be Akismet or another spam plugin"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:253
+msgid "Comment would be auto-approved."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:254
+#, php-format
+msgid "Comment held: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:318
+msgid "This site does not use a block theme. FSE templates are not available."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:330
+#: includes/handlers/class-handler-diagnostics.php:475
+#, php-format
+msgid "Template \"%s\" not found."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:359
+msgid "Use edit_template with slug and block_index to modify a specific block."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:386
+msgid "Use get_templates with slug for block-level detail on a specific template."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:427
+#, php-format
+msgid "Use get_templates with type=wp_template_part and slug=%s to inspect this part."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:455
+msgid "This site does not use a block theme."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:464
+msgid "slug is required."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:468
+msgid "block_index and updates are required."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:492
+#, php-format
+msgid "Failed to create template override: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:511
+msgid "Created a user override for this theme template. The original theme template is preserved."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:525
+msgid "This theme does not use theme.json. Design tokens are not available."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:526
+msgid "Use get_customizer_schema to see available design settings for classic themes."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:669
+msgid "Use insert_pattern with pattern name and post_id to insert a pattern into a post."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:682
+#: includes/handlers/class-handler-elementor.php:220
+msgid "post_id is required."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:685
+msgid "pattern name is required."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:697
+#, php-format
+msgid "Pattern \"%s\" not found."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:704
+msgid "Pattern contains no blocks."
+msgstr ""
+
+#: includes/handlers/class-handler-diagnostics.php:739
+msgid "This is a single-site WordPress installation. Multisite is not enabled."
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:58
+#, php-format
+msgid "Site: %s (%s)"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:59
+#, php-format
+msgid "Tagline: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:60
+#, php-format
+msgid "WordPress %1$s | PHP %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:61
+#, php-format
+msgid "Theme: %1$s v%2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:62
+#, php-format
+msgid "Pages: %1$d | Posts: %2$d | Comments: %3$d"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:63
+#, php-format
+msgid "Front page ID: %1$d | Timezone: %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:71
+#, php-format
+msgid "Active plugins (%1$d): %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:72
+#, php-format
+msgid "User: %1$s (%2$s)"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:77
+#, php-format
+msgid "WooCommerce(%d products)"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:88
+msgid "Integrations: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:113
+msgid "Custom post types: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:135
+msgid "Custom taxonomies: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:151
+msgid "Theme supports: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:185
+#, php-format
+msgid "Homepage: \"%1$s\" (ID:%2$d) [static page]"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:188
+msgid "Homepage: Blog listing (no static page)"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:194
+#, php-format
+msgid "Blog page: \"%1$s\" (ID:%2$d)"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:210
+#, php-format
+msgid "PAGES (%d):"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:236
+#, php-format
+msgid "RECENT POSTS (showing %1$d of %2$d):"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:248
+#, php-format
+msgid "PRODUCTS (showing %1$d of %2$d):"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:272
+msgid "Site profile has not been generated yet. It will be auto-generated soon, or you can use refresh_site_profile to trigger it now."
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:285
+msgid "Business: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:288
+msgid "Industry: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:291
+msgid "Tone: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:294
+msgid "Topics: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:300
+msgid "Profile generated: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:305
+msgid "Profile data is available but empty. Try using refresh_site_profile to regenerate it."
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:327
+#, php-format
+msgid "TOOLS - %s:"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:333
+#, php-format
+msgid "AVAILABLE TOOLS (%d total):"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:347
+msgid "Use get_available_tools with a category parameter to see full descriptions for any group."
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:363
+msgid "Missing \"group\" parameter. Available groups: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:367
+#, php-format
+msgid "Unknown tool group: %1$s. Available groups: %2$s"
+msgstr ""
+
+#. translators: %1$s: tool group name, %2$s: comma-separated tool names
+#: includes/handlers/class-handler-discovery.php:373
+#, php-format
+msgid "Tool group \"%1$s\" loaded. Available tools: %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:387
+msgid "Missing \"query\" parameter. Describe what tools you need (e.g., \"SEO analysis\", \"media management\")."
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:394
+#, php-format
+msgid "No tools found matching \"%s\". Try different search terms or use get_available_tools for a full listing."
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:408
+msgid "Provide \"group\" (e.g., \"seo\") or \"tools\" (e.g., [\"analyze_seo\", \"fix_seo\"]). Available groups: "
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:415
+#, php-format
+msgid "Unknown group: %1$s. Available: %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:417
+#, php-format
+msgid "Group \"%1$s\" loaded: %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-discovery.php:421
+msgid "Tools loaded: "
+msgstr ""
+
+#. translators: 1: current Elementor version, 2: minimum required version
+#: includes/handlers/class-handler-elementor.php:42
+#, php-format
+msgid "Elementor %1$s is too old for safe write operations. Please update to %2$s or newer."
+msgstr ""
+
+#. translators: %d: user ID number
+#: includes/handlers/class-handler-elementor.php:63
+#, php-format
+msgid "user #%d"
+msgstr ""
+
+#. translators: %s: display name of the user currently editing the page
+#: includes/handlers/class-handler-elementor.php:66
+#, php-format
+msgid "This page is currently being edited by %s in Elementor. Wait for them to finish to avoid data loss."
+msgstr ""
+
+#. translators: 1: page title, 2: widget count, 3: word count
+#: includes/handlers/class-handler-elementor.php:85
+#, php-format
+msgid "Elementor page \"%1$s\" — %2$s widgets, %3$s words."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:102
+msgid "all"
+msgstr ""
+
+#. translators: 1: number of widgets found, 2: widget type label
+#: includes/handlers/class-handler-elementor.php:106
+#, php-format
+msgid "%1$s %2$s widget(s) found."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:124
+msgid "Widget ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:134
+msgid "Repeater field name is required for item edits."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:148
+msgid "Changes are required."
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-elementor.php:163
+#, php-format
+msgid "Updated Elementor widget on \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:183
+msgid "post_id and widget_type are required."
+msgstr ""
+
+#. translators: %d: number of templates found
+#: includes/handlers/class-handler-elementor.php:251
+#, php-format
+msgid "%d Elementor templates found."
+msgstr ""
+
+#. translators: 1: color count, 2: typography preset count
+#: includes/handlers/class-handler-elementor.php:289
+#, php-format
+msgid "%1$s colors, %2$s typography presets."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:317
+msgid "Find & replace was capped at 100 pages. Provide a post_id or run in batches for larger sites."
+msgstr ""
+
+#. translators: 1: search text, 2: replacement text, 3: number of pages updated
+#: includes/handlers/class-handler-elementor.php:321
+#, php-format
+msgid "Replaced \"%1$s\" with \"%2$s\" in %3$s Elementor page(s)."
+msgstr ""
+
+#. translators: %s: widget type name
+#: includes/handlers/class-handler-elementor.php:385
+#, php-format
+msgid "Widget type '%s' not found."
+msgstr ""
+
+#. translators: 1: widget type name, 2: content field count, 3: style field count
+#: includes/handlers/class-handler-elementor.php:390
+#, php-format
+msgid "Schema for '%1$s': %2$s content fields, %3$s style fields."
+msgstr ""
+
+#. translators: %d: number of registered widget types
+#: includes/handlers/class-handler-elementor.php:410
+#, php-format
+msgid "%d registered widget types."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:414
+msgid "Use widget_type to get full schema with all fields for a specific widget."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:428
+msgid "source_id is required."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:433
+msgid "Source page not found."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:438
+msgid "Source page is not an Elementor page or has no content."
+msgstr ""
+
+#. translators: %s: original page title
+#: includes/handlers/class-handler-elementor.php:443
+#, php-format
+msgid "%s (Copy)"
+msgstr ""
+
+#. translators: 1: new page title, 2: new page ID
+#: includes/handlers/class-handler-elementor.php:507
+#, php-format
+msgid "Page cloned as '%1$s' (ID: %2$d). Element IDs regenerated to prevent conflicts."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:520
+msgid "template_id is required."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:525
+msgid "Template not found."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:541
+msgid "Entire Site"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:542
+msgid "Front Page"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:543
+msgid "Singular"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:544
+msgid "Archive"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:547
+msgid "Category"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:548
+msgid "Tag"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:550
+msgid "Product Archive"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:585
+msgid "Display conditions control where this template appears on the site."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:586
+msgid "This is a regular template — display conditions only apply to theme builder templates (Pro)."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:600
+msgid "Use the device parameter in elementor_edit_widget to target a specific breakpoint."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:652
+msgid "No Elementor data found for this post."
+msgstr ""
+
+#. translators: %s: widget ID
+#: includes/handlers/class-handler-elementor.php:659
+#, php-format
+msgid "Widget '%s' not found."
+msgstr ""
+
+#. translators: 1: widget ID, 2: actual widget type
+#: includes/handlers/class-handler-elementor.php:665
+#, php-format
+msgid "Widget '%1$s' is not a form widget (it is '%2$s')."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:714
+msgid "Use elementor_edit_form_field to modify individual fields."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:745
+#: includes/handlers/class-handler-elementor.php:804
+msgid "No Elementor data found."
+msgstr ""
+
+#. translators: 1: widget ID, 2: field index number
+#: includes/handlers/class-handler-elementor.php:756
+#, php-format
+msgid "Widget '%1$s' not found or field index %2$d out of range."
+msgstr ""
+
+#. translators: %s: comma-separated list of changed field names
+#: includes/handlers/class-handler-elementor.php:779
+#, php-format
+msgid "Form field updated: %s."
+msgstr ""
+
+#. translators: %s: element ID
+#: includes/handlers/class-handler-elementor.php:815
+#, php-format
+msgid "Element '%s' not found."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:835
+msgid "Element visibility updated."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:836
+msgid "Responsive visibility (hide_on_devices) is always available. Display conditions (login/role/date) require Elementor 3.19+."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:857
+msgid "No Elementor popups found. Popups require Elementor Pro."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:868
+msgid "On page load"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:869
+msgid "On scroll"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:870
+msgid "On click"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:871
+msgid "After inactivity"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:872
+msgid "On exit intent"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:873
+msgid "After page views"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:874
+msgid "After sessions"
+msgstr ""
+
+#. translators: %s: delay in milliseconds
+#: includes/handlers/class-handler-elementor.php:886
+#, php-format
+msgid "after %sms"
+msgstr ""
+
+#. translators: %s: delay in milliseconds
+#: includes/handlers/class-handler-elementor.php:886
+msgid "immediately"
+msgstr ""
+
+#. translators: %s: scroll depth percentage
+#: includes/handlers/class-handler-elementor.php:890
+#, php-format
+msgid "%s%% scroll"
+msgstr ""
+
+#. translators: %s: CSS selector
+#: includes/handlers/class-handler-elementor.php:894
+#, php-format
+msgid "selector: %s"
+msgstr ""
+
+#. translators: %s: inactivity time in seconds
+#: includes/handlers/class-handler-elementor.php:898
+#, php-format
+msgid "%ss inactivity"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:925
+msgid "always"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:943
+msgid "Use elementor_edit_popup_trigger to change when a popup appears."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:963
+msgid "popup_id is required."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:968
+msgid "Popup not found."
+msgstr ""
+
+#. translators: 1: trigger type, 2: popup title
+#: includes/handlers/class-handler-elementor.php:1010
+#, php-format
+msgid "Popup trigger '%1$s' updated on '%2$s'."
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1135
+msgid "visible on all devices"
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-elementor.php:1184
+#, php-format
+msgid "Elementor Widget on \"%s\""
+msgstr ""
+
+#. translators: %d: post ID
+#: includes/handlers/class-handler-elementor.php:1255
+#, php-format
+msgid "Add Widget to Page #%d"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1256
+msgid "(no widget)"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1274
+msgid "New Elementor Page"
+msgstr ""
+
+#. translators: 1: page title, 2: template name, 3: widget count
+#: includes/handlers/class-handler-elementor.php:1277
+#, php-format
+msgid "%1$s — template: %2$s, %3$d widget(s)"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1288
+msgid "Elementor Find & Replace"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1311
+msgid "Create from Template"
+msgstr ""
+
+#. translators: %s: template title
+#: includes/handlers/class-handler-elementor.php:1313
+#, php-format
+msgid "Template: \"%s\""
+msgstr ""
+
+#. translators: %s: new page title
+#: includes/handlers/class-handler-elementor.php:1315
+#, php-format
+msgid "New page: \"%s\" (draft)"
+msgstr ""
+
+#. translators: %s: widget ID
+#: includes/handlers/class-handler-elementor.php:1333
+#, php-format
+msgid "Dynamic Tag on Widget %s"
+msgstr ""
+
+#. translators: %s: field name
+#: includes/handlers/class-handler-elementor.php:1335
+#, php-format
+msgid "Static value (%s)"
+msgstr ""
+
+#. translators: %s: dynamic tag name
+#: includes/handlers/class-handler-elementor.php:1337
+#, php-format
+msgid "Dynamic: %s"
+msgstr ""
+
+#. translators: 1: field ID, 2: post ID
+#: includes/handlers/class-handler-elementor.php:1353
+#, php-format
+msgid "Form Field \"%1$s\" on Page #%2$d"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1354
+msgid "Current field settings"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1355
+msgid "Updated field settings"
+msgstr ""
+
+#. translators: %s: widget ID
+#: includes/handlers/class-handler-elementor.php:1371
+#, php-format
+msgid "Visibility for Widget %s"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1372
+msgid "Current visibility settings"
+msgstr ""
+
+#. translators: %s: comma-separated list of device names
+#: includes/handlers/class-handler-elementor.php:1374
+#, php-format
+msgid "Hide on: %s"
+msgstr ""
+
+#. translators: %s: comma-separated list of device names
+#: includes/handlers/class-handler-elementor.php:1374
+msgid "Show on all devices"
+msgstr ""
+
+#. translators: %d: source page ID
+#: includes/handlers/class-handler-elementor.php:1391
+#, php-format
+msgid "Clone Elementor Page #%d"
+msgstr ""
+
+#. translators: %d: source page ID
+#: includes/handlers/class-handler-elementor.php:1393
+#, php-format
+msgid "Source page #%d"
+msgstr ""
+
+#. translators: 1: new page title, 2: post status
+#: includes/handlers/class-handler-elementor.php:1395
+#, php-format
+msgid "\"%1$s\" as %2$s"
+msgstr ""
+
+#. translators: %d: popup ID
+#: includes/handlers/class-handler-elementor.php:1411
+#, php-format
+msgid "Popup #%d Trigger"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1412
+msgid "Current trigger settings"
+msgstr ""
+
+#. translators: %s: trigger type
+#: includes/handlers/class-handler-elementor.php:1414
+#, php-format
+msgid "Set trigger: %s"
+msgstr ""
+
+#. translators: %d: number of colors
+#: includes/handlers/class-handler-elementor.php:1430
+#, php-format
+msgid "%d color(s)"
+msgstr ""
+
+#. translators: %d: number of fonts
+#: includes/handlers/class-handler-elementor.php:1434
+#, php-format
+msgid "%d font(s)"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1440
+msgid "Elementor Global Styles"
+msgstr ""
+
+#: includes/handlers/class-handler-elementor.php:1441
+msgid "Current global styles"
+msgstr ""
+
+#. translators: %s: list of style types being updated (e.g. "2 color(s), 3 font(s)")
+#: includes/handlers/class-handler-elementor.php:1443
+#, php-format
+msgid "Update %s"
+msgstr ""
+
+#. translators: %s: list of style types being updated (e.g. "2 color(s), 3 font(s)")
+#: includes/handlers/class-handler-elementor.php:1443
+msgid "Update global styles"
+msgstr ""
+
+#. translators: %d: number of missing thumbnail sizes
+#: includes/handlers/class-handler-media.php:45
+#: includes/handlers/class-handler-media.php:102
+#, php-format
+msgid "%d sizes need regeneration"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:108
+#, php-format
+msgid "Found %d attachment(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:119
+#: includes/handlers/class-handler-media.php:207
+#: includes/handlers/class-handler-media.php:287
+msgid "Attachment ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:124
+#: includes/handlers/class-handler-media.php:216
+#: includes/handlers/class-handler-media.php:296
+msgid "Attachment not found."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:196
+#, php-format
+msgid "Details for \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:211
+msgid "You do not have permission to edit this attachment."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:258
+#, php-format
+msgid "featured image for post #%d"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:276
+#, php-format
+msgid "Updated attachment \"%s\": %s."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:291
+msgid "You do not have permission to delete this attachment."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:304
+msgid "Failed to delete attachment."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:309
+#, php-format
+msgid "Deleted attachment \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:320
+msgid "Attachment IDs array is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:335
+#, php-format
+msgid "#%d: no permission"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:341
+#, php-format
+msgid "#%d: not found"
+msgstr ""
+
+#. translators: 1: deleted count 2: total count
+#: includes/handlers/class-handler-media.php:363
+#, php-format
+msgid "Deleted %1$d of %2$d attachments."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:391
+msgid "Provide media_id, media_ids, or post_id."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:405
+msgid "Original file not found on disk."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:427
+#, php-format
+msgid "%d sizes generated"
+msgstr ""
+
+#. translators: 1: success count 2: total count
+#: includes/handlers/class-handler-media.php:437
+#, php-format
+msgid "Regenerated thumbnails for %1$d of %2$d image(s)."
+msgstr ""
+
+#. translators: 1: shown count 2: approved 3: pending 4: spam
+#: includes/handlers/class-handler-media.php:510
+#, php-format
+msgid "Showing %1$d comment(s). Site totals: %2$d approved, %3$d pending, %4$d spam."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:524
+msgid "You do not have permission to moderate comments."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:531
+msgid "Comment IDs are required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:537
+#, php-format
+msgid "Invalid action: %s. Use approve, unapprove/hold, spam, unspam, trash, or untrash."
+msgstr ""
+
+#. translators: 1: action 2: count
+#: includes/handlers/class-handler-media.php:575
+#, php-format
+msgid "%1$s %2$d comment(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:587
+msgid "You do not have permission to reply to comments."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:594
+msgid "Parent comment ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:597
+#: includes/handlers/class-handler-woocommerce.php:2089
+msgid "Reply content is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:602
+msgid "Parent comment not found."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:617
+msgid "Failed to post reply."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:624
+#, php-format
+msgid "Replied to comment #%d (new comment #%d)."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:639
+#, php-format
+msgid "Taxonomy \"%s\" does not exist."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:666
+#, php-format
+msgid "Taxonomy \"%s\" has %d term(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:693
+#, php-format
+msgid "Found %d public taxonomy/taxonomies."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:703
+msgid "You do not have permission to manage taxonomy terms."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:710
+#: includes/handlers/class-handler-media.php:811
+msgid "Valid taxonomy slug is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:717
+msgid "Term name is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:736
+#, php-format
+msgid "Created term \"%s\" in %s (ID: %d)."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:742
+msgid "Term ID is required for editing."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:768
+#, php-format
+msgid "Updated term #%d in %s."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:774
+msgid "Term ID is required for deletion."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:778
+msgid "Term not found."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:787
+#, php-format
+msgid "Deleted term \"%s\" from %s."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:791
+#, php-format
+msgid "Unknown taxonomy operation: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:814
+msgid "Terms array is required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:840
+#, php-format
+msgid "Assigned %d term(s) to \"%s\" in %s."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:958
+#: includes/handlers/class-handler-media.php:1028
+msgid "Use update_custom_field with the key name to update any field."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1029
+msgid "ACF not detected. Showing public post meta and registered meta fields."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1043
+msgid "post_id and key are required."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1062
+#, php-format
+msgid "Field '%s' expects an integer, got: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1068
+#, php-format
+msgid "Field '%s' expects a number, got: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1097
+#, php-format
+msgid "Failed to update field '%s'."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1228
+msgid "No form plugin detected. Common plugins: Contact Form 7, WPForms, Gravity Forms."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1237
+msgid "If forms are not sending emails, check smtp_configured. Most issues = no SMTP plugin."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1280
+msgid "Set as featured image"
+msgstr ""
+
+#. translators: 1: post title, 2: post ID
+#: includes/handlers/class-handler-media.php:1283
+#, php-format
+msgid "\"%1$s\" (#%2$d)"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1314
+msgid "Delete Attachment"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1317
+msgid "Permanently deleted"
+msgstr ""
+
+#. translators: %d: number of additional items
+#: includes/handlers/class-handler-media.php:1339
+#, php-format
+msgid "+%d more"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1343
+#, php-format
+msgid "Bulk Delete Media — %d files"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1347
+msgid "Files to Delete"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1349
+#, php-format
+msgid "%d files will be permanently deleted"
+msgstr ""
+
+#. translators: %s: moderation action (e.g. Approve, Spam)
+#: includes/handlers/class-handler-media.php:1365
+#, php-format
+msgid "%s Comments"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1366
+#, php-format
+msgid "%d comment(s)"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1381
+msgid "Reply to Comment"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1382
+#: includes/handlers/class-handler-woocommerce.php:3593
+#, php-format
+msgid "By %1$s: \"%2$s\""
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1382
+#, php-format
+msgid "Comment #%d"
+msgstr ""
+
+#. translators: %s: operation (e.g. Create, Edit, Delete)
+#: includes/handlers/class-handler-media.php:1406
+#, php-format
+msgid "%s Term"
+msgstr ""
+
+#. translators: 1: term name, 2: taxonomy name
+#: includes/handlers/class-handler-media.php:1409
+#: includes/handlers/class-handler-woocommerce.php:3557
+msgid "Deleted"
+msgstr ""
+
+#. translators: 1: term name, 2: taxonomy name
+#: includes/handlers/class-handler-media.php:1409
+#, php-format
+msgid "%1$s in %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1425
+msgid "Assign Terms"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:33
+msgid "Invalid page ID for SEO analysis."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:96
+msgid "description"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:101
+msgid "OG title"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:106
+msgid "OG description"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:117
+#, php-format
+msgid "\"%1$s\": updated %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:122
+msgid "No valid fixes to apply."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:127
+#, php-format
+msgid "SEO fixed on %d pages:"
+msgstr ""
+
+#. translators: 1: meta key 2: post ID
+#: includes/handlers/class-handler-seo.php:157
+#, php-format
+msgid "Set %1$s on post #%2$d."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:166
+msgid "No fixes could be applied."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:171
+msgid "SEO fixes applied: "
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:176
+msgid "No fixes provided."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:186
+msgid "You do not have permission to run security scans."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:208
+msgid "You do not have permission to apply security fixes."
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:237
+msgid "SEO Auto-Fix"
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-seo.php:253
+#: includes/handlers/class-handler-seo.php:309
+#: includes/handlers/class-handler-seo.php:340
+#, php-format
+msgid "SEO Title — \"%s\""
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-seo.php:265
+#, php-format
+msgid "Meta Description — \"%s\""
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-seo.php:273
+#, php-format
+msgid "OG Title — \"%s\""
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:311
+msgid "(will be auto-generated from page title)"
+msgstr ""
+
+#. translators: %s: post title
+#: includes/handlers/class-handler-seo.php:316
+#: includes/handlers/class-handler-seo.php:346
+#, php-format
+msgid "Meta Desc — \"%s\""
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:318
+msgid "(will be auto-generated from content)"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:342
+#: includes/handlers/class-handler-seo.php:348
+msgid "(will be refreshed for this post)"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:356
+msgid "SEO Fix"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:357
+msgid "Missing meta data detected"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:359
+msgid "Refresh SEO metadata for the scoped target only"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:360
+msgid "Auto-generate titles and descriptions for all pages without them"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:371
+msgid "Security Fixes"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:387
+msgid "Delete Exposed Files"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:388
+#, php-format
+msgid "%s — publicly accessible (reveals WP version)"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:389
+msgid "Files deleted — no longer accessible"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:403
+msgid "Disable XML-RPC"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:404
+msgid "XML-RPC enabled — common brute-force attack vector"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:405
+msgid "XML-RPC disabled via mu-plugin filter"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:411
+msgid "Security"
+msgstr ""
+
+#: includes/handlers/class-handler-seo.php:413
+msgid "No auto-fixable issues found — all clear!"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:53
+msgid "You do not have permission to view site settings."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:71
+#, php-format
+msgid "Found %d registered settings across %d groups."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:73
+msgid "These are Settings-API-registered options. Use keys param to read specific values."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:92
+msgid "Site settings retrieved."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:102
+msgid "You do not have permission to update site settings."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:107
+msgid "No settings changes specified."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:129
+msgid "No valid settings to update."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:139
+#: includes/handlers/class-handler-system.php:161
+msgid "Permalink structure updated and rewrite rules flushed. All URLs are now active."
+msgstr ""
+
+#. translators: %s: list of updated settings
+#: includes/handlers/class-handler-system.php:154
+#, php-format
+msgid "Updated settings: %s."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:192
+msgid "Menu not found."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:221
+#, php-format
+msgid "Menu \"%s\" has %d items."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:260
+#, php-format
+msgid "Found %d menu(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:278
+msgid "FSE navigation not found."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:291
+#, php-format
+msgid "Navigation \"%s\" has %d items."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:291
+msgid "(untitled)"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:294
+#: includes/handlers/class-handler-system.php:323
+msgid "(untitled navigation)"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:336
+msgid "This site uses block-based navigation (FSE theme). Navigation is stored as wp_navigation posts containing blocks. Use update_menu with a navigation post ID to modify."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:337
+#, php-format
+msgid "Found %d FSE navigation menu(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:357
+msgid "(Auto-generated page list)"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:358
+msgid "This item automatically shows all published pages."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:376
+msgid "You do not have permission to manage menus."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:395
+msgid "Menu name is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:404
+#, php-format
+msgid "Created menu \"%s\" (ID: %d)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:410
+#: includes/handlers/class-handler-system.php:455
+#: includes/handlers/class-handler-system.php:468
+#: includes/handlers/class-handler-system.php:482
+msgid "Menu ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:439
+#, php-format
+msgid "Added item \"%s\" to menu (item ID: %d)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:445
+msgid "Item ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:449
+msgid "Failed to remove menu item."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:451
+#, php-format
+msgid "Removed menu item #%d."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:459
+msgid "Location slug is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:464
+#, php-format
+msgid "Assigned menu #%d to location \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:472
+#: includes/handlers/class-handler-system.php:562
+msgid "New name is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:478
+#, php-format
+msgid "Renamed menu to \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:488
+#, php-format
+msgid "Deleted menu #%d."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:491
+#, php-format
+msgid "Unknown menu operation: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:511
+msgid "label and url are required to add a navigation item."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:546
+msgid "label or item_id is required to remove a navigation item."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:574
+#, php-format
+msgid "Renamed FSE navigation to \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:595
+msgid "FSE navigation updated successfully."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:607
+msgid "Valid recipient email is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:610
+msgid "Email subject is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:613
+msgid "Email body is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:657
+#, php-format
+msgid "Email sent to %1$s: \"%2$s\""
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:664
+msgid "Failed to send email. Check your WordPress email configuration (SMTP settings)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:674
+#, php-format
+msgid "%d emails in log."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:761
+#, php-format
+msgid "%1$d users found. %2$d total on site."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:770
+#, php-format
+msgid "%d user(s) with no role assigned — possible orphaned accounts."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:790
+#: includes/handlers/class-handler-system.php:847
+msgid "User not found."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:838
+#, php-format
+msgid "User profile for \"%s\""
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:851
+msgid "Cannot change your own admin role for safety."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:859
+msgid "display name"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:863
+msgid "first name"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:867
+msgid "last name"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:871
+msgid "bio"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:875
+msgid "website"
+msgstr ""
+
+#. translators: 1: role slug, 2: list of available roles
+#: includes/handlers/class-handler-system.php:888
+#, php-format
+msgid "Role \"%1$s\" does not exist. Available roles: %2$s"
+msgstr ""
+
+#. translators: %s: role slug
+#: includes/handlers/class-handler-system.php:898
+#, php-format
+msgid "You don't have permission to assign the \"%s\" role."
+msgstr ""
+
+#. translators: %s: role name
+#: includes/handlers/class-handler-system.php:906
+#, php-format
+msgid "role → %s"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:936
+#, php-format
+msgid "Updated user \"%1$s\": %2$s"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1018
+#, php-format
+msgid "%d critical issue(s) need attention."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1020
+#, php-format
+msgid "No critical issues. %d improvements recommended."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1021
+msgid "All site health checks passed."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1077
+msgid "system_info contains server config, plugin versions, disk usage, PHP limits, and more."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1094
+msgid "No scheduled tasks found."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1108
+msgid "One-time"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1116
+#, php-format
+msgid "%s from now"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1117
+#, php-format
+msgid "%s ago (overdue)"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1141
+#, php-format
+msgid "%1$d scheduled tasks. %2$d overdue."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1142
+#, php-format
+msgid "%d scheduled tasks. All on schedule."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1165
+msgid "DISABLE_WP_CRON is true — WordPress cron requires a system-level cron job (crontab) to run."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1168
+msgid "Cron lock is stuck. WP-Cron is locked but the process appears to have died. Run wp_unschedule_hook to clear specific stuck hooks."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1171
+msgid "ALTERNATE_WP_CRON is enabled — cron runs on redirect instead of background HTTP request."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1184
+msgid "Hook name is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1189
+#, php-format
+msgid "Executed scheduled task \"%s\" immediately."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1199
+#, php-format
+msgid "Unscheduled task \"%s\"."
+msgstr ""
+
+#. translators: 1: number of cleared instances, 2: hook name
+#: includes/handlers/class-handler-system.php:1208
+#, php-format
+msgid "Cleared %1$d scheduled instance(s) of \"%2$s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1215
+msgid "Invalid action. Use \"run\", \"remove\", or \"remove_all\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1219
+#, php-format
+msgid "%d seconds"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1220
+#, php-format
+msgid "%d minutes"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1221
+#, php-format
+msgid "%s hours"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1222
+#, php-format
+msgid "%s days"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1238
+#, php-format
+msgid "%1$d plugins installed (%2$d active, %3$d inactive, %4$d updates available)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1239
+#, php-format
+msgid "%1$d plugins installed (%2$d active, %3$d inactive)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1250
+msgid "Plugin file path is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1276
+#, php-format
+msgid "%1$d themes installed. Active: \"%2$s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1323
+msgid "Site Editor (not Customizer)"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1328
+msgid "This is a block theme. Settings are managed via the Site Editor, not the Customizer. Use the Site Editor for design changes."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1330
+#, php-format
+msgid "Block theme detected. %1$d colors, %2$d font sizes. Use Site Editor for customization."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1360
+#, php-format
+msgid "%d theme customizer settings."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1373
+msgid "This is a block theme. Use get_theme_settings to see design settings via the Site Editor."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1433
+msgid "General"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1443
+msgid "Use update_theme_setting with the setting id to change any value."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1454
+#, php-format
+msgid "Could not load Customizer schema: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1455
+msgid "Use get_theme_settings to see current theme_mods values."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1466
+msgid "Setting name is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1479
+#, php-format
+msgid "Updated theme setting \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1490
+msgid "Theme slug is required."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1563
+#, php-format
+msgid "Revision limit is %d. AI checkpoints may be pruned quickly — consider increasing WP_POST_REVISIONS."
+msgstr ""
+
+#. translators: 1: total size in MB, 2: table count, 3: revisions, 4: auto-drafts, 5: trashed, 6: spam comments, 7: expired transients
+#: includes/handlers/class-handler-system.php:1572
+#, php-format
+msgid "Database: %1$s MB total, %2$d tables. Cleanup candidates: %3$d revisions, %4$d auto-drafts, %5$d trashed, %6$d spam comments, %7$d expired transients."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1618
+#, php-format
+msgid "Deleted %d (batched to 500 max). Run again for more."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1619
+msgid "All revisions deleted."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1625
+#: includes/handlers/class-handler-system.php:1633
+#: includes/handlers/class-handler-system.php:1641
+#: includes/handlers/class-handler-system.php:1664
+msgid "Query returned false"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1657
+#, php-format
+msgid "%d expired transients deleted."
+msgstr ""
+
+#. translators: 1: cleanup item name, 2: error message
+#: includes/handlers/class-handler-system.php:1676
+#, php-format
+msgid "%1$s: ERROR — %2$s"
+msgstr ""
+
+#. translators: 1: number deleted, 2: item type name
+#: includes/handlers/class-handler-system.php:1683
+#, php-format
+msgid "%1$d %2$s"
+msgstr ""
+
+#. translators: 1: number deleted, 2: item type name
+#: includes/handlers/class-handler-system.php:1683
+msgid "items"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1693
+#, php-format
+msgid "Database cleaned: %s."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1735
+#, php-format
+msgid "%sKB reclaimable"
+msgstr ""
+
+#. translators: 1: total tables, 2: MyISAM count, 3: InnoDB count
+#: includes/handlers/class-handler-system.php:1746
+#, php-format
+msgid "Processed %1$d tables (%2$d MyISAM optimized, %3$d InnoDB analyzed)."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1760
+msgid "Site profile not yet generated. Generating now..."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1764
+#, php-format
+msgid "Site profile generated on %s"
+msgstr ""
+
+#. translators: 1: detected industry, 2: tone, 3: number of pages
+#: includes/handlers/class-handler-system.php:1776
+#, php-format
+msgid "Site profile regenerated. Detected industry: %1$s, tone: %2$s, %3$d pages analyzed."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1791
+#, php-format
+msgid "%d log files found."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1813
+msgid "Only debug.log can be cleared through PressArk for safety."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1817
+msgid "debug.log does not exist."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1820
+msgid "debug.log cleared."
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1854
+msgid "Menu:"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1854
+msgid "New Menu"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1867
+#: includes/handlers/class-handler-woocommerce.php:3573
+msgid "To"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1868
+#: includes/handlers/class-handler-woocommerce.php:3574
+msgid "Subject"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1869
+#: includes/handlers/class-handler-woocommerce.php:3575
+msgid "Body Preview"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1872
+msgid "CC"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1874
+msgid "Send Email"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1916
+msgid "Scheduled Task"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1917
+#: includes/handlers/class-handler-woocommerce.php:479
+msgid "unknown"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1918
+msgid "Execute immediately"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1918
+msgid "Remove from schedule"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1933
+msgid "Plugin"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1935
+msgid "Activate"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1935
+msgid "Deactivate"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1950
+#, php-format
+msgid "Theme Setting: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1966
+msgid "Switch Theme"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1986
+msgid "Post Revisions"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1986
+msgid "revisions"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1987
+msgid "Auto-Drafts"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1987
+msgid "auto-drafts"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1988
+msgid "Trashed Posts"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1988
+msgid "trashed posts"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1989
+msgid "Spam Comments"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1989
+msgid "spam comments"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1991
+msgid "Expired Transients"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1993
+msgid "expired transients"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1996
+msgid "Orphaned Post Meta"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:1996
+msgid "orphaned meta rows"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2009
+#, php-format
+msgid "%1$d %2$s found"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2010
+#, php-format
+msgid "0 %s"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2011
+msgid "Will be deleted"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2011
+msgid "Nothing to clean"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2015
+msgid "Database Cleanup"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2024
+msgid "Optimize Database"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2024
+msgid "All tables"
+msgstr ""
+
+#: includes/handlers/class-handler-system.php:2024
+msgid "OPTIMIZE TABLE on all tables"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:29
+msgid "You need the \"edit_shop_orders\" capability to modify orders and refunds."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:44
+msgid "You need the \"manage_woocommerce\" capability for this operation."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:60
+msgid "You need the \"manage_woocommerce\" capability to send customer emails."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:79
+msgid "Missing product_id."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:84
+#, php-format
+msgid "Product #%d not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:171
+#, php-format
+msgid "Product \"%s\" (#%d)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:185
+msgid "Invalid product ID."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:189
+msgid "You do not have permission to edit this product."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:194
+#: includes/handlers/class-handler-woocommerce.php:2215
+msgid "Product not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:256
+#: includes/handlers/class-handler-woocommerce.php:2266
+#, php-format
+msgid "Error setting %s: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:324
+msgid "No product changes specified."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:325
+msgid "Available fields: name, regular_price, sale_price, sale_from, sale_to, sku, stock_quantity, stock_adjust, stock_status, manage_stock, description, short_description, weight, length, width, height, tax_status, tax_class, featured, virtual, downloadable, category_ids, tag_ids, image_id, gallery_image_ids, and more."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:338
+#, php-format
+msgid "Product save failed: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:339
+msgid "A WooCommerce extension blocked the save. Check if Subscriptions, Memberships, or another plugin is throwing errors."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:361
+#, php-format
+msgid "Product updated: %s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:376
+msgid "Insufficient permissions to create products."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:391
+#, php-format
+msgid "Invalid product type '%s'."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:404
+msgid "Failed to create product."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:417
+#, php-format
+msgid "Product created but some fields failed: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:430
+#, php-format
+msgid "Created %1$s product \"%2$s\" (ID: %3$d) as %4$s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:447
+msgid "No products to update."
+msgstr ""
+
+#. translators: 1: max batch size 2: actual count sent
+#: includes/handlers/class-handler-woocommerce.php:457
+#, php-format
+msgid "Bulk edit limited to %1$d products per request. You sent %2$d. Break into smaller batches."
+msgstr ""
+
+#. translators: 1: product ID 2: product name 3: error message
+#: includes/handlers/class-handler-woocommerce.php:477
+#, php-format
+msgid "#%1$d (%2$s): %3$s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:480
+msgid "Unknown error"
+msgstr ""
+
+#. translators: 1: product ID 2: exception message
+#: includes/handlers/class-handler-woocommerce.php:487
+#, php-format
+msgid "#%d: Exception — %s"
+msgstr ""
+
+#. translators: 1: updated count 2: error count
+#: includes/handlers/class-handler-woocommerce.php:503
+#, php-format
+msgid "Bulk update: %1$d product(s) updated, %2$d error(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:649
+#, php-format
+msgid "%d product(s) have sale price >= regular price."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:652
+#, php-format
+msgid "%d product(s) have expired scheduled sales still active."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:655
+#, php-format
+msgid "%d variable product(s) have no variations — they cannot be purchased."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:658
+#, php-format
+msgid "%d duplicate SKU(s) found — may cause order processing issues."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:661
+#, php-format
+msgid "%d product(s) have price mismatch between postmeta and lookup table. Run WooCommerce → Status → Tools → Update product lookup tables."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:675
+msgid "Run WooCommerce → Status → Tools → Update product lookup tables"
+msgstr ""
+
+#. translators: 1: total products 2: total issues 3: issue category count
+#: includes/handlers/class-handler-woocommerce.php:694
+#, php-format
+msgid "Analyzed %1$d products, found %2$d issues across %3$d categories."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:812
+#, php-format
+msgid "Found %d order(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:827
+#: includes/handlers/class-handler-woocommerce.php:962
+msgid "Order ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:832
+#: includes/handlers/class-handler-woocommerce.php:967
+#: includes/handlers/class-handler-woocommerce.php:2449
+msgid "Order not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:943
+#, php-format
+msgid "Order #%s details."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:957
+msgid "You do not have permission to edit orders."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:976
+#, php-format
+msgid "status: %s → %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:982
+msgid "note added"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:999
+#, php-format
+msgid "Updated order #%s: %s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1012
+msgid "You do not have permission to manage coupons."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1026
+msgid "Provide coupon_id or code."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1031
+#: includes/handlers/class-handler-woocommerce.php:1128
+#: includes/handlers/class-handler-woocommerce.php:1165
+msgid "Coupon not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1091
+msgid "Coupon code is required."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1118
+#, php-format
+msgid "Created coupon \"%s\" (ID: %d)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1124
+#: includes/handlers/class-handler-woocommerce.php:1161
+msgid "Coupon ID is required."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1155
+#, php-format
+msgid "Updated coupon \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1171
+#, php-format
+msgid "Deleted coupon \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1175
+#, php-format
+msgid "Unknown coupon operation: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1280
+#, php-format
+msgid "%d out of stock, %d low stock (threshold: %d)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1456
+#: includes/handlers/class-handler-woocommerce.php:1532
+msgid "Customer not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1486
+#, php-format
+msgid "Customer profile for \"%s\""
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1537
+msgid "Customer has no email address."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1544
+msgid "Subject and body are required."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1552
+#, php-format
+msgid "Email to customer #%d was already sent on a previous attempt (skipped to prevent duplicate)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1585
+#, php-format
+msgid "Email sent to %1$s (%2$s): \"%3$s\""
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1588
+msgid "Failed to send email. Check SMTP configuration."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1617
+#, php-format
+msgid "%d shipping zones configured."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1674
+#, php-format
+msgid "Tax is enabled with %d rate(s)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1674
+msgid "Tax calculation is disabled."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1721
+#, php-format
+msgid "Gateway '%s' is enabled but not available — check currency, country, or SSL requirements."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1724
+#, php-format
+msgid "Gateway '%s' is in TEST MODE — customers cannot make real payments."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1800
+msgid "Available sections: general, products, accounts"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1805
+#, php-format
+msgid "WooCommerce %s settings retrieved."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1842
+#, php-format
+msgid "%1$d email notifications (%2$d enabled)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1871
+msgid "Could not load full system status."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1907
+msgid "WooCommerce database update required — go to WooCommerce → Status → Tools → Update Database."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1910
+#, php-format
+msgid "%d outdated WC template override(s) — may cause frontend display bugs after WC update."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1913
+msgid "Store is not using HTTPS — payment security risk."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1916
+msgid "WordPress memory limit is 64MB — may cause issues with large stores. Recommend 256MB+."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2022
+#, php-format
+msgid "%d product reviews found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2069
+msgid "Review not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2077
+#, php-format
+msgid "Review by \"%s\" approved."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2080
+#, php-format
+msgid "Review by \"%s\" held for moderation."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2083
+msgid "Review marked as spam."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2086
+msgid "Review trashed."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2102
+#, php-format
+msgid "Reply posted to review by \"%s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2104
+msgid "Invalid action. Use: approve, unapprove, spam, trash, or reply."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2124
+msgid "Product not found or not a variable product."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2146
+#, php-format
+msgid "%1$d variations for \"%2$s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2165
+msgid "Variation not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2198
+#, php-format
+msgid "Variation #%1$d updated: %2$s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2212
+#: includes/handlers/class-handler-woocommerce.php:2302
+msgid "product_id is required."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2217
+#, php-format
+msgid "Product %d is not a variable product."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2274
+msgid "Failed to create variation."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2286
+#, php-format
+msgid "Created variation #%1$d on \"%2$s\"."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2287
+msgid "Parent product price range has been synced."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2306
+msgid "Not a variable product."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2311
+msgid "This variable product has no variations."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2383
+#, php-format
+msgid "Updated %1$d of %2$d variations."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2430
+msgid "Use taxonomy name (e.g. pa_color) when setting attributes on products or variations."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2460
+#, php-format
+msgid "Refund for order #%d was already issued on a previous attempt (skipped to prevent double refund)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2490
+#, php-format
+msgid "Refund of %1$s issued for order #%2$s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2490
+#, php-format
+msgid "Reason: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2563
+msgid "Order creation was already completed on a previous attempt (skipped to prevent duplicate order)."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2635
+msgid "No valid products could be added to the order."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2672
+#, php-format
+msgid "Order #%1$s created for %2$s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2672
+msgid "guest"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2699
+msgid "WC Analytics data unavailable. Ensure WooCommerce analytics are enabled."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2700
+msgid "WooCommerce → Settings → Analytics"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2754
+msgid "WC Analytics data unavailable."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2755
+msgid "Ensure WooCommerce Analytics is enabled and data has been processed. Check WooCommerce → Settings → Analytics."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2972
+#, php-format
+msgid "%d webhook(s) have delivery failures — integrations may be broken."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2980
+#: includes/handlers/class-handler-woocommerce.php:3003
+msgid "webhook_id required."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2983
+#: includes/handlers/class-handler-woocommerce.php:3012
+msgid "Webhook not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:2998
+#, php-format
+msgid "Webhook '%1$s' %2$s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3008
+msgid "Webhook already deleted on a previous attempt."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3019
+#, php-format
+msgid "Webhook '%s' deleted."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3022
+#, php-format
+msgid "Unknown action '%s'. Use list, pause, activate, disable, delete."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3037
+msgid "No new WooCommerce alerts."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3099
+msgid "Specify email_type. Available types below."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3106
+#, php-format
+msgid "Email type '%s' not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3107
+msgid "Call trigger_wc_email without email_type to see available types."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3115
+#, php-format
+msgid "Email '%s' is disabled in WooCommerce settings."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3116
+msgid "Enable it at WooCommerce → Settings → Emails."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3134
+#, php-format
+msgid "Email type '%s' requires order_id."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3140
+#, php-format
+msgid "Order %d not found."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3152
+#, php-format
+msgid "'%s' email triggered successfully."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3180
+msgid "Use the slug (without wc- prefix) in list_orders status filter."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3229
+msgid "Sorted by sale end date — soonest expiring first."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3247
+msgid "WC Analytics tables not found. Run WooCommerce → Status → Tools → Update database."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3280
+msgid "Active (bought in last 30 days)"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3281
+msgid "Cooling (31-90 days)"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3282
+msgid "At Risk (91-180 days)"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3283
+msgid "Churned (180+ days)"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3319
+msgid "More churned customers than active — consider a win-back campaign."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3322
+#, php-format
+msgid "%d customers are at risk of churning."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3347
+msgid "Cost can include product class surcharges"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3356
+#, php-format
+msgid "Free shipping when order >= %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3357
+msgid "Free shipping with valid coupon"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3358
+#, php-format
+msgid "Free shipping with coupon AND order >= %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3359
+#, php-format
+msgid "Free shipping with coupon OR order >= %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3360
+msgid "Always free shipping"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3365
+msgid "Free"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3530
+#, php-format
+msgid "Order #%s Status"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3537
+msgid "Order Note"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3557
+msgid "Coupon"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3592
+msgid "Reply to Review"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3604
+#, php-format
+msgid "By %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3641
+#, php-format
+msgid "Refund Order #%s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3642
+msgid "Order total"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3643
+#, php-format
+msgid "Refund: %s"
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:3658
+msgid "New Manual Order"
+msgstr ""
+
+#: pressark.php:157
+msgid "PressArk cannot be network-activated. Please activate it on each site individually."
+msgstr ""
+
+#: pressark.php:161
+msgid "Plugin Activation Error"
+msgstr ""
+
+#: pressark.php:210
+msgid "PressArk detected a legacy network-wide activation from an older release. PressArk is disabled in this state. Deactivate it network-wide, then activate it individually on each site that should use PressArk."
+msgstr ""
+
+#: templates/chat-panel.php:26
+msgid "PressArk Chat"
+msgstr ""
+
+#: templates/chat-panel.php:35
+msgid "Deep Mode"
+msgstr ""
+
+#: templates/chat-panel.php:35
+msgid "Deep Mode: Use premium AI for complex tasks"
+msgstr ""
+
+#: templates/chat-panel.php:40
+#: templates/chat-panel.php:78
+msgid "Chat History"
+msgstr ""
+
+#: templates/chat-panel.php:50
+msgid "Open Activity"
+msgstr ""
+
+#: templates/chat-panel.php:51
+msgid "Inbox"
+msgstr ""
+
+#: templates/chat-panel.php:54
+msgid "Close"
+msgstr ""
+
+#. translators: %s: current page/screen title
+#: templates/chat-panel.php:68
+#, php-format
+msgid "Currently viewing: %s"
+msgstr ""
+
+#: templates/chat-panel.php:79
+msgid "Close History"
+msgstr ""
+
+#: templates/chat-panel.php:84
+msgid "No saved chats yet"
+msgstr ""
+
+#: templates/chat-panel.php:96
+#, php-format
+msgid "Welcome to PressArk! To get started, <a href=\"%s\">add your API key</a> in settings."
+msgstr ""
+
+#: templates/chat-panel.php:107
+msgid "Chat messages"
+msgstr ""
+
+#: templates/chat-panel.php:116
+msgid "Ask PressArk anything..."
+msgstr ""
+
+#: templates/chat-panel.php:117
+msgid "Type your message to PressArk"
+msgstr ""
+
+#: templates/chat-panel.php:119
+msgid "Send"
+msgstr ""

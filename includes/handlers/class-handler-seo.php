@@ -119,7 +119,12 @@ class PressArk_Handler_SEO extends PressArk_Handler_Base {
 							wp_json_encode( array( 'meta_title' => $previous ?? '' ) ),
 							wp_json_encode( $fix )
 						);
-						$results[] = sprintf( __( '"%1$s": updated %2$s', 'pressark' ), $post->post_title, implode( ', ', $meta_applied ) );
+						$results[] = sprintf(
+							/* translators: 1: post title, 2: comma-separated list of updated SEO fields */
+							__( '"%1$s": updated %2$s', 'pressark' ),
+							$post->post_title,
+							implode( ', ', $meta_applied )
+						);
 					}
 				}
 
@@ -129,7 +134,11 @@ class PressArk_Handler_SEO extends PressArk_Handler_Base {
 
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'SEO fixed on %d pages:', 'pressark' ), count( $results ) ) . "\n" . implode( "\n", $results ),
+					'message' => sprintf(
+						/* translators: %d: number of pages updated */
+						__( 'SEO fixed on %d pages:', 'pressark' ),
+						count( $results )
+					) . "\n" . implode( "\n", $results ),
 					'log_id'  => $last_log_id,
 				);
 			}
@@ -425,6 +434,7 @@ class PressArk_Handler_SEO extends PressArk_Handler_Base {
 		if ( in_array( 'delete_exposed_files', $selected_fixes, true ) && ! empty( $exposed_files ) ) {
 			$preview['changes'][] = array(
 				'field'  => __( 'Delete Exposed Files', 'pressark' ),
+				/* translators: %s: comma-separated list of exposed file names */
 				'before' => sprintf( __( '%s — publicly accessible (reveals WP version)', 'pressark' ), implode( ', ', $exposed_files ) ),
 				'after'  => __( 'Files deleted — no longer accessible', 'pressark' ),
 			);

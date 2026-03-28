@@ -109,7 +109,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		return array(
 			'success'     => true,
-			'message'     => sprintf( __( 'Found %d attachment(s).', 'pressark' ), count( $list ) ),
+			'message'     => sprintf(
+				/* translators: %d: number of attachments found */
+				__( 'Found %d attachment(s).', 'pressark' ),
+				count( $list )
+			),
 			'data'        => $list,
 			'_pagination' => array(
 				'total'    => $total_attachments,
@@ -203,7 +207,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Details for "%s".', 'pressark' ), $att->post_title ),
+			'message' => sprintf(
+				/* translators: %s: attachment title */
+				__( 'Details for "%s".', 'pressark' ),
+				$att->post_title
+			),
 			'data'    => $data,
 		);
 	}
@@ -265,7 +273,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 			$target_post_id = absint( $changes['set_featured_for'] );
 			if ( $target_post_id && current_user_can( 'edit_post', $target_post_id ) ) {
 				set_post_thumbnail( $target_post_id, $id );
-				$updated[] = sprintf( __( 'featured image for post #%d', 'pressark' ), $target_post_id );
+				$updated[] = sprintf(
+					/* translators: %d: target post ID */
+					__( 'featured image for post #%d', 'pressark' ),
+					$target_post_id
+				);
 			}
 		}
 
@@ -283,7 +295,12 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Updated attachment "%s": %s.', 'pressark' ), $att->post_title, implode( ', ', $updated ) ),
+			'message' => sprintf(
+				/* translators: 1: attachment title, 2: comma-separated list of updated fields */
+				__( 'Updated attachment "%1$s": %2$s.', 'pressark' ),
+				$att->post_title,
+				implode( ', ', $updated )
+			),
 			'log_id'  => $log_id,
 		);
 	}
@@ -316,7 +333,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Deleted attachment "%s".', 'pressark' ), $title ),
+			'message' => sprintf(
+				/* translators: %s: attachment title */
+				__( 'Deleted attachment "%s".', 'pressark' ),
+				$title
+			),
 		);
 	}
 
@@ -342,13 +363,21 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 			}
 
 			if ( ! current_user_can( 'delete_post', $id ) ) {
-				$errors[] = sprintf( __( '#%d: no permission', 'pressark' ), $id );
+				$errors[] = sprintf(
+					/* translators: %d: attachment ID */
+					__( '#%d: no permission', 'pressark' ),
+					$id
+				);
 				continue;
 			}
 
 			$att = get_post( $id );
 			if ( ! $att || 'attachment' !== $att->post_type ) {
-				$errors[] = sprintf( __( '#%d: not found', 'pressark' ), $id );
+				$errors[] = sprintf(
+					/* translators: %d: attachment ID */
+					__( '#%d: not found', 'pressark' ),
+					$id
+				);
 				continue;
 			}
 
@@ -443,7 +472,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 				'id'      => $attachment_id,
 				'title'   => get_the_title( $attachment_id ),
 				'success' => true,
-				'sizes'   => sprintf( __( '%d sizes generated', 'pressark' ), count( $meta['sizes'] ?? array() ) ),
+				'sizes'   => sprintf(
+					/* translators: %d: number of generated image sizes */
+					__( '%d sizes generated', 'pressark' ),
+					count( $meta['sizes'] ?? array() )
+				),
 			);
 		}
 
@@ -558,7 +591,14 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 		$valid_actions = array( 'approve', 'hold', 'spam', 'unspam', 'trash', 'untrash', 'unapprove' );
 
 		if ( ! in_array( $action, $valid_actions, true ) ) {
-			return array( 'success' => false, 'message' => sprintf( __( 'Invalid action: %s. Use approve, unapprove/hold, spam, unspam, trash, or untrash.', 'pressark' ), $action ) );
+			return array(
+				'success' => false,
+				'message' => sprintf(
+					/* translators: %s: requested comment moderation action */
+					__( 'Invalid action: %s. Use approve, unapprove/hold, spam, unspam, trash, or untrash.', 'pressark' ),
+					$action
+				),
+			);
 		}
 
 		// Normalize legacy alias.
@@ -645,7 +685,12 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Replied to comment #%d (new comment #%d).', 'pressark' ), $parent_id, $new_comment_id ),
+			'message' => sprintf(
+				/* translators: 1: parent comment ID, 2: new reply comment ID */
+				__( 'Replied to comment #%1$d (new comment #%2$d).', 'pressark' ),
+				$parent_id,
+				$new_comment_id
+			),
 		);
 	}
 
@@ -660,7 +705,14 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		if ( ! empty( $taxonomy ) ) {
 			if ( ! taxonomy_exists( $taxonomy ) ) {
-				return array( 'success' => false, 'message' => sprintf( __( 'Taxonomy "%s" does not exist.', 'pressark' ), $taxonomy ) );
+				return array(
+					'success' => false,
+					'message' => sprintf(
+						/* translators: %s: taxonomy slug */
+						__( 'Taxonomy "%s" does not exist.', 'pressark' ),
+						$taxonomy
+					),
+				);
 			}
 
 			$terms = get_terms( array(
@@ -687,7 +739,12 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 			$tax_obj = get_taxonomy( $taxonomy );
 			return array(
 				'success' => true,
-				'message' => sprintf( __( 'Taxonomy "%s" has %d term(s).', 'pressark' ), $tax_obj->labels->name, count( $term_list ) ),
+				'message' => sprintf(
+					/* translators: 1: taxonomy label, 2: number of terms */
+					__( 'Taxonomy "%1$s" has %2$d term(s).', 'pressark' ),
+					$tax_obj->labels->name,
+					count( $term_list )
+				),
 				'data'    => array(
 					'taxonomy'     => $taxonomy,
 					'label'        => $tax_obj->labels->name,
@@ -714,7 +771,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Found %d public taxonomy/taxonomies.', 'pressark' ), count( $list ) ),
+			'message' => sprintf(
+				/* translators: %d: number of public taxonomies found */
+				__( 'Found %d public taxonomy/taxonomies.', 'pressark' ),
+				count( $list )
+			),
 			'data'    => $list,
 		);
 	}
@@ -757,7 +818,13 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 				$this->logger->log( 'manage_taxonomy', $result['term_id'], $taxonomy, null, wp_json_encode( array( 'name' => $name, 'operation' => 'create' ) ) );
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'Created term "%s" in %s (ID: %d).', 'pressark' ), $name, $taxonomy, $result['term_id'] ),
+					'message' => sprintf(
+						/* translators: 1: term name, 2: taxonomy slug, 3: term ID */
+						__( 'Created term "%1$s" in %2$s (ID: %3$d).', 'pressark' ),
+						$name,
+						$taxonomy,
+						$result['term_id']
+					),
 				);
 
 			case 'edit':
@@ -789,7 +856,12 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 				$this->logger->log( 'manage_taxonomy', $term_id, $taxonomy, wp_json_encode( array( 'name' => $old_term->name, 'slug' => $old_term->slug ) ), wp_json_encode( $update_args ) );
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'Updated term #%d in %s.', 'pressark' ), $term_id, $taxonomy ),
+					'message' => sprintf(
+						/* translators: 1: term ID, 2: taxonomy slug */
+						__( 'Updated term #%1$d in %2$s.', 'pressark' ),
+						$term_id,
+						$taxonomy
+					),
 				);
 
 			case 'delete':
@@ -808,11 +880,23 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 				}
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'Deleted term "%s" from %s.', 'pressark' ), $term->name, $taxonomy ),
+					'message' => sprintf(
+						/* translators: 1: term name, 2: taxonomy slug */
+						__( 'Deleted term "%1$s" from %2$s.', 'pressark' ),
+						$term->name,
+						$taxonomy
+					),
 				);
 
 			default:
-				return array( 'success' => false, 'message' => sprintf( __( 'Unknown taxonomy operation: %s', 'pressark' ), $operation ) );
+				return array(
+					'success' => false,
+					'message' => sprintf(
+						/* translators: %s: requested taxonomy operation */
+						__( 'Unknown taxonomy operation: %s', 'pressark' ),
+						$operation
+					),
+				);
 		}
 	}
 
@@ -861,7 +945,8 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 		return array(
 			'success' => true,
 			'message' => sprintf(
-				__( 'Assigned %d term(s) to "%s" in %s.', 'pressark' ),
+				/* translators: 1: number of assigned terms, 2: post title, 3: taxonomy slug */
+				__( 'Assigned %1$d term(s) to "%2$s" in %3$s.', 'pressark' ),
 				count( $term_ids ),
 				$post ? $post->post_title : '#' . $post_id,
 				$taxonomy
@@ -1083,13 +1168,27 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 			switch ( $expected ) {
 				case 'integer':
 					if ( ! is_numeric( $value ) ) {
-						return array( 'error' => sprintf( __( "Field '%s' expects an integer, got: %s", 'pressark' ), $key, gettype( $value ) ) );
+						return array(
+							'error' => sprintf(
+								/* translators: 1: custom field key, 2: received PHP type */
+								__( "Field '%1$s' expects an integer, got: %2$s", 'pressark' ),
+								$key,
+								gettype( $value )
+							),
+						);
 					}
 					$value = (int) $value;
 					break;
 				case 'number':
 					if ( ! is_numeric( $value ) ) {
-						return array( 'error' => sprintf( __( "Field '%s' expects a number, got: %s", 'pressark' ), $key, gettype( $value ) ) );
+						return array(
+							'error' => sprintf(
+								/* translators: 1: custom field key, 2: received PHP type */
+								__( "Field '%1$s' expects a number, got: %2$s", 'pressark' ),
+								$key,
+								gettype( $value )
+							),
+						);
 					}
 					$value = (float) $value;
 					break;
@@ -1118,7 +1217,13 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 		}
 
 		if ( $result === false ) {
-			return array( 'error' => sprintf( __( "Failed to update field '%s'.", 'pressark' ), $key ) );
+			return array(
+				'error' => sprintf(
+					/* translators: %s: custom field key */
+					__( "Failed to update field '%s'.", 'pressark' ),
+					$key
+				),
+			);
 		}
 
 		return array(
@@ -1364,13 +1469,21 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 		}
 
 		return array(
-			'post_title' => sprintf( __( 'Bulk Delete Media — %d files', 'pressark' ), count( $bulk_att_ids ) ),
+			'post_title' => sprintf(
+				/* translators: %d: number of media files in the bulk delete */
+				__( 'Bulk Delete Media — %d files', 'pressark' ),
+				count( $bulk_att_ids )
+			),
 			'post_id'    => 0,
 			'changes'    => array(
 				array(
 					'field'  => __( 'Files to Delete', 'pressark' ),
 					'before' => $att_title_str,
-					'after'  => sprintf( __( '%d files will be permanently deleted', 'pressark' ), count( $bulk_att_ids ) ),
+					'after'  => sprintf(
+						/* translators: %d: number of files that will be permanently deleted */
+						__( '%d files will be permanently deleted', 'pressark' ),
+						count( $bulk_att_ids )
+					),
 				),
 			),
 		);
@@ -1391,7 +1504,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 				array(
 					/* translators: %s: moderation action (e.g. Approve, Spam) */
 					'field'  => sprintf( __( '%s Comments', 'pressark' ), ucfirst( $mod_action ) ),
-					'before' => sprintf( __( '%d comment(s)', 'pressark' ), count( $cids ) ),
+					'before' => sprintf(
+						/* translators: %d: number of comments */
+						__( '%d comment(s)', 'pressark' ),
+						count( $cids )
+					),
 					'after'  => ucfirst( $mod_action ),
 				),
 			),
@@ -1407,7 +1524,18 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 			'changes' => array(
 				array(
 					'field'  => __( 'Reply to Comment', 'pressark' ),
-					'before' => $parent ? sprintf( __( 'By %1$s: "%2$s"', 'pressark' ), $parent->comment_author, mb_substr( wp_strip_all_tags( $parent->comment_content ), 0, 80 ) ) : sprintf( __( 'Comment #%d', 'pressark' ), $params['comment_id'] ?? 0 ),
+					'before' => $parent
+						? sprintf(
+							/* translators: 1: comment author, 2: comment excerpt */
+							__( 'By %1$s: "%2$s"', 'pressark' ),
+							$parent->comment_author,
+							mb_substr( wp_strip_all_tags( $parent->comment_content ), 0, 80 )
+						)
+						: sprintf(
+							/* translators: %d: comment ID */
+							__( 'Comment #%d', 'pressark' ),
+							$params['comment_id'] ?? 0
+						),
 					'after'  => mb_substr( $params['content'] ?? '', 0, 150 ),
 				),
 			),

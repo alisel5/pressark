@@ -182,7 +182,14 @@ abstract class PressArk_Handler_Base {
 			if ( $found ) {
 				$post_id = $found->ID;
 			} else {
-				return $this->error( sprintf( __( "No %s found with slug '%s'.", 'pressark' ), $post_type, $params['slug'] ) );
+				return $this->error(
+					sprintf(
+						/* translators: 1: WordPress post type, 2: requested slug */
+						__( "No %1\$s found with slug '%2\$s'.", 'pressark' ),
+						$post_type,
+						$params['slug']
+					)
+				);
 			}
 		}
 

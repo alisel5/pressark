@@ -55,12 +55,42 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		$user          = wp_get_current_user();
 
 		$lines = array();
-		$lines[] = sprintf( __( 'Site: %s (%s)', 'pressark' ), get_bloginfo( 'name' ), home_url() );
-		$lines[] = sprintf( __( 'Tagline: %s', 'pressark' ), get_bloginfo( 'description' ) );
-		$lines[] = sprintf( __( 'WordPress %1$s | PHP %2$s', 'pressark' ), get_bloginfo( 'version' ), phpversion() );
-		$lines[] = sprintf( __( 'Theme: %1$s v%2$s', 'pressark' ), $theme->get( 'Name' ), $theme->get( 'Version' ) );
-		$lines[] = sprintf( __( 'Pages: %1$d | Posts: %2$d | Comments: %3$d', 'pressark' ), $page_count->publish ?? 0, $post_count->publish ?? 0, $comment_count->total_comments ?? 0 );
-		$lines[] = sprintf( __( 'Front page ID: %1$d | Timezone: %2$s', 'pressark' ), $front_id, wp_timezone_string() );
+		$lines[] = sprintf(
+			/* translators: 1: site name, 2: site home URL */
+			__( 'Site: %1$s (%2$s)', 'pressark' ),
+			get_bloginfo( 'name' ),
+			home_url()
+		);
+		$lines[] = sprintf(
+			/* translators: %s: site tagline */
+			__( 'Tagline: %s', 'pressark' ),
+			get_bloginfo( 'description' )
+		);
+		$lines[] = sprintf(
+			/* translators: 1: WordPress version, 2: PHP version */
+			__( 'WordPress %1$s | PHP %2$s', 'pressark' ),
+			get_bloginfo( 'version' ),
+			phpversion()
+		);
+		$lines[] = sprintf(
+			/* translators: 1: theme name, 2: theme version */
+			__( 'Theme: %1$s v%2$s', 'pressark' ),
+			$theme->get( 'Name' ),
+			$theme->get( 'Version' )
+		);
+		$lines[] = sprintf(
+			/* translators: 1: published page count, 2: published post count, 3: total comment count */
+			__( 'Pages: %1$d | Posts: %2$d | Comments: %3$d', 'pressark' ),
+			$page_count->publish ?? 0,
+			$post_count->publish ?? 0,
+			$comment_count->total_comments ?? 0
+		);
+		$lines[] = sprintf(
+			/* translators: 1: front page ID, 2: site timezone string */
+			__( 'Front page ID: %1$d | Timezone: %2$s', 'pressark' ),
+			$front_id,
+			wp_timezone_string()
+		);
 
 		$active_plugins = get_option( 'active_plugins', array() );
 		$plugin_names   = array();
@@ -68,13 +98,27 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 			$data           = get_plugin_data( WP_PLUGIN_DIR . '/' . $plugin_file, false, false );
 			$plugin_names[] = $data['Name'] ?? basename( $plugin_file, '.php' );
 		}
-		$lines[] = sprintf( __( 'Active plugins (%1$d): %2$s', 'pressark' ), count( $plugin_names ), implode( ', ', $plugin_names ) );
-		$lines[] = sprintf( __( 'User: %1$s (%2$s)', 'pressark' ), $user->user_login, implode( ', ', $user->roles ) );
+		$lines[] = sprintf(
+			/* translators: 1: number of active plugins, 2: comma-separated plugin names */
+			__( 'Active plugins (%1$d): %2$s', 'pressark' ),
+			count( $plugin_names ),
+			implode( ', ', $plugin_names )
+		);
+		$lines[] = sprintf(
+			/* translators: 1: user login, 2: comma-separated user roles */
+			__( 'User: %1$s (%2$s)', 'pressark' ),
+			$user->user_login,
+			implode( ', ', $user->roles )
+		);
 
 		$flags = array();
 		if ( class_exists( 'WooCommerce' ) ) {
 			$product_count = wp_count_posts( 'product' );
-			$flags[]       = sprintf( __( 'WooCommerce(%d products)', 'pressark' ), $product_count->publish ?? 0 );
+			$flags[]       = sprintf(
+				/* translators: %d: number of published WooCommerce products */
+				__( 'WooCommerce(%d products)', 'pressark' ),
+				$product_count->publish ?? 0
+			);
 		}
 		if ( PressArk_Elementor::is_active() ) {
 			$flags[] = 'Elementor';
@@ -183,7 +227,12 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		if ( 'page' === $show_on_front && $front_page_id ) {
 			$front_page = get_post( $front_page_id );
 			if ( $front_page ) {
-				$lines[] = sprintf( __( 'Homepage: "%1$s" (ID:%2$d) [static page]', 'pressark' ), $front_page->post_title, $front_page_id );
+				$lines[] = sprintf(
+					/* translators: 1: homepage title, 2: homepage post ID */
+					__( 'Homepage: "%1$s" (ID:%2$d) [static page]', 'pressark' ),
+					$front_page->post_title,
+					$front_page_id
+				);
 			}
 		} else {
 			$lines[] = __( 'Homepage: Blog listing (no static page)', 'pressark' );
@@ -192,7 +241,12 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		if ( $blog_page_id && $blog_page_id !== $front_page_id ) {
 			$blog_page = get_post( $blog_page_id );
 			if ( $blog_page ) {
-				$lines[] = sprintf( __( 'Blog page: "%1$s" (ID:%2$d)', 'pressark' ), $blog_page->post_title, $blog_page_id );
+				$lines[] = sprintf(
+					/* translators: 1: blog page title, 2: blog page post ID */
+					__( 'Blog page: "%1$s" (ID:%2$d)', 'pressark' ),
+					$blog_page->post_title,
+					$blog_page_id
+				);
 			}
 		}
 
@@ -209,7 +263,11 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 
 			if ( ! empty( $pages ) ) {
 				$lines[] = '';
-				$lines[] = sprintf( __( 'PAGES (%d):', 'pressark' ), count( $pages ) );
+				$lines[] = sprintf(
+					/* translators: %d: number of pages listed */
+					__( 'PAGES (%d):', 'pressark' ),
+					count( $pages )
+				);
 				foreach ( $pages as $page ) {
 					$flags = '';
 					if ( $page->ID === $front_page_id && 'page' === $show_on_front ) {
@@ -237,7 +295,12 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 			if ( ! empty( $posts ) ) {
 				$total_posts = wp_count_posts( 'post' );
 				$lines[]     = '';
-				$lines[]     = sprintf( __( 'RECENT POSTS (showing %1$d of %2$d):', 'pressark' ), count( $posts ), $total_posts->publish ?? 0 );
+				$lines[]     = sprintf(
+					/* translators: 1: number of posts shown, 2: total number of published posts */
+					__( 'RECENT POSTS (showing %1$d of %2$d):', 'pressark' ),
+					count( $posts ),
+					$total_posts->publish ?? 0
+				);
 				foreach ( $posts as $post ) {
 					$lines[] = sprintf( '- ID:%d "%s" [%s] %s', $post->ID, $post->post_title, $post->post_status, wp_date( 'Y-m-d', strtotime( $post->post_date ) ) );
 				}
@@ -250,7 +313,12 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 				$product_count = wp_count_posts( 'product' );
 				$currency_sym  = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : '$';
 				$lines[]       = '';
-				$lines[]       = sprintf( __( 'PRODUCTS (showing %1$d of %2$d):', 'pressark' ), count( $products ), $product_count->publish ?? 0 );
+				$lines[]       = sprintf(
+					/* translators: 1: number of products shown, 2: total number of published products */
+					__( 'PRODUCTS (showing %1$d of %2$d):', 'pressark' ),
+					count( $products ),
+					$product_count->publish ?? 0
+				);
 				foreach ( $products as $product ) {
 					$lines[] = sprintf( '- ID:%d "%s" %s%s [%s]', $product->get_id(), $product->get_name(), $currency_sym, $product->get_price() ?: '0', $product->get_stock_status() );
 				}
@@ -329,13 +397,21 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		$lines = array();
 
 		if ( ! empty( $category ) && isset( $categories[ $category ] ) ) {
-			$lines[] = sprintf( __( 'TOOLS - %s:', 'pressark' ), strtoupper( $category ) );
+			$lines[] = sprintf(
+				/* translators: %s: tool category name */
+				__( 'TOOLS - %s:', 'pressark' ),
+				strtoupper( $category )
+			);
 			foreach ( $categories[ $category ] as $tool_name ) {
 				$desc    = $tool_map[ $tool_name ] ?? '';
 				$lines[] = sprintf( '- %s - %s', $tool_name, $desc );
 			}
 		} else {
-			$lines[] = sprintf( __( 'AVAILABLE TOOLS (%d total):', 'pressark' ), count( $all_tools ) );
+			$lines[] = sprintf(
+				/* translators: %d: total number of available tools */
+				__( 'AVAILABLE TOOLS (%d total):', 'pressark' ),
+				count( $all_tools )
+			);
 			$lines[] = '';
 			foreach ( $categories as $cat_name => $cat_tools ) {
 				$tool_names = array();
@@ -369,7 +445,14 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		}
 
 		if ( ! PressArk_Operation_Registry::is_valid_group( $group ) ) {
-			return $this->error( sprintf( __( 'Unknown tool group: %1$s. Available groups: %2$s', 'pressark' ), $group, implode( ', ', PressArk_Operation_Registry::group_names() ) ) );
+			return $this->error(
+				sprintf(
+					/* translators: 1: requested tool group, 2: comma-separated list of valid groups */
+					__( 'Unknown tool group: %1$s. Available groups: %2$s', 'pressark' ),
+					$group,
+					implode( ', ', PressArk_Operation_Registry::group_names() )
+				)
+			);
 		}
 
 		return $this->success(
@@ -396,7 +479,13 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		$results = $catalog->discover( $query );
 
 		if ( empty( $results ) ) {
-			return $this->success( sprintf( __( 'No tools found matching "%s". Try different search terms or use get_available_tools for a full listing.', 'pressark' ), $query ) );
+			return $this->success(
+				sprintf(
+					/* translators: %s: tool discovery search query */
+					__( 'No tools found matching "%s". Try different search terms or use get_available_tools for a full listing.', 'pressark' ),
+					$query
+				)
+			);
 		}
 
 		return $this->success( wp_json_encode( $results ) );
@@ -417,9 +506,21 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 
 		if ( ! empty( $group ) ) {
 			if ( ! PressArk_Operation_Registry::is_valid_group( $group ) ) {
-				return $this->error( sprintf( __( 'Unknown group: %1$s. Available: %2$s', 'pressark' ), $group, implode( ', ', PressArk_Operation_Registry::group_names() ) ) );
+				return $this->error(
+					sprintf(
+						/* translators: 1: requested tool group, 2: comma-separated list of valid groups */
+						__( 'Unknown group: %1$s. Available: %2$s', 'pressark' ),
+						$group,
+						implode( ', ', PressArk_Operation_Registry::group_names() )
+					)
+				);
 			}
-			$messages[] = sprintf( __( 'Group "%1$s" loaded: %2$s', 'pressark' ), $group, implode( ', ', PressArk_Operation_Registry::tool_names_for_group( $group ) ) );
+			$messages[] = sprintf(
+				/* translators: 1: loaded tool group, 2: comma-separated list of loaded tools */
+				__( 'Group "%1$s" loaded: %2$s', 'pressark' ),
+				$group,
+				implode( ', ', PressArk_Operation_Registry::tool_names_for_group( $group ) )
+			);
 		}
 
 		if ( ! empty( $tools ) && is_array( $tools ) ) {

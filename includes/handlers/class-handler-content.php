@@ -39,7 +39,15 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			if ( $found ) {
 				$post_id = $found->ID;
 			} else {
-				return array( 'success' => false, 'message' => sprintf( __( 'No %1$s found with slug "%2$s".', 'pressark' ), $post_type, $params['slug'] ) );
+				return array(
+					'success' => false,
+					'message' => sprintf(
+						/* translators: 1: WordPress post type, 2: requested slug */
+						__( 'No %1$s found with slug "%2$s".', 'pressark' ),
+						$post_type,
+						$params['slug']
+					),
+				);
 			}
 		}
 
@@ -138,7 +146,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Read metadata of "%s" (light mode).', 'pressark' ), $post->post_title ),
+			'message' => sprintf(
+				/* translators: %s: post title */
+				__( 'Read metadata of "%s" (light mode).', 'pressark' ),
+				$post->post_title
+			),
 			'data'    => array(
 				'id'            => $post_id,
 				'title'         => $post->post_title,
@@ -228,7 +240,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		);
 
 		$light['data']    = $data;
-		$light['message'] = sprintf( __( 'Read outline of "%s" (structured mode).', 'pressark' ), $post->post_title );
+		$light['message'] = sprintf(
+			/* translators: %s: post title */
+			__( 'Read outline of "%s" (structured mode).', 'pressark' ),
+			$post->post_title
+		);
 
 		return $light;
 	}
@@ -266,7 +282,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Read content of "%s" (full mode).', 'pressark' ), $post->post_title ),
+			'message' => sprintf(
+				/* translators: %s: post title */
+				__( 'Read content of "%s" (full mode).', 'pressark' ),
+				$post->post_title
+			),
 			'data'    => array(
 				'id'             => $post_id,
 				'title'          => $post->post_title,
@@ -403,7 +423,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 				$wp_query->found_posts,
 				$query,
 				$wp_query->found_posts > count( $list )
-					? sprintf( __( ', showing %d', 'pressark' ), count( $list ) )
+					? sprintf(
+						/* translators: %d: number of results shown */
+						__( ', showing %d', 'pressark' ),
+						count( $list )
+					)
 					: ''
 			),
 		);
@@ -923,12 +947,20 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			$post = get_post( $pid );
 
 			if ( ! $post ) {
-				$errors[] = sprintf( __( 'Post #%d not found', 'pressark' ), $pid );
+				$errors[] = sprintf(
+					/* translators: %d: post ID */
+					__( 'Post #%d not found', 'pressark' ),
+					$pid
+				);
 				continue;
 			}
 
 			if ( ! current_user_can( 'delete_post', $pid ) ) {
-				$errors[] = sprintf( __( '"%s": no permission', 'pressark' ), $post->post_title );
+				$errors[] = sprintf(
+					/* translators: %s: post title */
+					__( '"%s": no permission', 'pressark' ),
+					$post->post_title
+				);
 				continue;
 			}
 
@@ -949,7 +981,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			if ( $result ) {
 				$trashed++;
 			} else {
-				$errors[] = sprintf( __( '"%s": trash failed', 'pressark' ), $post->post_title );
+				$errors[] = sprintf(
+					/* translators: %s: post title */
+					__( '"%s": trash failed', 'pressark' ),
+					$post->post_title
+				);
 			}
 		}
 
@@ -1054,7 +1090,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			if ( $result ) {
 				$deleted++;
 			} else {
-				$errors[] = sprintf( __( '"%s": delete failed', 'pressark' ), $post->post_title );
+				$errors[] = sprintf(
+					/* translators: %s: post title */
+					__( '"%s": delete failed', 'pressark' ),
+					$post->post_title
+				);
 			}
 		}
 
@@ -1560,7 +1600,12 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			if ( count( $update_data ) > 1 ) {
 				$result = wp_update_post( wp_slash( $update_data ), true );
 				if ( is_wp_error( $result ) ) {
-					$errors[] = sprintf( __( '"%s": %s', 'pressark' ), $post->post_title, $result->get_error_message() );
+					$errors[] = sprintf(
+						/* translators: 1: post title, 2: WordPress error message */
+						__( '"%1$s": %2$s', 'pressark' ),
+						$post->post_title,
+						$result->get_error_message()
+					);
 					continue;
 				}
 			}
@@ -1665,7 +1710,14 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		}
 
 		if ( empty( $matches ) ) {
-			return array( 'success' => true, 'message' => sprintf( __( 'No matches found for "%s".', 'pressark' ), $find ) );
+			return array(
+				'success' => true,
+				'message' => sprintf(
+					/* translators: %s: text being searched for */
+					__( 'No matches found for "%s".', 'pressark' ),
+					$find
+				),
+			);
 		}
 
 		if ( $dry_run ) {
@@ -2212,7 +2264,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		return array(
 			'changes' => array(
 				array(
-					'field'  => sprintf( __( 'New %s', 'pressark' ), $post_type ),
+					'field'  => sprintf(
+						/* translators: %s: post type */
+						__( 'New %s', 'pressark' ),
+						$post_type
+					),
 					'before' => __( '(does not exist)', 'pressark' ),
 					/* translators: 1: post title, 2: post status */
 					'after'  => sprintf( __( '%1$s (status: %2$s)', 'pressark' ), $title, $status ),
@@ -2261,17 +2317,29 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		}
 		$bulk_title_str = implode( ', ', $bulk_titles );
 		if ( count( $bulk_ids ) > 5 ) {
-			$bulk_title_str .= sprintf( __( ' +%d more', 'pressark' ), count( $bulk_ids ) - 5 );
+			$bulk_title_str .= sprintf(
+				/* translators: %d: number of additional items */
+				__( ' +%d more', 'pressark' ),
+				count( $bulk_ids ) - 5
+			);
 		}
 
 		$preview = array(
-			'post_title' => sprintf( __( 'Bulk Edit — %d items', 'pressark' ), count( $bulk_ids ) ),
+			'post_title' => sprintf(
+				/* translators: %d: number of items in the bulk edit */
+				__( 'Bulk Edit — %d items', 'pressark' ),
+				count( $bulk_ids )
+			),
 			'post_id'    => 0,
 			'changes'    => array(
 				array(
 					'field'  => __( 'Affected Items', 'pressark' ),
 					'before' => $bulk_title_str,
-					'after'  => sprintf( __( '%d items will be modified', 'pressark' ), count( $bulk_ids ) ),
+					'after'  => sprintf(
+						/* translators: %d: number of items that will be modified */
+						__( '%d items will be modified', 'pressark' ),
+						count( $bulk_ids )
+					),
 				),
 			),
 		);
@@ -2313,7 +2381,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 				),
 				array(
 					'field'  => __( 'Scope', 'pressark' ),
-					'before' => sprintf( __( 'Searching in: %s', 'pressark' ), $search_in ),
+					'before' => sprintf(
+						/* translators: %s: search scope */
+						__( 'Searching in: %s', 'pressark' ),
+						$search_in
+					),
 					'after'  => __( 'Will replace in all matching posts', 'pressark' ),
 				),
 			),
@@ -2354,17 +2426,29 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		}
 		$bulk_title_str = implode( ', ', $bulk_titles );
 		if ( count( $bulk_ids ) > 10 ) {
-			$bulk_title_str .= sprintf( __( ' +%d more', 'pressark' ), count( $bulk_ids ) - 10 );
+			$bulk_title_str .= sprintf(
+				/* translators: %d: number of additional items */
+				__( ' +%d more', 'pressark' ),
+				count( $bulk_ids ) - 10
+			);
 		}
 
 		return array(
-			'post_title' => sprintf( __( 'Bulk Delete — %d items', 'pressark' ), count( $bulk_ids ) ),
+			'post_title' => sprintf(
+				/* translators: %d: number of items in the bulk delete */
+				__( 'Bulk Delete — %d items', 'pressark' ),
+				count( $bulk_ids )
+			),
 			'post_id'    => 0,
 			'changes'    => array(
 				array(
 					'field'  => __( 'Items to Trash', 'pressark' ),
 					'before' => $bulk_title_str,
-					'after'  => sprintf( __( '%d items will be moved to trash', 'pressark' ), count( $bulk_ids ) ),
+					'after'  => sprintf(
+						/* translators: %d: number of items that will be moved to trash */
+						__( '%d items will be moved to trash', 'pressark' ),
+						count( $bulk_ids )
+					),
 				),
 			),
 		);
@@ -2400,17 +2484,29 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		}
 		$trash_title_str = implode( ', ', $trash_titles );
 		if ( $trash_count > 10 ) {
-			$trash_title_str .= sprintf( __( ' +%d more', 'pressark' ), $trash_count - 10 );
+			$trash_title_str .= sprintf(
+				/* translators: %d: number of additional items */
+				__( ' +%d more', 'pressark' ),
+				$trash_count - 10
+			);
 		}
 
 		return array(
-			'post_title' => sprintf( __( 'Empty Trash — %d items', 'pressark' ), $trash_count ),
+			'post_title' => sprintf(
+				/* translators: %d: number of items in the trash */
+				__( 'Empty Trash — %d items', 'pressark' ),
+				$trash_count
+			),
 			'post_id'    => 0,
 			'changes'    => array(
 				array(
 					'field'  => __( 'Permanent Delete', 'pressark' ),
 					'before' => $trash_title_str ?: __( '(empty trash)', 'pressark' ),
-					'after'  => sprintf( __( '%d items will be permanently deleted — this cannot be undone', 'pressark' ), $trash_count ),
+					'after'  => sprintf(
+						/* translators: %d: number of items that will be permanently deleted */
+						__( '%d items will be permanently deleted — this cannot be undone', 'pressark' ),
+						$trash_count
+					),
 				),
 			),
 		);

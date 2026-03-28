@@ -75,6 +75,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				} else {
 					return array(
 						'success'          => false,
+						/* translators: %s: requested settings section key. */
 						'message'          => sprintf( __( 'Section "%s" not found.', 'pressark' ), $section ),
 						'available_groups' => array_keys( $grouped ),
 					);
@@ -83,7 +84,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 			return array(
 				'success'          => true,
-				'message'          => sprintf( __( 'Found %d registered settings across %d groups.', 'pressark' ), count( $all_registered ), count( $grouped ) ),
+				/* translators: 1: number of registered settings, 2: number of settings groups. */
+				'message'          => sprintf( __( 'Found %1$d registered settings across %2$d groups.', 'pressark' ), count( $all_registered ), count( $grouped ) ),
 				'data'             => $grouped,
 				'available_groups' => array_keys( $grouped ),
 				'hint'             => __( 'These are Settings-API-registered options. Use keys param to read specific values.', 'pressark' ),
@@ -247,7 +249,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 			return array(
 				'success' => true,
-				'message' => sprintf( __( 'Menu "%s" has %d items.', 'pressark' ), $menu->name, $data['item_count'] ),
+				/* translators: 1: menu name, 2: number of menu items. */
+				'message' => sprintf( __( 'Menu "%1$s" has %2$d items.', 'pressark' ), $menu->name, $data['item_count'] ),
 				'data'    => $data,
 			);
 		}
@@ -281,6 +284,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		return array(
 			'success'     => true,
 			'menu_system' => 'classic',
+			/* translators: %d: number of menus found. */
 			'message'     => sprintf( __( 'Found %d menu(s).', 'pressark' ), count( $list ) ),
 			'data'        => array(
 				'menus'            => $list,
@@ -312,7 +316,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			return array(
 				'success'     => true,
 				'menu_system' => 'fse_navigation',
-				'message'     => sprintf( __( 'Navigation "%s" has %d items.', 'pressark' ), $nav->post_title ?: __( '(untitled)', 'pressark' ), count( $items ) ),
+				/* translators: 1: navigation menu title, 2: number of navigation items. */
+				'message'     => sprintf( __( 'Navigation "%1$s" has %2$d items.', 'pressark' ), $nav->post_title ?: __( '(untitled)', 'pressark' ), count( $items ) ),
 				'data'        => array(
 					'id'         => $nav->ID,
 					'name'       => $nav->post_title ?: __( '(untitled navigation)', 'pressark' ),
@@ -358,6 +363,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			'count'       => count( $menus ),
 			'menus'       => $menus,
 			'note'        => __( 'This site uses block-based navigation (FSE theme). Navigation is stored as wp_navigation posts containing blocks. Use update_menu with a navigation post ID to modify.', 'pressark' ),
+			/* translators: %d: number of FSE navigation menus found. */
 			'message'     => sprintf( __( 'Found %d FSE navigation menu(s).', 'pressark' ), count( $menus ) ),
 		);
 	}
@@ -425,7 +431,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				$this->logger->log( 'update_menu', $new_menu_id, 'menu', null, wp_json_encode( array( 'operation' => 'create', 'name' => $name ) ) );
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'Created menu "%s" (ID: %d).', 'pressark' ), $name, $new_menu_id ),
+					/* translators: 1: menu name, 2: created menu ID. */
+					'message' => sprintf( __( 'Created menu "%1$s" (ID: %2$d).', 'pressark' ), $name, $new_menu_id ),
 					'data'    => array( 'menu_id' => $new_menu_id ),
 				);
 
@@ -460,7 +467,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				$this->logger->log( 'update_menu', $menu_id, 'menu', null, wp_json_encode( array( 'operation' => 'add_item', 'item_id' => $new_item_id ) ) );
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'Added item "%s" to menu (item ID: %d).', 'pressark' ), $item_data['menu-item-title'], $new_item_id ),
+					/* translators: 1: menu item title, 2: created menu item ID. */
+					'message' => sprintf( __( 'Added item "%1$s" to menu (item ID: %2$d).', 'pressark' ), $item_data['menu-item-title'], $new_item_id ),
 				);
 
 			case 'remove_item':
@@ -472,6 +480,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				if ( ! $deleted ) {
 					return array( 'success' => false, 'message' => __( 'Failed to remove menu item.', 'pressark' ) );
 				}
+				/* translators: %d: removed menu item ID. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Removed menu item #%d.', 'pressark' ), $item_id ) );
 
 			case 'assign_location':
@@ -485,7 +494,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				$locations = get_nav_menu_locations();
 				$locations[ $location ] = $menu_id;
 				set_theme_mod( 'nav_menu_locations', $locations );
-				return array( 'success' => true, 'message' => sprintf( __( 'Assigned menu #%d to location "%s".', 'pressark' ), $menu_id, $location ) );
+				/* translators: 1: assigned menu ID, 2: menu location slug. */
+				return array( 'success' => true, 'message' => sprintf( __( 'Assigned menu #%1$d to location "%2$s".', 'pressark' ), $menu_id, $location ) );
 
 			case 'rename_menu':
 				if ( ! $menu_id ) {
@@ -499,6 +509,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				if ( is_wp_error( $result ) ) {
 					return array( 'success' => false, 'message' => $result->get_error_message() );
 				}
+				/* translators: %s: new menu name. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Renamed menu to "%s".', 'pressark' ), $name ) );
 
 			case 'delete_menu':
@@ -509,9 +520,11 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				if ( is_wp_error( $result ) ) {
 					return array( 'success' => false, 'message' => $result->get_error_message() );
 				}
+				/* translators: %d: deleted menu ID. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Deleted menu #%d.', 'pressark' ), $menu_id ) );
 
 			default:
+				/* translators: %s: requested menu operation name. */
 				return array( 'success' => false, 'message' => sprintf( __( 'Unknown menu operation: %s', 'pressark' ), $operation ) );
 		}
 	}
@@ -595,6 +608,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			return array(
 				'success'   => true,
 				'menu_id'   => $nav_post->ID,
+				/* translators: %s: new FSE navigation title. */
 				'message'   => sprintf( __( 'Renamed FSE navigation to "%s".', 'pressark' ), $name ),
 			);
 		}
@@ -629,6 +643,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: %d: number of logged emails. */
 			'message' => sprintf( __( '%d emails in log.', 'pressark' ), count( $log ) ),
 			'data'    => $log,
 		);
@@ -707,6 +722,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 		$return = array(
 			'success'      => true,
+			/* translators: 1: matched user count, 2: total users on the site. */
 			'message'      => sprintf( __( '%1$d users found. %2$d total on site.', 'pressark' ), $total, $counts['total_users'] ),
 			'data'         => $results,
 			'total_users'  => $counts['total_users'],
@@ -716,6 +732,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		$no_role_users = wp_get_users_with_no_role();
 		if ( ! empty( $no_role_users ) ) {
 			$return['security_notice'] = sprintf(
+				/* translators: %d: number of users without an assigned role. */
 				__( '%d user(s) with no role assigned — possible orphaned accounts.', 'pressark' ),
 				count( $no_role_users )
 			);
@@ -784,6 +801,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: %s: user display name. */
 			'message' => sprintf( __( 'User profile for "%s"', 'pressark' ), $user->display_name ),
 			'data'    => $data,
 		);
@@ -891,6 +909,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		return array(
 			'success' => true,
 			'message' => sprintf(
+				/* translators: 1: user display name, 2: comma-separated list of updated fields. */
 				__( 'Updated user "%1$s": %2$s', 'pressark' ),
 				$user->display_name,
 				implode( ', ', $changes )
@@ -985,9 +1004,17 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		$result = array(
 			'score'       => $score,
 			'summary'     => $critical_count > 0
-				? sprintf( __( '%d critical issue(s) need attention.', 'pressark' ), $critical_count )
+				? sprintf(
+					/* translators: %d: number of critical site health issues. */
+					__( '%d critical issue(s) need attention.', 'pressark' ),
+					$critical_count
+				)
 				: ( $recommended_count > 0
-					? sprintf( __( 'No critical issues. %d improvements recommended.', 'pressark' ), $recommended_count )
+					? sprintf(
+						/* translators: %d: number of recommended improvements. */
+						__( 'No critical issues. %d improvements recommended.', 'pressark' ),
+						$recommended_count
+					)
 					: __( 'All site health checks passed.', 'pressark' ) ),
 			'critical'    => $issues['critical'] ?? array(),
 			'recommended' => $issues['recommended'] ?? array(),
@@ -1087,8 +1114,16 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 						'timestamp'      => $timestamp,
 						'next_run'       => gmdate( 'Y-m-d H:i:s', $timestamp ),
 						'next_run_human' => $timestamp > time()
-							? sprintf( __( '%s from now', 'pressark' ), human_time_diff( $timestamp ) )
-							: sprintf( __( '%s ago (overdue)', 'pressark' ), human_time_diff( $timestamp ) ),
+							? sprintf(
+								/* translators: %s: human-readable time interval until the next scheduled run. */
+								__( '%s from now', 'pressark' ),
+								human_time_diff( $timestamp )
+							)
+							: sprintf(
+								/* translators: %s: human-readable time interval since the missed scheduled run. */
+								__( '%s ago (overdue)', 'pressark' ),
+								human_time_diff( $timestamp )
+							),
 						'schedule'       => $schedule ?: 'single',
 						'interval'       => $interval,
 						'args'           => $event['args'] ?? array(),
@@ -1112,8 +1147,17 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		$return = array(
 			'success' => true,
 			'message' => $overdue > 0
-				? sprintf( __( '%1$d scheduled tasks. %2$d overdue.', 'pressark' ), count( $tasks ), $overdue )
-				: sprintf( __( '%d scheduled tasks. All on schedule.', 'pressark' ), count( $tasks ) ),
+				? sprintf(
+					/* translators: 1: number of scheduled tasks, 2: number of overdue tasks. */
+					__( '%1$d scheduled tasks. %2$d overdue.', 'pressark' ),
+					count( $tasks ),
+					$overdue
+				)
+				: sprintf(
+					/* translators: %d: number of scheduled tasks. */
+					__( '%d scheduled tasks. All on schedule.', 'pressark' ),
+					count( $tasks )
+				),
 			'data'    => $tasks,
 		);
 
@@ -1160,6 +1204,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 		if ( 'run' === $task_action ) {
 			do_action( $hook );
+			/* translators: %s: scheduled task hook name. */
 			return array( 'success' => true, 'message' => sprintf( __( 'Executed scheduled task "%s" immediately.', 'pressark' ), $hook ) );
 		}
 
@@ -1170,6 +1215,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			} else {
 				wp_clear_scheduled_hook( $hook );
 			}
+			/* translators: %s: unscheduled task hook name. */
 			return array( 'success' => true, 'message' => sprintf( __( 'Unscheduled task "%s".', 'pressark' ), $hook ) );
 		}
 
@@ -1190,9 +1236,19 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 	}
 
 	private function humanize_interval( int $seconds ): string {
-		if ( $seconds < 60 )           return sprintf( __( '%d seconds', 'pressark' ), $seconds );
-		if ( $seconds < 3600 )         return sprintf( __( '%d minutes', 'pressark' ), round( $seconds / 60 ) );
-		if ( $seconds < 86400 )        return sprintf( __( '%s hours', 'pressark' ), round( $seconds / 3600, 1 ) );
+		if ( $seconds < 60 ) {
+			/* translators: %d: number of seconds. */
+			return sprintf( __( '%d seconds', 'pressark' ), $seconds );
+		}
+		if ( $seconds < 3600 ) {
+			/* translators: %d: number of minutes. */
+			return sprintf( __( '%d minutes', 'pressark' ), round( $seconds / 60 ) );
+		}
+		if ( $seconds < 86400 ) {
+			/* translators: %s: number of hours, possibly with one decimal place. */
+			return sprintf( __( '%s hours', 'pressark' ), round( $seconds / 3600, 1 ) );
+		}
+		/* translators: %s: number of days, possibly with one decimal place. */
 		return sprintf( __( '%s days', 'pressark' ), round( $seconds / 86400, 1 ) );
 	}
 
@@ -1209,8 +1265,21 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		return array(
 			'success' => true,
 			'message' => $updates
-				? sprintf( __( '%1$d plugins installed (%2$d active, %3$d inactive, %4$d updates available).', 'pressark' ), count( $plugins ), $active, $inactive, $updates )
-				: sprintf( __( '%1$d plugins installed (%2$d active, %3$d inactive).', 'pressark' ), count( $plugins ), $active, $inactive ),
+				? sprintf(
+					/* translators: 1: total plugins, 2: active plugins, 3: inactive plugins, 4: plugins with updates available. */
+					__( '%1$d plugins installed (%2$d active, %3$d inactive, %4$d updates available).', 'pressark' ),
+					count( $plugins ),
+					$active,
+					$inactive,
+					$updates
+				)
+				: sprintf(
+					/* translators: 1: total plugins, 2: active plugins, 3: inactive plugins. */
+					__( '%1$d plugins installed (%2$d active, %3$d inactive).', 'pressark' ),
+					count( $plugins ),
+					$active,
+					$inactive
+				),
 			'data'    => $plugins,
 		);
 	}
@@ -1255,6 +1324,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		$active  = wp_get_theme();
 		return array(
 			'success' => true,
+			/* translators: 1: total installed themes, 2: active theme name. */
 			'message' => sprintf( __( '%1$d themes installed. Active: "%2$s".', 'pressark' ), count( $themes ), $active->get( 'Name' ) ),
 			'data'    => $themes,
 		);
@@ -1309,6 +1379,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				'spacing_sizes' => $spacing['theme'] ?? array(),
 				'note'          => __( 'This is a block theme. Settings are managed via the Site Editor, not the Customizer. Use the Site Editor for design changes.', 'pressark' ),
 				'raw_settings'  => array_keys( $global_settings ),
+				/* translators: 1: number of theme colors, 2: number of theme font sizes. */
 				'message'       => sprintf( __( 'Block theme detected. %1$d colors, %2$d font sizes. Use Site Editor for customization.', 'pressark' ), count( $colors ), count( $fonts ) ),
 			);
 		}
@@ -1339,6 +1410,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			'is_child_theme'     => is_child_theme(),
 			'parent_theme'       => is_child_theme() ? get_template() : null,
 			'data'               => $settings,
+			/* translators: %d: number of theme customizer settings. */
 			'message'            => sprintf( __( '%d theme customizer settings.', 'pressark' ), count( $settings ) ),
 		);
 	}
@@ -1433,6 +1505,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		} catch ( \Throwable $e ) {
 			return array(
 				'success'  => false,
+				/* translators: %s: Customizer schema load error message. */
 				'error'    => sprintf( __( 'Could not load Customizer schema: %s', 'pressark' ), $e->getMessage() ),
 				'fallback' => __( 'Use get_theme_settings to see current theme_mods values.', 'pressark' ),
 			);
@@ -1458,6 +1531,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				wp_json_encode( array( 'key' => $key, 'value' => $result['previous'] ) ),
 				wp_json_encode( array( 'key' => $key, 'value' => $value ) )
 			);
+			/* translators: %s: updated theme setting key. */
 			$result['message'] = sprintf( __( 'Updated theme setting "%s".', 'pressark' ), $key );
 		}
 
@@ -1542,6 +1616,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 
 		if ( $rev_limit !== -1 && $rev_limit < 10 ) {
 			$revision_info['warning'] = sprintf(
+				/* translators: %d: configured post revision limit. */
 				__( 'Revision limit is %d. AI checkpoints may be pruned quickly — consider increasing WP_POST_REVISIONS.', 'pressark' ),
 				$rev_limit
 			);
@@ -1597,7 +1672,11 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				'deleted'   => $deleted,
 				'remaining' => $remaining,
 				'note'      => $remaining > 0
-					? sprintf( __( 'Deleted %d (batched to 500 max). Run again for more.', 'pressark' ), $deleted )
+					? sprintf(
+						/* translators: %d: number of revisions deleted in this batch. */
+						__( 'Deleted %d (batched to 500 max). Run again for more.', 'pressark' ),
+						$deleted
+					)
 					: __( 'All revisions deleted.', 'pressark' ),
 			);
 		}
@@ -1656,6 +1735,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			$cleaned[] = array(
 				'item'    => 'expired_transients',
 				'deleted' => $count_before,
+				/* translators: %d: number of expired transients deleted. */
 				'message' => sprintf( __( '%d expired transients deleted.', 'pressark' ), $count_before ),
 			);
 		}
@@ -1692,6 +1772,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		return array(
 			'success' => true,
 			'data'    => $cleaned,
+			/* translators: %s: comma-separated summary of database cleanup actions. */
 			'message' => sprintf( __( 'Database cleaned: %s.', 'pressark' ), implode( ', ', $summary_parts ) ),
 		);
 	}
@@ -1734,6 +1815,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				$optimized[] = array(
 					'table'  => $table_name,
 					'action' => $action,
+					/* translators: %s: reclaimable database size in kilobytes. */
 					'freed'  => sprintf( __( '%sKB reclaimable', 'pressark' ), $freed_kb ),
 				);
 			}
@@ -1763,6 +1845,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		}
 		return array(
 			'success' => true,
+			/* translators: %s: site profile generation timestamp. */
 			'message' => sprintf( __( 'Site profile generated on %s', 'pressark' ), $profile['generated_at'] ),
 			'data'    => $profile,
 		);
@@ -1790,6 +1873,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		$logs     = $analyzer->get_available_logs();
 		return array(
 			'success' => true,
+			/* translators: %d: number of log files found. */
 			'message' => sprintf( __( '%d log files found.', 'pressark' ), count( $logs ) ),
 			'data'    => $logs,
 		);
@@ -1941,6 +2025,7 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		return array(
 			'changes' => array(
 				array(
+					/* translators: %s: theme setting key. */
 					'field'  => sprintf( __( 'Theme Setting: %s', 'pressark' ), $ts_key ),
 					'before' => (string) get_theme_mod( $ts_key, __( '(empty)', 'pressark' ) ),
 					'after'  => (string) $ts_val,
@@ -2000,8 +2085,17 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			$changes[] = array(
 				'field'  => $info['label'],
 				'before' => $count > 0
-					? sprintf( __( '%1$d %2$s found', 'pressark' ), $count, $info['unit'] )
-					: sprintf( __( '0 %s', 'pressark' ), $info['unit'] ),
+					? sprintf(
+						/* translators: 1: number of found items, 2: item label such as revisions or transients. */
+						__( '%1$d %2$s found', 'pressark' ),
+						$count,
+						$info['unit']
+					)
+					: sprintf(
+						/* translators: %s: item label such as revisions or transients. */
+						__( '0 %s', 'pressark' ),
+						$info['unit']
+					),
 				'after'  => $count > 0 ? __( 'Will be deleted', 'pressark' ) : __( 'Nothing to clean', 'pressark' ),
 			);
 		}

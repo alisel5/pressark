@@ -68,7 +68,12 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 		if ( $max_automations >= 0 && $current_count >= $max_automations ) {
 			return array(
 				'success' => false,
-				'message' => sprintf( __( 'You have %d active automations (limit: %d for your plan). Pause or delete an existing one.', 'pressark' ), $current_count, $max_automations ),
+				'message' => sprintf(
+					/* translators: 1: current number of active automations, 2: plan limit */
+					__( 'You have %1$d active automations (limit: %2$d for your plan). Pause or delete an existing one.', 'pressark' ),
+					$current_count,
+					$max_automations
+				),
 			);
 		}
 
@@ -86,6 +91,7 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 			return array(
 				'success' => false,
 				'message' => sprintf(
+					/* translators: %s: minimum required time interval between automation runs */
 					__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 					human_time_diff( 0, $min_interval )
 				),
@@ -119,7 +125,12 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 		return array(
 			'success'       => true,
 			'automation_id' => $automation_id,
-			'message'       => sprintf( __( 'Automation "%s" created. First run: %s.', 'pressark' ), $params['name'] ?? __( 'Scheduled Prompt', 'pressark' ), $first_run_at ),
+			'message'       => sprintf(
+				/* translators: 1: automation name, 2: first scheduled run date/time */
+				__( 'Automation "%1$s" created. First run: %2$s.', 'pressark' ),
+				$params['name'] ?? __( 'Scheduled Prompt', 'pressark' ),
+				$first_run_at
+			),
 		);
 	}
 
@@ -161,6 +172,7 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 				return array(
 					'success' => false,
 					'message' => sprintf(
+						/* translators: %s: minimum required time interval between automation runs */
 						__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 						human_time_diff( 0, $min_interval )
 					),
@@ -212,7 +224,14 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 				PressArk_Automation_Dispatcher::schedule_next_wake( $automation_id, $next );
 			}
 
-			return array( 'success' => true, 'message' => sprintf( __( 'Automation resumed. Next run: %s.', 'pressark' ), $next ?: __( 'none', 'pressark' ) ) );
+			return array(
+				'success' => true,
+				'message' => sprintf(
+					/* translators: %s: next scheduled automation run date/time, or "none" */
+					__( 'Automation resumed. Next run: %s.', 'pressark' ),
+					$next ?: __( 'none', 'pressark' )
+				),
+			);
 		}
 
 		return array( 'success' => false, 'message' => __( 'Invalid action. Use "pause" or "resume".', 'pressark' ) );

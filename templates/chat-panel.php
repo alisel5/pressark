@@ -97,6 +97,7 @@ $has_api_key = PressArk_AI_Connector::is_proxy_mode() || $is_byok || ! empty( ge
 				printf(
 					/* translators: %s: settings page URL */
 					wp_kses(
+						/* translators: %s: settings page URL */
 						__( 'Welcome to PressArk! To get started, <a href="%s">add your API key</a> in settings.', 'pressark' ),
 						array( 'a' => array( 'href' => array() ) )
 					),

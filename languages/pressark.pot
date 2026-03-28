@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-03-28T13:09:19+00:00\n"
+"POT-Creation-Date: 2026-03-28T14:07:44+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: pressark\n"
@@ -194,7 +194,7 @@ msgid "Check Speed"
 msgstr ""
 
 #: includes/class-pressark-onboarding.php:623
-#: templates/chat-panel.php:137
+#: templates/chat-panel.php:138
 msgid "Open PressArk"
 msgstr ""
 
@@ -418,7 +418,7 @@ msgstr ""
 #: includes/class-pressark-privacy.php:268
 #: includes/class-pressark-privacy.php:323
 #: includes/class-pressark-privacy.php:392
-#: includes/handlers/class-handler-content.php:2161
+#: includes/handlers/class-handler-content.php:2213
 msgid "Status"
 msgstr ""
 
@@ -459,7 +459,7 @@ msgstr ""
 
 #: includes/class-pressark-privacy.php:278
 #: includes/class-pressark-privacy.php:397
-#: includes/handlers/class-handler-system.php:1896
+#: includes/handlers/class-handler-system.php:1980
 msgid "Updated"
 msgstr ""
 
@@ -830,17 +830,20 @@ msgstr ""
 msgid "PressArk saved the task but could not schedule it to run. Please try again."
 msgstr ""
 
-#: includes/class-pressark-throttle.php:82
+#. translators: %d: number of seconds until the user can retry
+#: includes/class-pressark-throttle.php:83
 #, php-format
 msgid "Too many requests. Please wait %d seconds and try again."
 msgstr ""
 
-#: includes/class-pressark-throttle.php:99
+#. translators: %d: number of minutes until the user can retry
+#: includes/class-pressark-throttle.php:101
 #, php-format
 msgid "Hourly request limit reached. Please wait %d minutes."
 msgstr ""
 
-#: includes/class-pressark-throttle.php:116
+#. translators: %d: number of seconds until the IP can retry
+#: includes/class-pressark-throttle.php:119
 #, php-format
 msgid "Too many requests from this IP. Please wait %d seconds."
 msgstr ""
@@ -850,443 +853,460 @@ msgid "PressArk is still connecting to the credit service. Please try again in a
 msgstr ""
 
 #: includes/class-security-scanner.php:45
-#: includes/class-security-scanner.php:55
+#: includes/class-security-scanner.php:59
 msgid "WordPress Version"
 msgstr ""
 
-#: includes/class-security-scanner.php:49
+#. translators: %s: installed WordPress version
+#: includes/class-security-scanner.php:51
 #, php-format
 msgid "WordPress %s is up to date."
 msgstr ""
 
-#: includes/class-security-scanner.php:59
+#. translators: 1: installed WordPress version, 2: latest available WordPress version
+#: includes/class-security-scanner.php:65
 #, php-format
-msgid "WordPress %s is outdated. Latest: %s"
+msgid "WordPress %1$s is outdated. Latest: %2$s"
 msgstr ""
 
-#: includes/class-security-scanner.php:60
+#: includes/class-security-scanner.php:69
 msgid "Update WordPress to the latest version from Dashboard > Updates."
 msgstr ""
 
-#: includes/class-security-scanner.php:72
-#: includes/class-security-scanner.php:83
-#: includes/class-security-scanner.php:93
+#: includes/class-security-scanner.php:81
+#: includes/class-security-scanner.php:96
+#: includes/class-security-scanner.php:110
 msgid "PHP Version"
 msgstr ""
 
-#: includes/class-security-scanner.php:76
+#. translators: %s: installed PHP version
+#: includes/class-security-scanner.php:87
 #, php-format
 msgid "PHP %s (supported and current)."
 msgstr ""
 
-#: includes/class-security-scanner.php:87
+#. translators: %s: installed PHP version
+#: includes/class-security-scanner.php:102
 #, php-format
 msgid "PHP %s is nearing end of life. Consider upgrading to 8.1+."
 msgstr ""
 
-#: includes/class-security-scanner.php:88
+#: includes/class-security-scanner.php:105
 msgid "Contact your hosting provider to upgrade PHP."
 msgstr ""
 
-#: includes/class-security-scanner.php:97
+#. translators: %s: installed PHP version
+#: includes/class-security-scanner.php:116
 #, php-format
 msgid "PHP %s is unsupported and insecure."
 msgstr ""
 
-#: includes/class-security-scanner.php:98
+#: includes/class-security-scanner.php:119
 msgid "Urgently upgrade to PHP 8.1 or later."
 msgstr ""
 
-#: includes/class-security-scanner.php:112
-#: includes/class-security-scanner.php:123
 #: includes/class-security-scanner.php:133
+#: includes/class-security-scanner.php:144
+#: includes/class-security-scanner.php:154
 msgid "SSL/HTTPS"
 msgstr ""
 
-#: includes/class-security-scanner.php:116
+#: includes/class-security-scanner.php:137
 msgid "SSL is active and site URL uses HTTPS."
 msgstr ""
 
-#: includes/class-security-scanner.php:127
+#: includes/class-security-scanner.php:148
 msgid "Site URL uses HTTPS but current connection is not SSL."
 msgstr ""
 
-#: includes/class-security-scanner.php:128
+#: includes/class-security-scanner.php:149
 msgid "Ensure your server forces HTTPS on all connections."
 msgstr ""
 
-#: includes/class-security-scanner.php:137
+#: includes/class-security-scanner.php:158
 msgid "Site is not using HTTPS. All traffic is unencrypted."
 msgstr ""
 
-#: includes/class-security-scanner.php:138
+#: includes/class-security-scanner.php:159
 msgid "Install an SSL certificate and update site URL to HTTPS."
 msgstr ""
 
-#: includes/class-security-scanner.php:151
-#: includes/class-security-scanner.php:161
 #: includes/class-security-scanner.php:172
+#: includes/class-security-scanner.php:182
+#: includes/class-security-scanner.php:193
 msgid "Debug Mode"
 msgstr ""
 
-#: includes/class-security-scanner.php:155
+#: includes/class-security-scanner.php:176
 msgid "WP_DEBUG is disabled."
 msgstr ""
 
-#: includes/class-security-scanner.php:165
+#: includes/class-security-scanner.php:186
 msgid "WP_DEBUG and WP_DEBUG_DISPLAY are enabled. Error messages are visible to the public."
 msgstr ""
 
-#: includes/class-security-scanner.php:166
+#: includes/class-security-scanner.php:187
 msgid "Set WP_DEBUG to false in wp-config.php, or at minimum set WP_DEBUG_DISPLAY to false."
 msgstr ""
 
-#: includes/class-security-scanner.php:176
+#: includes/class-security-scanner.php:197
 msgid "WP_DEBUG is enabled but display is off. OK for development, disable for production."
 msgstr ""
 
-#: includes/class-security-scanner.php:177
+#: includes/class-security-scanner.php:198
 msgid "Set WP_DEBUG to false on production sites."
 msgstr ""
 
-#: includes/class-security-scanner.php:188
-#: includes/class-security-scanner.php:198
+#: includes/class-security-scanner.php:209
+#: includes/class-security-scanner.php:219
 msgid "Database Prefix"
 msgstr ""
 
-#: includes/class-security-scanner.php:192
+#: includes/class-security-scanner.php:213
 msgid "Custom database prefix in use."
 msgstr ""
 
-#: includes/class-security-scanner.php:202
+#: includes/class-security-scanner.php:223
 msgid "Default database prefix \"wp_\" is in use."
 msgstr ""
 
-#: includes/class-security-scanner.php:203
+#: includes/class-security-scanner.php:224
 msgid "Consider using a custom prefix. Changing after setup requires a migration."
 msgstr ""
 
-#: includes/class-security-scanner.php:215
-#: includes/class-security-scanner.php:225
+#: includes/class-security-scanner.php:236
+#: includes/class-security-scanner.php:246
 msgid "Admin Username"
 msgstr ""
 
-#: includes/class-security-scanner.php:219
+#: includes/class-security-scanner.php:240
 msgid "No default \"admin\" username found."
 msgstr ""
 
-#: includes/class-security-scanner.php:229
+#: includes/class-security-scanner.php:250
 msgid "Default \"admin\" username exists. This is commonly targeted by bots."
 msgstr ""
 
-#: includes/class-security-scanner.php:230
+#: includes/class-security-scanner.php:251
 msgid "Create a new admin account with a unique username and delete the \"admin\" account."
 msgstr ""
 
-#: includes/class-security-scanner.php:244
-#: includes/class-security-scanner.php:255
 #: includes/class-security-scanner.php:265
-#: includes/class-security-scanner.php:277
+#: includes/class-security-scanner.php:280
+#: includes/class-security-scanner.php:294
+#: includes/class-security-scanner.php:310
 msgid "File Permissions"
 msgstr ""
 
-#: includes/class-security-scanner.php:248
+#. translators: %s: wp-config.php file permissions in octal notation
+#: includes/class-security-scanner.php:271
 #, php-format
 msgid "wp-config.php permissions: %s (secure)."
 msgstr ""
 
-#: includes/class-security-scanner.php:259
+#. translators: %s: wp-config.php file permissions in octal notation
+#: includes/class-security-scanner.php:286
 #, php-format
 msgid "wp-config.php permissions: %s (group-readable)."
 msgstr ""
 
-#: includes/class-security-scanner.php:260
+#: includes/class-security-scanner.php:289
 msgid "Set wp-config.php to 644 or stricter."
 msgstr ""
 
-#: includes/class-security-scanner.php:269
+#. translators: %s: wp-config.php file permissions in octal notation
+#: includes/class-security-scanner.php:300
 #, php-format
 msgid "wp-config.php permissions: %s (too permissive!)."
 msgstr ""
 
-#: includes/class-security-scanner.php:270
+#: includes/class-security-scanner.php:303
 msgid "Set wp-config.php permissions to 644 or 600."
 msgstr ""
 
-#: includes/class-security-scanner.php:281
+#: includes/class-security-scanner.php:314
 msgid "wp-config.php located above web root (secure)."
 msgstr ""
 
-#: includes/class-security-scanner.php:305
-#: includes/class-security-scanner.php:315
+#: includes/class-security-scanner.php:338
+#: includes/class-security-scanner.php:348
 msgid "Exposed Files"
 msgstr ""
 
-#: includes/class-security-scanner.php:309
+#: includes/class-security-scanner.php:342
 msgid "No unnecessary exposed files found."
 msgstr ""
 
-#: includes/class-security-scanner.php:319
+#. translators: %s: comma-separated list of exposed files
+#: includes/class-security-scanner.php:354
 #, php-format
 msgid "Exposed files: %s. These reveal WordPress version info."
 msgstr ""
 
-#: includes/class-security-scanner.php:320
+#: includes/class-security-scanner.php:357
 msgid "Delete readme.html, license.txt, and wp-config-sample.php from the server."
 msgstr ""
 
-#: includes/class-security-scanner.php:333
-#: includes/class-security-scanner.php:343
+#: includes/class-security-scanner.php:370
+#: includes/class-security-scanner.php:380
 msgid "XML-RPC"
 msgstr ""
 
-#: includes/class-security-scanner.php:337
+#: includes/class-security-scanner.php:374
 msgid "XML-RPC is disabled or filtered."
 msgstr ""
 
-#: includes/class-security-scanner.php:347
+#: includes/class-security-scanner.php:384
 msgid "XML-RPC is enabled. This is a common brute-force attack vector."
 msgstr ""
 
-#: includes/class-security-scanner.php:348
+#: includes/class-security-scanner.php:385
 msgid "Disable XML-RPC unless needed for Jetpack or mobile apps."
 msgstr ""
 
-#: includes/class-security-scanner.php:356
+#: includes/class-security-scanner.php:393
 msgid "User Enumeration"
 msgstr ""
 
-#: includes/class-security-scanner.php:360
+#: includes/class-security-scanner.php:397
 msgid "Author archives are accessible by default (allows username discovery)."
 msgstr ""
 
-#: includes/class-security-scanner.php:361
+#: includes/class-security-scanner.php:398
 msgid "Consider disabling author archives or using a security plugin."
 msgstr ""
 
-#: includes/class-security-scanner.php:387
-#: includes/class-security-scanner.php:397
+#: includes/class-security-scanner.php:424
+#: includes/class-security-scanner.php:434
 msgid "Login Security"
 msgstr ""
 
-#: includes/class-security-scanner.php:391
+#: includes/class-security-scanner.php:428
 msgid "Login protection plugin detected."
 msgstr ""
 
-#: includes/class-security-scanner.php:401
+#: includes/class-security-scanner.php:438
 msgid "No login protection plugin detected (no rate limiting, no 2FA)."
 msgstr ""
 
-#: includes/class-security-scanner.php:402
+#: includes/class-security-scanner.php:439
 msgid "Install a login security plugin like Limit Login Attempts Reloaded or Two-Factor."
 msgstr ""
 
-#: includes/class-security-scanner.php:415
-#: includes/class-security-scanner.php:425
+#: includes/class-security-scanner.php:452
+#: includes/class-security-scanner.php:462
 msgid "Plugin Updates"
 msgstr ""
 
-#: includes/class-security-scanner.php:419
+#: includes/class-security-scanner.php:456
 msgid "All plugins are up to date."
 msgstr ""
 
-#: includes/class-security-scanner.php:429
+#. translators: %d: number of plugins with available updates
+#: includes/class-security-scanner.php:468
 #, php-format
 msgid "%d plugin(s) have updates available."
 msgstr ""
 
-#: includes/class-security-scanner.php:430
+#: includes/class-security-scanner.php:471
 msgid "Update all plugins from Dashboard > Updates."
 msgstr ""
 
-#: includes/class-security-scanner.php:443
-#: includes/class-security-scanner.php:453
+#: includes/class-security-scanner.php:484
+#: includes/class-security-scanner.php:494
 msgid "Theme Updates"
 msgstr ""
 
-#: includes/class-security-scanner.php:447
+#: includes/class-security-scanner.php:488
 msgid "All themes are up to date."
 msgstr ""
 
-#: includes/class-security-scanner.php:457
+#. translators: %d: number of themes with available updates
+#: includes/class-security-scanner.php:500
 #, php-format
 msgid "%d theme(s) have updates available."
 msgstr ""
 
-#: includes/class-security-scanner.php:458
+#: includes/class-security-scanner.php:503
 msgid "Update themes from Dashboard > Updates."
 msgstr ""
 
-#: includes/class-security-scanner.php:472
-#: includes/class-security-scanner.php:482
+#: includes/class-security-scanner.php:517
+#: includes/class-security-scanner.php:527
 msgid "Inactive Plugins"
 msgstr ""
 
-#: includes/class-security-scanner.php:476
+#: includes/class-security-scanner.php:521
 msgid "No inactive plugins installed."
 msgstr ""
 
-#: includes/class-security-scanner.php:486
+#. translators: %d: number of inactive plugins
+#: includes/class-security-scanner.php:533
 #, php-format
 msgid "%d inactive plugin(s) installed. These can still be exploited."
 msgstr ""
 
-#: includes/class-security-scanner.php:487
+#: includes/class-security-scanner.php:536
 msgid "Delete inactive plugins you no longer need."
 msgstr ""
 
-#: includes/class-security-scanner.php:500
-#: includes/class-security-scanner.php:510
+#: includes/class-security-scanner.php:549
+#: includes/class-security-scanner.php:559
 msgid "Debug Log Exposure"
 msgstr ""
 
-#: includes/class-security-scanner.php:504
+#: includes/class-security-scanner.php:553
 msgid "No publicly accessible debug log found."
 msgstr ""
 
-#: includes/class-security-scanner.php:514
+#: includes/class-security-scanner.php:563
 msgid "Debug log at wp-content/debug.log may be publicly accessible."
 msgstr ""
 
-#: includes/class-security-scanner.php:515
+#: includes/class-security-scanner.php:564
 msgid "Move the debug log outside the web root or block access via .htaccess."
 msgstr ""
 
-#: includes/class-security-scanner.php:525
-#: includes/class-security-scanner.php:535
+#: includes/class-security-scanner.php:574
+#: includes/class-security-scanner.php:584
 msgid "File Editor"
 msgstr ""
 
-#: includes/class-security-scanner.php:529
+#: includes/class-security-scanner.php:578
 msgid "In-admin file editor is disabled."
 msgstr ""
 
-#: includes/class-security-scanner.php:539
+#: includes/class-security-scanner.php:588
 msgid "In-admin file editor is enabled. If a hacker gets admin access, they can inject malicious code."
 msgstr ""
 
-#: includes/class-security-scanner.php:540
+#: includes/class-security-scanner.php:589
 msgid "Add define('DISALLOW_FILE_EDIT', true); to wp-config.php."
 msgstr ""
 
-#: includes/class-security-scanner.php:553
-#: includes/class-security-scanner.php:563
+#: includes/class-security-scanner.php:602
+#: includes/class-security-scanner.php:612
 msgid "REST API User Enumeration"
 msgstr ""
 
-#: includes/class-security-scanner.php:557
+#: includes/class-security-scanner.php:606
 msgid "REST API user endpoint is protected (returns 401/403)."
 msgstr ""
 
-#: includes/class-security-scanner.php:567
+#: includes/class-security-scanner.php:616
 msgid "REST API exposes usernames at /wp-json/wp/v2/users without authentication."
 msgstr ""
 
-#: includes/class-security-scanner.php:568
+#: includes/class-security-scanner.php:617
 msgid "Restrict the users endpoint with a security plugin or custom filter on rest_authentication_errors."
 msgstr ""
 
-#: includes/class-security-scanner.php:599
-#: includes/class-security-scanner.php:616
-#: includes/class-security-scanner.php:627
+#: includes/class-security-scanner.php:648
+#: includes/class-security-scanner.php:665
+#: includes/class-security-scanner.php:680
 msgid "Security Headers"
 msgstr ""
 
-#: includes/class-security-scanner.php:603
+#: includes/class-security-scanner.php:652
 msgid "X-Content-Type-Options and X-Frame-Options headers are present."
 msgstr ""
 
-#: includes/class-security-scanner.php:620
+#. translators: %s: comma-separated list of missing security headers
+#: includes/class-security-scanner.php:671
 #, php-format
 msgid "Missing security header(s): %s."
 msgstr ""
 
-#: includes/class-security-scanner.php:621
+#: includes/class-security-scanner.php:674
 msgid "Add missing headers via your server config or a security plugin."
 msgstr ""
 
-#: includes/class-security-scanner.php:631
+#: includes/class-security-scanner.php:684
 msgid "Could not check security headers (request failed)."
 msgstr ""
 
-#: includes/class-security-scanner.php:632
+#: includes/class-security-scanner.php:685
 msgid "Ensure X-Content-Type-Options and X-Frame-Options headers are set."
 msgstr ""
 
-#: includes/class-security-scanner.php:644
-#: includes/class-security-scanner.php:656
-#: includes/class-security-scanner.php:667
+#: includes/class-security-scanner.php:697
+#: includes/class-security-scanner.php:709
+#: includes/class-security-scanner.php:720
 msgid "Directory Listing"
 msgstr ""
 
-#: includes/class-security-scanner.php:648
+#: includes/class-security-scanner.php:701
 msgid "Uploads directory is not directly accessible."
 msgstr ""
 
-#: includes/class-security-scanner.php:660
+#: includes/class-security-scanner.php:713
 msgid "Directory listing is enabled for wp-content/uploads/. Attackers can browse uploaded files."
 msgstr ""
 
-#: includes/class-security-scanner.php:661
+#: includes/class-security-scanner.php:714
 msgid "Add \"Options -Indexes\" to .htaccess or disable directory listing in your server config."
 msgstr ""
 
-#: includes/class-security-scanner.php:671
+#: includes/class-security-scanner.php:724
 msgid "Directory listing is disabled for wp-content/uploads/."
 msgstr ""
 
-#: includes/class-security-scanner.php:714
+#. translators: %d: number of critical security issues
+#: includes/class-security-scanner.php:768
 #, php-format
 msgid "Your site has %d critical security issue(s) that should be addressed."
 msgstr ""
 
-#: includes/class-security-scanner.php:719
+#. translators: %d: number of warning-level security issues
+#: includes/class-security-scanner.php:774
 #, php-format
 msgid "Your site has %d warning(s) to review, but no critical issues."
 msgstr ""
 
-#: includes/class-security-scanner.php:723
+#: includes/class-security-scanner.php:778
 msgid "Your site passed all security checks!"
 msgstr ""
 
-#: includes/class-security-scanner.php:768
+#. translators: %s: requested security fix type
+#: includes/class-security-scanner.php:825
 #, php-format
 msgid "Unknown fix type: %s"
 msgstr ""
 
-#: includes/class-security-scanner.php:801
+#. translators: %s: comma-separated list of deleted files
+#: includes/class-security-scanner.php:862
 #, php-format
 msgid "Deleted: %s"
 msgstr ""
 
-#: includes/class-security-scanner.php:807
+#: includes/class-security-scanner.php:870
 msgid "No exposed files to delete."
 msgstr ""
 
-#: includes/class-security-scanner.php:819
+#: includes/class-security-scanner.php:882
 msgid "Cannot disable XML-RPC: Jetpack is active and requires XML-RPC for its connection to WordPress.com. Disable Jetpack first, or use Jetpack's built-in brute force protection instead."
 msgstr ""
 
-#: includes/class-security-scanner.php:842
+#: includes/class-security-scanner.php:905
 msgid "XML-RPC disabled via mu-plugin."
 msgstr ""
 
-#: includes/class-security-scanner.php:848
+#: includes/class-security-scanner.php:911
 msgid "Could not create mu-plugin to disable XML-RPC. Check file permissions."
 msgstr ""
 
 #: includes/class-seo-scanner.php:47
 #: includes/handlers/class-handler-base.php:151
-#: includes/handlers/class-handler-content.php:53
-#: includes/handlers/class-handler-content.php:462
-#: includes/handlers/class-handler-content.php:600
-#: includes/handlers/class-handler-content.php:871
-#: includes/handlers/class-handler-content.php:1425
-#: includes/handlers/class-handler-content.php:2129
-#: includes/handlers/class-handler-diagnostics.php:140
-#: includes/handlers/class-handler-diagnostics.php:747
-#: includes/handlers/class-handler-media.php:923
-#: includes/handlers/class-handler-media.php:1072
+#: includes/handlers/class-handler-content.php:61
+#: includes/handlers/class-handler-content.php:486
+#: includes/handlers/class-handler-content.php:624
+#: includes/handlers/class-handler-content.php:895
+#: includes/handlers/class-handler-content.php:1465
+#: includes/handlers/class-handler-content.php:2181
+#: includes/handlers/class-handler-diagnostics.php:157
+#: includes/handlers/class-handler-diagnostics.php:811
+#: includes/handlers/class-handler-media.php:1008
+#: includes/handlers/class-handler-media.php:1157
 msgid "Post not found."
 msgstr ""
 
@@ -1302,20 +1322,20 @@ msgstr ""
 
 #. translators: 1: term name, 2: taxonomy name
 #: includes/class-seo-scanner.php:204
-#: includes/handlers/class-handler-content.php:2181
-#: includes/handlers/class-handler-diagnostics.php:166
+#: includes/handlers/class-handler-content.php:2233
+#: includes/handlers/class-handler-diagnostics.php:187
 #: includes/handlers/class-handler-elementor.php:1444
-#: includes/handlers/class-handler-media.php:1295
-#: includes/handlers/class-handler-media.php:1437
-#: includes/handlers/class-handler-seo.php:288
-#: includes/handlers/class-handler-system.php:1060
+#: includes/handlers/class-handler-media.php:1400
+#: includes/handlers/class-handler-media.php:1565
+#: includes/handlers/class-handler-seo.php:297
+#: includes/handlers/class-handler-system.php:1087
 msgid "Unknown"
 msgstr ""
 
 #: includes/class-seo-scanner.php:282
 #: includes/class-seo-scanner.php:291
-#: includes/class-seo-scanner.php:304
-#: includes/class-seo-scanner.php:316
+#: includes/class-seo-scanner.php:305
+#: includes/class-seo-scanner.php:317
 msgid "Canonical URL"
 msgstr ""
 
@@ -1323,363 +1343,382 @@ msgstr ""
 msgid "Self-referencing canonical URL set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:295
+#. translators: %s: canonical URL
+#: includes/class-seo-scanner.php:296
 #, php-format
 msgid "Canonical URL differs from permalink: %s"
 msgstr ""
 
 #. translators: %s: SEO plugin name
-#: includes/class-seo-scanner.php:309
+#: includes/class-seo-scanner.php:310
 #, php-format
 msgid "Canonical URL handled by %s."
 msgstr ""
 
-#: includes/class-seo-scanner.php:319
+#: includes/class-seo-scanner.php:320
 msgid "No canonical URL set. Risk of duplicate content."
 msgstr ""
 
-#: includes/class-seo-scanner.php:320
+#: includes/class-seo-scanner.php:321
 msgid "Set a canonical URL or install an SEO plugin."
 msgstr ""
 
-#: includes/class-seo-scanner.php:330
-#: includes/class-seo-scanner.php:339
+#: includes/class-seo-scanner.php:331
+#: includes/class-seo-scanner.php:340
 msgid "Robots Meta"
 msgstr ""
 
-#: includes/class-seo-scanner.php:333
+#: includes/class-seo-scanner.php:334
 msgid "Robots meta: index, follow — optimal for search."
 msgstr ""
 
-#: includes/class-seo-scanner.php:342
+#: includes/class-seo-scanner.php:343
 msgid "Page is set to nofollow. Links on this page will not pass authority."
 msgstr ""
 
-#: includes/class-seo-scanner.php:354
+#: includes/class-seo-scanner.php:355
 msgid "canonical URL set on a noindex page"
 msgstr ""
 
-#: includes/class-seo-scanner.php:362
+#: includes/class-seo-scanner.php:363
 msgid "nofollow with explicit canonical URL"
 msgstr ""
 
-#: includes/class-seo-scanner.php:368
-#: includes/class-seo-scanner.php:375
+#: includes/class-seo-scanner.php:369
+#: includes/class-seo-scanner.php:376
 msgid "Indexing Conflicts"
 msgstr ""
 
-#: includes/class-seo-scanner.php:371
+#: includes/class-seo-scanner.php:372
 msgid "No indexing directive conflicts detected."
 msgstr ""
 
-#: includes/class-seo-scanner.php:379
+#. translators: %s: semicolon-separated list of indexing conflicts
+#: includes/class-seo-scanner.php:381
 #, php-format
 msgid "Indexing conflict detected: %s."
 msgstr ""
 
-#: includes/class-seo-scanner.php:382
+#: includes/class-seo-scanner.php:384
 msgid "Review robots directives and canonical URL for consistency."
 msgstr ""
 
-#: includes/class-seo-scanner.php:410
-#: includes/class-seo-scanner.php:417
+#: includes/class-seo-scanner.php:412
+#: includes/class-seo-scanner.php:419
 msgid "Schema Markup"
 msgstr ""
 
-#: includes/class-seo-scanner.php:413
+#: includes/class-seo-scanner.php:415
 msgid "Schema markup detected (via plugin or JSON-LD)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:420
+#: includes/class-seo-scanner.php:422
 msgid "No schema markup detected."
 msgstr ""
 
-#: includes/class-seo-scanner.php:421
+#: includes/class-seo-scanner.php:423
 msgid "Consider adding JSON-LD schema or installing an SEO plugin."
 msgstr ""
 
-#: includes/class-seo-scanner.php:472
-#: includes/class-seo-scanner.php:480
-#: includes/class-seo-scanner.php:491
+#: includes/class-seo-scanner.php:474
+#: includes/class-seo-scanner.php:487
 #: includes/class-seo-scanner.php:502
+#: includes/class-seo-scanner.php:513
 msgid "Meta Title"
 msgstr ""
 
-#: includes/class-seo-scanner.php:475
+#. translators: 1: meta title length in characters, 2: meta title text
+#: includes/class-seo-scanner.php:479
 #, php-format
-msgid "Meta title set (%d chars): \"%s\""
+msgid "Meta title set (%1$d chars): \"%2$s\""
 msgstr ""
 
-#: includes/class-seo-scanner.php:483
+#. translators: %d: meta title length in characters
+#: includes/class-seo-scanner.php:492
 #, php-format
 msgid "Meta title is %d chars. Ideal range: 30-70 characters (sweet spot: ~55)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:484
+#: includes/class-seo-scanner.php:495
 msgid "Adjust meta title length to 30-70 characters."
 msgstr ""
 
 #. translators: %s: SEO plugin name
-#: includes/class-seo-scanner.php:496
+#: includes/class-seo-scanner.php:507
 #, php-format
 msgid "Meta title handled by %s template. A custom title is recommended for best results."
 msgstr ""
 
-#: includes/class-seo-scanner.php:505
+#. translators: %s: fallback generated meta title
+#: includes/class-seo-scanner.php:518
 #, php-format
 msgid "No meta title set. Using default: \"%s\""
 msgstr ""
 
-#: includes/class-seo-scanner.php:506
+#: includes/class-seo-scanner.php:521
 msgid "Set a custom meta title (30-70 characters)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:542
-#: includes/class-seo-scanner.php:550
-#: includes/class-seo-scanner.php:561
-#: includes/class-seo-scanner.php:572
-#: includes/handlers/class-handler-base.php:254
-#: includes/handlers/class-handler-base.php:258
-#: includes/handlers/class-handler-seo.php:292
+#: includes/class-seo-scanner.php:557
+#: includes/class-seo-scanner.php:569
+#: includes/class-seo-scanner.php:584
+#: includes/class-seo-scanner.php:595
+#: includes/handlers/class-handler-base.php:261
+#: includes/handlers/class-handler-base.php:265
+#: includes/handlers/class-handler-seo.php:301
 msgid "Meta Description"
 msgstr ""
 
-#: includes/class-seo-scanner.php:545
+#. translators: %d: meta description length in characters
+#: includes/class-seo-scanner.php:562
 #, php-format
 msgid "Meta description set (%d chars)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:553
+#. translators: %d: meta description length in characters
+#: includes/class-seo-scanner.php:574
 #, php-format
 msgid "Meta description is %d chars. Ideal range: 50-200 characters (sweet spot: ~155)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:554
+#: includes/class-seo-scanner.php:577
 msgid "Adjust meta description to 50-200 characters."
 msgstr ""
 
 #. translators: %s: SEO plugin name
-#: includes/class-seo-scanner.php:566
+#: includes/class-seo-scanner.php:589
 #, php-format
 msgid "Meta description handled by %s template. A custom description is recommended for best results."
 msgstr ""
 
-#: includes/class-seo-scanner.php:575
+#: includes/class-seo-scanner.php:598
 msgid "No meta description found."
 msgstr ""
 
-#: includes/class-seo-scanner.php:576
+#: includes/class-seo-scanner.php:599
 msgid "Add a meta description (50-200 characters)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:599
-#: includes/class-seo-scanner.php:614
-#: includes/class-seo-scanner.php:623
+#: includes/class-seo-scanner.php:622
+#: includes/class-seo-scanner.php:641
+#: includes/class-seo-scanner.php:655
 msgid "URL Slug"
 msgstr ""
 
-#: includes/class-seo-scanner.php:602
+#. translators: %s: URL slug
+#: includes/class-seo-scanner.php:627
 #, php-format
 msgid "Clean slug: /%s"
 msgstr ""
 
-#: includes/class-seo-scanner.php:608
+#: includes/class-seo-scanner.php:635
 msgid "contains stop words"
 msgstr ""
 
-#: includes/class-seo-scanner.php:611
+#: includes/class-seo-scanner.php:638
 msgid "too long"
 msgstr ""
 
-#: includes/class-seo-scanner.php:617
+#. translators: 1: URL slug, 2: comma-separated list of slug issues
+#: includes/class-seo-scanner.php:646
 #, php-format
-msgid "Slug \"/%s\" %s."
+msgid "Slug \"/%1$s\" %2$s."
 msgstr ""
 
-#: includes/class-seo-scanner.php:618
+#: includes/class-seo-scanner.php:650
 msgid "Shorten the slug and remove stop words."
 msgstr ""
 
-#: includes/class-seo-scanner.php:626
+#: includes/class-seo-scanner.php:658
 msgid "No slug set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:627
+#: includes/class-seo-scanner.php:659
 msgid "Set a clean, keyword-focused URL slug."
 msgstr ""
 
-#: includes/class-seo-scanner.php:664
-#: includes/class-seo-scanner.php:671
+#: includes/class-seo-scanner.php:696
+#: includes/class-seo-scanner.php:707
 msgid "H1 Tag"
 msgstr ""
 
-#: includes/class-seo-scanner.php:667
+#. translators: %s: detected H1 text
+#: includes/class-seo-scanner.php:701
 #, php-format
 msgid "H1 tag found: \"%s\""
 msgstr ""
 
-#: includes/class-seo-scanner.php:674
+#: includes/class-seo-scanner.php:710
 msgid "No H1 tag found in content."
 msgstr ""
 
-#: includes/class-seo-scanner.php:675
+#: includes/class-seo-scanner.php:711
 msgid "Add one H1 heading to the page content."
 msgstr ""
 
-#: includes/class-seo-scanner.php:693
-#: includes/class-seo-scanner.php:701
-#: includes/class-seo-scanner.php:710
+#: includes/class-seo-scanner.php:729
+#: includes/class-seo-scanner.php:738
+#: includes/class-seo-scanner.php:747
 msgid "Heading Hierarchy"
 msgstr ""
 
-#: includes/class-seo-scanner.php:696
+#. translators: %s: heading level sequence, for example 1->2->3
+#: includes/class-seo-scanner.php:733
 #, php-format
 msgid "Heading hierarchy is correct (H%s)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:704
+#: includes/class-seo-scanner.php:741
 msgid "Heading levels skip (e.g., H1 to H3 without H2)."
 msgstr ""
 
-#: includes/class-seo-scanner.php:705
+#: includes/class-seo-scanner.php:742
 msgid "Ensure headings follow H1→H2→H3 order without gaps."
 msgstr ""
 
-#: includes/class-seo-scanner.php:713
+#: includes/class-seo-scanner.php:750
 msgid "No headings found in content."
 msgstr ""
 
-#: includes/class-seo-scanner.php:714
+#: includes/class-seo-scanner.php:751
 msgid "Add structured headings (H1, H2, H3) to organize content."
 msgstr ""
 
-#: includes/class-seo-scanner.php:732
-#: includes/class-seo-scanner.php:739
-#: includes/class-seo-scanner.php:749
+#: includes/class-seo-scanner.php:769
+#: includes/class-seo-scanner.php:780
+#: includes/class-seo-scanner.php:795
 msgid "Image Alt Text"
 msgstr ""
 
-#: includes/class-seo-scanner.php:735
+#. translators: %d: total number of images
+#: includes/class-seo-scanner.php:774
 #, php-format
 msgid "All %d images have alt text."
 msgstr ""
 
-#: includes/class-seo-scanner.php:742
+#. translators: 1: number of images missing alt text, 2: total number of images
+#: includes/class-seo-scanner.php:785
 #, php-format
-msgid "%d of %d images missing alt text."
+msgid "%1$d of %2$d images missing alt text."
 msgstr ""
 
-#: includes/class-seo-scanner.php:743
+#: includes/class-seo-scanner.php:789
 msgid "Add descriptive alt text to all images."
 msgstr ""
 
-#: includes/class-seo-scanner.php:752
+#: includes/class-seo-scanner.php:798
 msgid "No images in content. Consider adding relevant images."
 msgstr ""
 
-#: includes/class-seo-scanner.php:769
-#: includes/class-seo-scanner.php:776
+#: includes/class-seo-scanner.php:815
+#: includes/class-seo-scanner.php:826
 msgid "Internal Links"
 msgstr ""
 
-#: includes/class-seo-scanner.php:772
+#. translators: %d: number of internal links found
+#: includes/class-seo-scanner.php:820
 #, php-format
 msgid "%d internal link(s) found."
 msgstr ""
 
-#: includes/class-seo-scanner.php:779
+#: includes/class-seo-scanner.php:829
 msgid "No internal links found."
 msgstr ""
 
-#: includes/class-seo-scanner.php:780
+#: includes/class-seo-scanner.php:830
 msgid "Add links to related content on your site."
 msgstr ""
 
-#: includes/class-seo-scanner.php:821
-#: includes/class-seo-scanner.php:829
-#: includes/class-seo-scanner.php:838
-#: includes/class-seo-scanner.php:846
+#: includes/class-seo-scanner.php:871
+#: includes/class-seo-scanner.php:879
+#: includes/class-seo-scanner.php:888
+#: includes/class-seo-scanner.php:896
 msgid "Open Graph Tags"
 msgstr ""
 
-#: includes/class-seo-scanner.php:824
+#: includes/class-seo-scanner.php:874
 msgid "3/3 Open Graph tags set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:832
+#: includes/class-seo-scanner.php:882
 msgid "2/3 Open Graph tags set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:833
-#: includes/class-seo-scanner.php:842
+#: includes/class-seo-scanner.php:883
+#: includes/class-seo-scanner.php:892
 msgid "Add og:title, og:description, and og:image for social sharing."
 msgstr ""
 
-#: includes/class-seo-scanner.php:841
+#: includes/class-seo-scanner.php:891
 msgid "1/3 Open Graph tags set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:849
+#: includes/class-seo-scanner.php:899
 msgid "No Open Graph tags set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:850
+#: includes/class-seo-scanner.php:900
 msgid "Add Open Graph tags for better social media previews."
 msgstr ""
 
-#: includes/class-seo-scanner.php:878
-#: includes/class-seo-scanner.php:885
-#: includes/class-seo-scanner.php:892
+#: includes/class-seo-scanner.php:928
+#: includes/class-seo-scanner.php:939
+#: includes/class-seo-scanner.php:950
 msgid "Content Length"
 msgstr ""
 
-#: includes/class-seo-scanner.php:881
+#. translators: %d: content word count
+#: includes/class-seo-scanner.php:933
 #, php-format
 msgid "Content has %d words."
 msgstr ""
 
-#: includes/class-seo-scanner.php:888
+#. translators: %d: content word count
+#: includes/class-seo-scanner.php:944
 #, php-format
 msgid "Content has %d words. Longer content may perform better for competitive topics."
 msgstr ""
 
-#: includes/class-seo-scanner.php:895
+#. translators: %d: content word count
+#: includes/class-seo-scanner.php:955
 #, php-format
 msgid "Content has %d words. Consider whether more depth is needed for this topic."
 msgstr ""
 
-#: includes/class-seo-scanner.php:911
-#: includes/class-seo-scanner.php:918
+#: includes/class-seo-scanner.php:973
+#: includes/class-seo-scanner.php:984
 msgid "External Links"
 msgstr ""
 
-#: includes/class-seo-scanner.php:914
+#. translators: %d: number of external links found
+#: includes/class-seo-scanner.php:978
 #, php-format
 msgid "%d external link(s) found."
 msgstr ""
 
-#: includes/class-seo-scanner.php:921
+#: includes/class-seo-scanner.php:987
 msgid "No external links. Consider linking to authoritative sources where relevant."
 msgstr ""
 
-#: includes/class-seo-scanner.php:928
-#: includes/class-seo-scanner.php:935
+#: includes/class-seo-scanner.php:994
+#: includes/class-seo-scanner.php:1001
 msgid "Featured Image"
 msgstr ""
 
-#: includes/class-seo-scanner.php:931
+#: includes/class-seo-scanner.php:997
 msgid "Featured image is set."
 msgstr ""
 
-#: includes/class-seo-scanner.php:938
+#: includes/class-seo-scanner.php:1004
 msgid "No featured image set. Consider adding one for social sharing and visual appeal."
 msgstr ""
 
-#: includes/class-seo-scanner.php:952
+#: includes/class-seo-scanner.php:1018
 msgid "Multiple H1 Tags"
 msgstr ""
 
-#: includes/class-seo-scanner.php:955
+#. translators: %d: number of H1 tags found
+#: includes/class-seo-scanner.php:1023
 #, php-format
 msgid "%d H1 tags found. HTML5 allows multiple, but a single H1 is conventional."
 msgstr ""
@@ -1688,70 +1727,74 @@ msgstr ""
 msgid "Scheduled automations require a Pro or higher plan."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:71
+#. translators: 1: current number of active automations, 2: plan limit
+#: includes/handlers/class-handler-automation.php:73
 #, php-format
-msgid "You have %d active automations (limit: %d for your plan). Pause or delete an existing one."
+msgid "You have %1$d active automations (limit: %2$d for your plan). Pause or delete an existing one."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:79
+#: includes/handlers/class-handler-automation.php:84
 msgid "Invalid cadence type."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:89
-#: includes/handlers/class-handler-automation.php:164
+#. translators: %s: minimum required time interval between automation runs
+#: includes/handlers/class-handler-automation.php:95
+#: includes/handlers/class-handler-automation.php:176
 #, php-format
 msgid "Your plan requires at least %s between automation runs. Choose a longer interval."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:97
+#: includes/handlers/class-handler-automation.php:103
 msgid "Prompt is required."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:122
+#. translators: 1: automation name, 2: first scheduled run date/time
+#: includes/handlers/class-handler-automation.php:130
 #, php-format
-msgid "Automation \"%s\" created. First run: %s."
+msgid "Automation \"%1$s\" created. First run: %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:122
+#: includes/handlers/class-handler-automation.php:131
 msgid "Scheduled Prompt"
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:132
+#: includes/handlers/class-handler-automation.php:143
 msgid "automation_id is required."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:139
+#: includes/handlers/class-handler-automation.php:150
 msgid "Automation not found or access denied."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:180
+#: includes/handlers/class-handler-automation.php:192
 msgid "Automation updated."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:194
-#: includes/handlers/class-handler-automation.php:238
-#: includes/handlers/class-handler-automation.php:255
+#: includes/handlers/class-handler-automation.php:206
+#: includes/handlers/class-handler-automation.php:257
+#: includes/handlers/class-handler-automation.php:274
 msgid "Automation not found."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:199
+#: includes/handlers/class-handler-automation.php:211
 msgid "Automation paused."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:215
+#. translators: %s: next scheduled automation run date/time, or "none"
+#: includes/handlers/class-handler-automation.php:231
 #, php-format
 msgid "Automation resumed. Next run: %s."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:215
+#: includes/handlers/class-handler-automation.php:232
 msgid "none"
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:218
+#: includes/handlers/class-handler-automation.php:237
 msgid "Invalid action. Use \"pause\" or \"resume\"."
 msgstr ""
 
-#: includes/handlers/class-handler-automation.php:243
+#: includes/handlers/class-handler-automation.php:262
 msgid "Automation deleted."
 msgstr ""
 
@@ -1760,11 +1803,11 @@ msgid "You do not have permission to perform this action."
 msgstr ""
 
 #: includes/handlers/class-handler-base.php:145
-#: includes/handlers/class-handler-base.php:190
-#: includes/handlers/class-handler-content.php:47
-#: includes/handlers/class-handler-content.php:433
-#: includes/handlers/class-handler-content.php:591
-#: includes/handlers/class-handler-content.php:862
+#: includes/handlers/class-handler-base.php:197
+#: includes/handlers/class-handler-content.php:55
+#: includes/handlers/class-handler-content.php:457
+#: includes/handlers/class-handler-content.php:615
+#: includes/handlers/class-handler-content.php:886
 msgid "Invalid post ID."
 msgstr ""
 
@@ -1773,558 +1816,579 @@ msgstr ""
 msgid "Could not resolve URL to a post ID. Try providing post_id directly."
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:185
+#. translators: 1: WordPress post type, 2: requested slug
+#: includes/handlers/class-handler-base.php:188
 #, php-format
-msgid "No %s found with slug '%s'."
+msgid "No %1$s found with slug '%2$s'."
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:205
-#: includes/handlers/class-handler-content.php:1887
+#: includes/handlers/class-handler-base.php:212
+#: includes/handlers/class-handler-content.php:1939
 msgid "WooCommerce is not active."
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:217
+#: includes/handlers/class-handler-base.php:224
 msgid "Elementor is not active."
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:236
-#: includes/handlers/class-handler-seo.php:452
-#: includes/handlers/class-handler-system.php:1864
+#: includes/handlers/class-handler-base.php:243
+#: includes/handlers/class-handler-seo.php:462
+#: includes/handlers/class-handler-system.php:1948
 msgid "Current state"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:237
+#: includes/handlers/class-handler-base.php:244
 msgid "Will be modified"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:253
-#: includes/handlers/class-handler-base.php:257
-#: includes/handlers/class-handler-seo.php:291
+#: includes/handlers/class-handler-base.php:260
+#: includes/handlers/class-handler-base.php:264
+#: includes/handlers/class-handler-seo.php:300
 msgid "SEO Title"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:255
-#: includes/handlers/class-handler-seo.php:293
+#: includes/handlers/class-handler-base.php:262
+#: includes/handlers/class-handler-seo.php:302
 msgid "OG Title"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:256
-#: includes/handlers/class-handler-seo.php:294
+#: includes/handlers/class-handler-base.php:263
+#: includes/handlers/class-handler-seo.php:303
 msgid "OG Description"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:259
+#: includes/handlers/class-handler-base.php:266
 msgid "SEO Title (Yoast)"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:260
+#: includes/handlers/class-handler-base.php:267
 msgid "Meta Description (Yoast)"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:261
+#: includes/handlers/class-handler-base.php:268
 msgid "SEO Title (RankMath)"
 msgstr ""
 
-#: includes/handlers/class-handler-base.php:262
+#: includes/handlers/class-handler-base.php:269
 msgid "Meta Description (RankMath)"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:42
+#. translators: 1: WordPress post type, 2: requested slug
+#: includes/handlers/class-handler-content.php:46
 #, php-format
 msgid "No %1$s found with slug \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:57
+#: includes/handlers/class-handler-content.php:65
 msgid "You do not have permission to read this post."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:141
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:151
 #, php-format
 msgid "Read metadata of \"%s\" (light mode)."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:231
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:245
 #, php-format
 msgid "Read outline of \"%s\" (structured mode)."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:269
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:287
 #, php-format
 msgid "Read content of \"%s\" (full mode)."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:318
-#: includes/handlers/class-handler-content.php:1981
+#: includes/handlers/class-handler-content.php:338
+#: includes/handlers/class-handler-content.php:2033
 msgid "Search query is required."
 msgstr ""
 
 #. translators: 1: total found 2: search query 3: optional "showing first N"
-#: includes/handlers/class-handler-content.php:402
+#: includes/handlers/class-handler-content.php:422
 #, php-format
 msgid "Found %1$d result(s) for \"%2$s\"%3$s."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:406
-#: includes/handlers/class-handler-content.php:1213
+#. translators: %d: number of results shown
+#: includes/handlers/class-handler-content.php:428
+#: includes/handlers/class-handler-content.php:1253
 #, php-format
 msgid ", showing %d"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:450
+#: includes/handlers/class-handler-content.php:474
 msgid "This page uses Elementor. Use elementor_edit_widget to modify widget content, or elementor_find_replace for text changes. Editing post_content directly has no visible effect on Elementor pages."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:451
+#: includes/handlers/class-handler-content.php:475
 msgid "Read the page first with read_content(mode=structured) to see the Elementor widget tree."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:456
-#: includes/handlers/class-handler-content.php:595
-#: includes/handlers/class-handler-media.php:832
+#: includes/handlers/class-handler-content.php:480
+#: includes/handlers/class-handler-content.php:619
+#: includes/handlers/class-handler-media.php:916
 msgid "You do not have permission to edit this post."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:480
+#: includes/handlers/class-handler-content.php:504
 msgid "content"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:485
+#: includes/handlers/class-handler-content.php:509
 #: includes/handlers/class-handler-seo.php:91
 msgid "title"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:490
+#: includes/handlers/class-handler-content.php:514
 msgid "excerpt"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:495
+#: includes/handlers/class-handler-content.php:519
 msgid "slug"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:500
+#: includes/handlers/class-handler-content.php:524
 msgid "status"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:505
+#: includes/handlers/class-handler-content.php:529
 msgid "scheduled date"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:517
+#: includes/handlers/class-handler-content.php:541
 msgid "sticky"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:529
+#: includes/handlers/class-handler-content.php:553
 msgid "post format"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:534
+#: includes/handlers/class-handler-content.php:558
 #: includes/handlers/class-handler-elementor.php:871
-#: includes/handlers/class-handler-media.php:273
-#: includes/handlers/class-handler-media.php:782
-#: includes/handlers/class-handler-system.php:868
-#: includes/handlers/class-handler-woocommerce.php:1176
+#: includes/handlers/class-handler-media.php:285
+#: includes/handlers/class-handler-media.php:849
+#: includes/handlers/class-handler-system.php:886
+#: includes/handlers/class-handler-woocommerce.php:1193
 msgid "No changes specified."
 msgstr ""
 
 #. translators: %s: error message
-#: includes/handlers/class-handler-content.php:555
+#: includes/handlers/class-handler-content.php:579
 #, php-format
 msgid "Failed to update post: %s"
 msgstr ""
 
 #. translators: 1: post title 2: changed fields
-#: includes/handlers/class-handler-content.php:573
+#: includes/handlers/class-handler-content.php:597
 #, php-format
 msgid "Updated \"%1$s\" — changed: %2$s."
 msgstr ""
 
 #. translators: %s: meta key name
-#: includes/handlers/class-handler-content.php:643
+#: includes/handlers/class-handler-content.php:667
 #, php-format
 msgid "Cannot update \"%s\" via raw meta on a WooCommerce product. Use edit_product instead — it keeps WC price lookup tables, stock caches, and inventory hooks in sync."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:646
+#: includes/handlers/class-handler-content.php:670
 msgid "edit_product supports: name, regular_price, sale_price, sku, stock_quantity, stock_status, manage_stock, weight, and more."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:676
+#: includes/handlers/class-handler-content.php:700
 msgid "No meta key/value provided."
 msgstr ""
 
 #. translators: 1: meta keys 2: post title
-#: includes/handlers/class-handler-content.php:703
+#: includes/handlers/class-handler-content.php:727
 #, php-format
 msgid "Updated %1$s on \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:721
+#: includes/handlers/class-handler-content.php:745
 msgid "Invalid post type. Use \"post\" or \"page\"."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:729
+#: includes/handlers/class-handler-content.php:753
 msgid "Title is required."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:734
+#: includes/handlers/class-handler-content.php:758
 msgid "You do not have permission to create this content."
 msgstr ""
 
 #. translators: %s: error message
-#: includes/handlers/class-handler-content.php:775
+#: includes/handlers/class-handler-content.php:799
 #, php-format
 msgid "Failed to create post: %s"
 msgstr ""
 
 #. translators: 1: post type 2: post title 3: status 4: edit URL
-#: includes/handlers/class-handler-content.php:818
+#: includes/handlers/class-handler-content.php:842
 #, php-format
 msgid "Created %1$s \"%2$s\" as %3$s. Edit: %4$s"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:848
+#: includes/handlers/class-handler-content.php:872
 msgid "Set page_template to one of the available template filenames if needed."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:866
+#: includes/handlers/class-handler-content.php:890
 msgid "You do not have permission to delete this post."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:886
+#: includes/handlers/class-handler-content.php:910
 msgid "Failed to move post to trash."
 msgstr ""
 
 #. translators: %s: post title
-#: includes/handlers/class-handler-content.php:893
+#: includes/handlers/class-handler-content.php:917
 #, php-format
 msgid "Moved \"%s\" to trash."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:907
+#: includes/handlers/class-handler-content.php:931
 msgid "Post IDs array is required."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:926
-#: includes/handlers/class-handler-content.php:1030
-#: includes/handlers/class-handler-content.php:1535
+#. translators: %d: post ID
+#: includes/handlers/class-handler-content.php:952
+#: includes/handlers/class-handler-content.php:1066
+#: includes/handlers/class-handler-content.php:1575
 #, php-format
 msgid "Post #%d not found"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:931
-#: includes/handlers/class-handler-content.php:1035
-#: includes/handlers/class-handler-content.php:1540
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:961
+#: includes/handlers/class-handler-content.php:1071
+#: includes/handlers/class-handler-content.php:1580
 #, php-format
 msgid "\"%s\": no permission"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:952
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:986
 #, php-format
 msgid "\"%s\": trash failed"
 msgstr ""
 
 #. translators: 1: trashed count 2: total count
-#: includes/handlers/class-handler-content.php:967
+#: includes/handlers/class-handler-content.php:1003
 #, php-format
 msgid "Moved %1$d of %2$d items to trash."
 msgstr ""
 
 #. translators: %d: count of already-trashed items
-#: includes/handlers/class-handler-content.php:974
+#: includes/handlers/class-handler-content.php:1010
 #, php-format
 msgid "%d items were already in trash — use empty_trash to permanently delete them."
 msgstr ""
 
 #. translators: %s: semicolon-separated error list
-#: includes/handlers/class-handler-content.php:979
-#: includes/handlers/class-handler-content.php:1084
-#: includes/handlers/class-handler-content.php:1608
-#: includes/handlers/class-handler-media.php:379
+#: includes/handlers/class-handler-content.php:1015
+#: includes/handlers/class-handler-content.php:1124
+#: includes/handlers/class-handler-content.php:1653
+#: includes/handlers/class-handler-media.php:408
 #, php-format
 msgid "Errors: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1012
+#: includes/handlers/class-handler-content.php:1048
 msgid "Trash is already empty."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1057
-#: includes/handlers/class-handler-media.php:367
+#. translators: %s: post title
+#: includes/handlers/class-handler-content.php:1095
+#: includes/handlers/class-handler-media.php:396
 #, php-format
 msgid "\"%s\": delete failed"
 msgstr ""
 
 #. translators: 1: deleted count 2: total count
-#: includes/handlers/class-handler-content.php:1072
+#: includes/handlers/class-handler-content.php:1112
 #, php-format
 msgid "Permanently deleted %1$d of %2$d items from trash."
 msgstr ""
 
 #. translators: %d: count of skipped non-trash items
-#: includes/handlers/class-handler-content.php:1079
+#: includes/handlers/class-handler-content.php:1119
 #, php-format
 msgid "%d items were not in trash and were skipped."
 msgstr ""
 
 #. translators: 1: total post count 2: optional "showing N"
-#: includes/handlers/class-handler-content.php:1210
+#: includes/handlers/class-handler-content.php:1250
 #, php-format
 msgid "Found %1$d post(s)%2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1253
+#: includes/handlers/class-handler-content.php:1293
 msgid "WooCommerce is not active. Cannot fetch random product."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1280
+#: includes/handlers/class-handler-content.php:1320
 msgid "No matching content found for the given filters."
 msgstr ""
 
 #. translators: 1: post title, 2: mode
-#: includes/handlers/class-handler-content.php:1340
+#: includes/handlers/class-handler-content.php:1380
 #, php-format
 msgid "Random \"%1$s\" selected (%2$s mode)."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1388
+#: includes/handlers/class-handler-content.php:1428
 msgid "Topic is required for content generation."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1403
+#: includes/handlers/class-handler-content.php:1443
 msgid "Generating content..."
 msgstr ""
 
 #. translators: 1: post title 2: word count
-#: includes/handlers/class-handler-content.php:1439
+#: includes/handlers/class-handler-content.php:1479
 #, php-format
 msgid "Reading content from \"%1$s\" (%2$d words)..."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1478
+#: includes/handlers/class-handler-content.php:1518
 msgid "All published pages already have meta titles. Nothing to generate."
 msgstr ""
 
 #. translators: %d: number of pages
-#: includes/handlers/class-handler-content.php:1502
+#: includes/handlers/class-handler-content.php:1542
 #, php-format
 msgid "%d pages need meta tags."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1520
+#: includes/handlers/class-handler-content.php:1560
 msgid "Post IDs and changes are required."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1563
+#. translators: 1: post title, 2: WordPress error message
+#: includes/handlers/class-handler-content.php:1605
 #, php-format
-msgid "\"%s\": %s"
+msgid "\"%1$s\": %2$s"
 msgstr ""
 
 #. translators: 1: updated count 2: total count
-#: includes/handlers/class-handler-content.php:1603
+#: includes/handlers/class-handler-content.php:1648
 #, php-format
 msgid "Updated %1$d of %2$d items."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1623
+#: includes/handlers/class-handler-content.php:1668
 #: includes/handlers/class-handler-elementor.php:350
 msgid "Search text is required."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1668
+#. translators: %s: text being searched for
+#: includes/handlers/class-handler-content.php:1717
 #, php-format
 msgid "No matches found for \"%s\"."
 msgstr ""
 
 #. translators: 1: search text 2: match count 3: replace text
-#: includes/handlers/class-handler-content.php:1676
+#: includes/handlers/class-handler-content.php:1728
 #, php-format
 msgid "Found \"%1$s\" in %2$d items. Run again with dry_run=false to replace with \"%3$s\"."
 msgstr ""
 
 #. translators: 1: find text 2: replace text 3: count
-#: includes/handlers/class-handler-content.php:1761
+#: includes/handlers/class-handler-content.php:1813
 #, php-format
 msgid "Replaced \"%1$s\" with \"%2$s\" in %3$d items."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:1920
+#: includes/handlers/class-handler-content.php:1972
 msgid "Invalid report type."
 msgstr ""
 
 #. translators: %s: report type name
-#: includes/handlers/class-handler-content.php:1963
+#: includes/handlers/class-handler-content.php:2015
 #, php-format
 msgid "%s report generated."
 msgstr ""
 
 #. translators: %s: search query
-#: includes/handlers/class-handler-content.php:1994
+#: includes/handlers/class-handler-content.php:2046
 #, php-format
 msgid "No content found matching \"%s\". The index may need rebuilding, or there's no content about this topic."
 msgstr ""
 
 #. translators: 1: number of chunks 2: search query
-#: includes/handlers/class-handler-content.php:2018
+#: includes/handlers/class-handler-content.php:2070
 #, php-format
 msgid "%1$d relevant content chunks found for \"%2$s\"."
 msgstr ""
 
 #. translators: 1: posts indexed 2: chunks 3: words 4: last sync time 5: breakdown
-#: includes/handlers/class-handler-content.php:2042
+#: includes/handlers/class-handler-content.php:2094
 #, php-format
 msgid "Content Index: %1$d posts indexed, %2$d chunks, ~%3$d words. Last sync: %4$s. Breakdown: %5$s"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2046
+#: includes/handlers/class-handler-content.php:2098
 msgid "Never"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2062
+#: includes/handlers/class-handler-content.php:2114
 msgid "Content indexing is disabled. Select at least one indexed post type in PressArk settings before rebuilding."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2070
+#: includes/handlers/class-handler-content.php:2122
 msgid "Content index rebuild scheduled. It will run in the background."
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2140
+#: includes/handlers/class-handler-content.php:2192
 msgid "Title"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2147
+#: includes/handlers/class-handler-content.php:2199
 msgid "Content"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2154
+#: includes/handlers/class-handler-content.php:2206
 msgid "Excerpt"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2155
-#: includes/handlers/class-handler-content.php:2194
+#: includes/handlers/class-handler-content.php:2207
+#: includes/handlers/class-handler-content.php:2246
 #: includes/handlers/class-handler-elementor.php:1358
-#: includes/handlers/class-handler-media.php:1320
-#: includes/handlers/class-handler-seo.php:305
-#: includes/handlers/class-handler-seo.php:339
-#: includes/handlers/class-handler-seo.php:346
-#: includes/handlers/class-handler-seo.php:358
-#: includes/handlers/class-handler-seo.php:359
-#: includes/handlers/class-handler-system.php:1843
-#: includes/handlers/class-handler-system.php:1889
-#: includes/handlers/class-handler-system.php:1945
+#: includes/handlers/class-handler-media.php:1425
+#: includes/handlers/class-handler-seo.php:314
+#: includes/handlers/class-handler-seo.php:348
+#: includes/handlers/class-handler-seo.php:355
+#: includes/handlers/class-handler-seo.php:367
+#: includes/handlers/class-handler-seo.php:368
+#: includes/handlers/class-handler-system.php:1927
+#: includes/handlers/class-handler-system.php:1973
+#: includes/handlers/class-handler-system.php:2030
 msgid "(empty)"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2208
+#: includes/handlers/class-handler-content.php:2260
 msgid "Untitled"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2215
+#. translators: %s: post type
+#: includes/handlers/class-handler-content.php:2269
 #, php-format
 msgid "New %s"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2216
+#: includes/handlers/class-handler-content.php:2272
 #: includes/handlers/class-handler-elementor.php:1414
-#: includes/handlers/class-handler-woocommerce.php:4274
+#: includes/handlers/class-handler-woocommerce.php:4377
 msgid "(does not exist)"
 msgstr ""
 
 #. translators: 1: post title, 2: post status
-#: includes/handlers/class-handler-content.php:2218
+#: includes/handlers/class-handler-content.php:2274
 #, php-format
 msgid "%1$s (status: %2$s)"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2240
+#: includes/handlers/class-handler-content.php:2296
 msgid "Delete"
 msgstr ""
 
 #. translators: 1: attachment title, 2: MIME type
-#: includes/handlers/class-handler-content.php:2241
-#: includes/handlers/class-handler-media.php:1340
+#: includes/handlers/class-handler-content.php:2297
+#: includes/handlers/class-handler-media.php:1445
 #, php-format
 msgid "\"%1$s\" (%2$s)"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2242
+#: includes/handlers/class-handler-content.php:2298
 msgid "Moved to trash"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2264
-#: includes/handlers/class-handler-content.php:2357
-#: includes/handlers/class-handler-content.php:2403
+#. translators: %d: number of additional items
+#: includes/handlers/class-handler-content.php:2322
+#: includes/handlers/class-handler-content.php:2431
+#: includes/handlers/class-handler-content.php:2489
 #, php-format
 msgid " +%d more"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2268
+#. translators: %d: number of items in the bulk edit
+#: includes/handlers/class-handler-content.php:2330
 #, php-format
 msgid "Bulk Edit — %d items"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2272
+#: includes/handlers/class-handler-content.php:2336
 msgid "Affected Items"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2274
+#. translators: %d: number of items that will be modified
+#: includes/handlers/class-handler-content.php:2340
 #, php-format
 msgid "%d items will be modified"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2283
+#: includes/handlers/class-handler-content.php:2351
 msgid "(various)"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2306
+#: includes/handlers/class-handler-content.php:2374
 #: includes/handlers/class-handler-elementor.php:1431
 msgid "Find & Replace"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2310
+#: includes/handlers/class-handler-content.php:2378
 msgid "Find"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2315
+#: includes/handlers/class-handler-content.php:2383
 msgid "Scope"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2316
+#. translators: %s: search scope
+#: includes/handlers/class-handler-content.php:2386
 #, php-format
 msgid "Searching in: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2317
+#: includes/handlers/class-handler-content.php:2389
 msgid "Will replace in all matching posts"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2361
+#. translators: %d: number of items in the bulk delete
+#: includes/handlers/class-handler-content.php:2439
 #, php-format
 msgid "Bulk Delete — %d items"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2365
+#: includes/handlers/class-handler-content.php:2445
 msgid "Items to Trash"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2367
+#. translators: %d: number of items that will be moved to trash
+#: includes/handlers/class-handler-content.php:2449
 #, php-format
 msgid "%d items will be moved to trash"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2407
+#. translators: %d: number of items in the trash
+#: includes/handlers/class-handler-content.php:2497
 #, php-format
 msgid "Empty Trash — %d items"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2411
+#: includes/handlers/class-handler-content.php:2503
 msgid "Permanent Delete"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2412
+#: includes/handlers/class-handler-content.php:2504
 msgid "(empty trash)"
 msgstr ""
 
-#: includes/handlers/class-handler-content.php:2413
+#. translators: %d: number of items that will be permanently deleted
+#: includes/handlers/class-handler-content.php:2507
 #, php-format
 msgid "%d items will be permanently deleted — this cannot be undone"
 msgstr ""
@@ -2338,7 +2402,7 @@ msgid "Site brief."
 msgstr ""
 
 #: includes/handlers/class-handler-diagnostics.php:42
-#: includes/handlers/class-handler-media.php:829
+#: includes/handlers/class-handler-media.php:913
 msgid "Post ID is required."
 msgstr ""
 
@@ -2346,347 +2410,379 @@ msgstr ""
 msgid "You do not have permission to audit this post."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:52
+#. translators: %s: audited page title
+#: includes/handlers/class-handler-diagnostics.php:56
 #, php-format
 msgid "Page audit for \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:86
+#: includes/handlers/class-handler-diagnostics.php:94
 msgid "Hook inspection complete."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:95
+#. translators: 1: page load time in milliseconds, 2: performance assessment
+#: includes/handlers/class-handler-diagnostics.php:107
 #, php-format
-msgid "Page speed: %dms (%s)."
+msgid "Page speed: %1$dms (%2$s)."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:104
+#: includes/handlers/class-handler-diagnostics.php:121
 msgid "Crawlability check complete."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:116
+#: includes/handlers/class-handler-diagnostics.php:133
 msgid "Email delivery check complete."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:130
+#: includes/handlers/class-handler-diagnostics.php:147
 msgid "Query profiling complete."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:165
+#. translators: %s: human-readable elapsed time
+#: includes/handlers/class-handler-diagnostics.php:184
 #, php-format
 msgid "%s ago"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:167
+#: includes/handlers/class-handler-diagnostics.php:188
 msgid "initial version"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:185
+#. translators: %s: revision field name
+#: includes/handlers/class-handler-diagnostics.php:208
 #, php-format
 msgid "Changes detected in %s"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:200
+#: includes/handlers/class-handler-diagnostics.php:225
 msgid "Use revision_id with compare_to parameter to see what changed."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:216
+#. translators: 1: number of REST routes, 2: number of namespaces
+#: includes/handlers/class-handler-diagnostics.php:243
 #, php-format
-msgid "%d REST routes across %d namespaces."
+msgid "%1$d REST routes across %2$d namespaces."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:236
+#. translators: 1: HTTP method, 2: REST route, 3: HTTP status code
+#: includes/handlers/class-handler-diagnostics.php:269
 #, php-format
-msgid "REST %s %s → %d"
+msgid "REST %1$s %2$s → %3$d"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:237
+#: includes/handlers/class-handler-diagnostics.php:274
 msgid "REST request failed."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:267
+#: includes/handlers/class-handler-diagnostics.php:304
 msgid "Comment not found."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:286
+#. translators: 1: number of links found, 2: configured comment link limit
+#: includes/handlers/class-handler-diagnostics.php:324
 #, php-format
 msgid "Too many links (%1$d — limit is %2$d)"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:291
+#: includes/handlers/class-handler-diagnostics.php:329
 msgid "Matches a word in the comment blocklist (Settings → Discussion)"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:297
+#: includes/handlers/class-handler-diagnostics.php:335
 msgid "Matches a moderation keyword (Settings → Discussion)"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:301
+#: includes/handlers/class-handler-diagnostics.php:339
 msgid "Comment author has no previously approved comments"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:304
+#: includes/handlers/class-handler-diagnostics.php:342
 msgid "Unknown — may be Akismet or another spam plugin"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:310
+#: includes/handlers/class-handler-diagnostics.php:348
 msgid "Comment would be auto-approved."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:311
+#. translators: %s: semicolon-separated list of moderation reasons
+#: includes/handlers/class-handler-diagnostics.php:351
 #, php-format
 msgid "Comment held: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:375
+#: includes/handlers/class-handler-diagnostics.php:417
 msgid "This site does not use a block theme. FSE templates are not available."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:387
-#: includes/handlers/class-handler-diagnostics.php:532
+#. translators: %s: template slug
+#: includes/handlers/class-handler-diagnostics.php:432
+#: includes/handlers/class-handler-diagnostics.php:587
 #, php-format
 msgid "Template \"%s\" not found."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:416
+#: includes/handlers/class-handler-diagnostics.php:464
 msgid "Use edit_template with slug and block_index to modify a specific block."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:443
+#: includes/handlers/class-handler-diagnostics.php:491
 msgid "Use get_templates with slug for block-level detail on a specific template."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:484
+#. translators: %s: template part slug
+#: includes/handlers/class-handler-diagnostics.php:534
 #, php-format
 msgid "Use get_templates with type=wp_template_part and slug=%s to inspect this part."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:512
+#: includes/handlers/class-handler-diagnostics.php:564
 msgid "This site does not use a block theme."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:521
+#: includes/handlers/class-handler-diagnostics.php:573
 msgid "slug is required."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:525
+#: includes/handlers/class-handler-diagnostics.php:577
 msgid "block_index and updates are required."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:549
+#. translators: %s: WordPress error message
+#: includes/handlers/class-handler-diagnostics.php:610
 #, php-format
 msgid "Failed to create template override: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:568
+#: includes/handlers/class-handler-diagnostics.php:632
 msgid "Created a user override for this theme template. The original theme template is preserved."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:582
+#: includes/handlers/class-handler-diagnostics.php:646
 msgid "This theme does not use theme.json. Design tokens are not available."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:583
+#: includes/handlers/class-handler-diagnostics.php:647
 msgid "Use get_customizer_schema to see available design settings for classic themes."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:726
+#: includes/handlers/class-handler-diagnostics.php:790
 msgid "Use insert_pattern with pattern name and post_id to insert a pattern into a post."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:739
+#: includes/handlers/class-handler-diagnostics.php:803
 #: includes/handlers/class-handler-elementor.php:270
 msgid "post_id is required."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:742
+#: includes/handlers/class-handler-diagnostics.php:806
 msgid "pattern name is required."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:754
+#. translators: %s: block pattern name
+#: includes/handlers/class-handler-diagnostics.php:821
 #, php-format
 msgid "Pattern \"%s\" not found."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:761
+#: includes/handlers/class-handler-diagnostics.php:831
 msgid "Pattern contains no blocks."
 msgstr ""
 
-#: includes/handlers/class-handler-diagnostics.php:796
+#: includes/handlers/class-handler-diagnostics.php:866
 msgid "This is a single-site WordPress installation. Multisite is not enabled."
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:58
+#. translators: 1: site name, 2: site home URL
+#: includes/handlers/class-handler-discovery.php:60
 #, php-format
-msgid "Site: %s (%s)"
+msgid "Site: %1$s (%2$s)"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:59
+#. translators: %s: site tagline
+#: includes/handlers/class-handler-discovery.php:66
 #, php-format
 msgid "Tagline: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:60
+#. translators: 1: WordPress version, 2: PHP version
+#: includes/handlers/class-handler-discovery.php:71
 #, php-format
 msgid "WordPress %1$s | PHP %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:61
+#. translators: 1: theme name, 2: theme version
+#: includes/handlers/class-handler-discovery.php:77
 #, php-format
 msgid "Theme: %1$s v%2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:62
+#. translators: 1: published page count, 2: published post count, 3: total comment count
+#: includes/handlers/class-handler-discovery.php:83
 #, php-format
 msgid "Pages: %1$d | Posts: %2$d | Comments: %3$d"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:63
+#. translators: 1: front page ID, 2: site timezone string
+#: includes/handlers/class-handler-discovery.php:90
 #, php-format
 msgid "Front page ID: %1$d | Timezone: %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:71
+#. translators: 1: number of active plugins, 2: comma-separated plugin names
+#: includes/handlers/class-handler-discovery.php:103
 #, php-format
 msgid "Active plugins (%1$d): %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:72
+#. translators: 1: user login, 2: comma-separated user roles
+#: includes/handlers/class-handler-discovery.php:109
 #, php-format
 msgid "User: %1$s (%2$s)"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:77
+#. translators: %d: number of published WooCommerce products
+#: includes/handlers/class-handler-discovery.php:119
 #, php-format
 msgid "WooCommerce(%d products)"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:88
+#: includes/handlers/class-handler-discovery.php:132
 msgid "Integrations: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:113
+#: includes/handlers/class-handler-discovery.php:157
 msgid "Custom post types: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:135
+#: includes/handlers/class-handler-discovery.php:179
 msgid "Custom taxonomies: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:151
+#: includes/handlers/class-handler-discovery.php:195
 msgid "Theme supports: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:186
+#. translators: 1: homepage title, 2: homepage post ID
+#: includes/handlers/class-handler-discovery.php:232
 #, php-format
 msgid "Homepage: \"%1$s\" (ID:%2$d) [static page]"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:189
+#: includes/handlers/class-handler-discovery.php:238
 msgid "Homepage: Blog listing (no static page)"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:195
+#. translators: 1: blog page title, 2: blog page post ID
+#: includes/handlers/class-handler-discovery.php:246
 #, php-format
 msgid "Blog page: \"%1$s\" (ID:%2$d)"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:212
+#. translators: %d: number of pages listed
+#: includes/handlers/class-handler-discovery.php:268
 #, php-format
 msgid "PAGES (%d):"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:240
+#. translators: 1: number of posts shown, 2: total number of published posts
+#: includes/handlers/class-handler-discovery.php:300
 #, php-format
 msgid "RECENT POSTS (showing %1$d of %2$d):"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:253
+#. translators: 1: number of products shown, 2: total number of published products
+#: includes/handlers/class-handler-discovery.php:318
 #, php-format
 msgid "PRODUCTS (showing %1$d of %2$d):"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:277
+#: includes/handlers/class-handler-discovery.php:345
 msgid "Site profile has not been generated yet. It will be auto-generated soon, or you can use refresh_site_profile to trigger it now."
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:290
+#: includes/handlers/class-handler-discovery.php:358
 msgid "Business: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:293
+#: includes/handlers/class-handler-discovery.php:361
 msgid "Industry: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:296
+#: includes/handlers/class-handler-discovery.php:364
 msgid "Tone: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:299
+#: includes/handlers/class-handler-discovery.php:367
 msgid "Topics: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:305
+#: includes/handlers/class-handler-discovery.php:373
 msgid "Profile generated: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:310
+#: includes/handlers/class-handler-discovery.php:378
 msgid "Profile data is available but empty. Try using refresh_site_profile to regenerate it."
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:332
+#. translators: %s: tool category name
+#: includes/handlers/class-handler-discovery.php:402
 #, php-format
 msgid "TOOLS - %s:"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:338
+#. translators: %d: total number of available tools
+#: includes/handlers/class-handler-discovery.php:412
 #, php-format
 msgid "AVAILABLE TOOLS (%d total):"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:352
+#: includes/handlers/class-handler-discovery.php:428
 msgid "Use get_available_tools with a category parameter to see full descriptions for any group."
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:368
+#: includes/handlers/class-handler-discovery.php:444
 msgid "Missing \"group\" parameter. Available groups: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:372
+#. translators: 1: requested tool group, 2: comma-separated list of valid groups
+#: includes/handlers/class-handler-discovery.php:451
 #, php-format
 msgid "Unknown tool group: %1$s. Available groups: %2$s"
 msgstr ""
 
 #. translators: %1$s: tool group name, %2$s: comma-separated tool names
-#: includes/handlers/class-handler-discovery.php:378
+#: includes/handlers/class-handler-discovery.php:461
 #, php-format
 msgid "Tool group \"%1$s\" loaded. Available tools: %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:392
+#: includes/handlers/class-handler-discovery.php:475
 msgid "Missing \"query\" parameter. Describe what tools you need (e.g., \"SEO analysis\", \"media management\")."
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:399
+#. translators: %s: tool discovery search query
+#: includes/handlers/class-handler-discovery.php:485
 #, php-format
 msgid "No tools found matching \"%s\". Try different search terms or use get_available_tools for a full listing."
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:413
+#: includes/handlers/class-handler-discovery.php:502
 msgid "Provide \"group\" (e.g., \"seo\") or \"tools\" (e.g., [\"analyze_seo\", \"fix_seo\"]). Available groups: "
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:420
+#. translators: 1: requested tool group, 2: comma-separated list of valid groups
+#: includes/handlers/class-handler-discovery.php:512
 #, php-format
 msgid "Unknown group: %1$s. Available: %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:422
+#. translators: 1: loaded tool group, 2: comma-separated list of loaded tools
+#: includes/handlers/class-handler-discovery.php:520
 #, php-format
 msgid "Group \"%1$s\" loaded: %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-discovery.php:426
+#: includes/handlers/class-handler-discovery.php:527
 msgid "Tools loaded: "
 msgstr ""
 
@@ -2993,7 +3089,7 @@ msgid "%ss inactivity"
 msgstr ""
 
 #: includes/handlers/class-handler-elementor.php:1058
-#: includes/handlers/class-handler-system.php:1540
+#: includes/handlers/class-handler-system.php:1614
 msgid "unlimited"
 msgstr ""
 
@@ -3202,342 +3298,356 @@ msgstr ""
 msgid "%d sizes need regeneration"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:112
+#. translators: %d: number of attachments found
+#: includes/handlers/class-handler-media.php:114
 #, php-format
 msgid "Found %d attachment(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:129
-#: includes/handlers/class-handler-media.php:217
-#: includes/handlers/class-handler-media.php:297
+#: includes/handlers/class-handler-media.php:133
+#: includes/handlers/class-handler-media.php:225
+#: includes/handlers/class-handler-media.php:314
 msgid "Attachment ID is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:134
-#: includes/handlers/class-handler-media.php:226
-#: includes/handlers/class-handler-media.php:306
+#: includes/handlers/class-handler-media.php:138
+#: includes/handlers/class-handler-media.php:234
+#: includes/handlers/class-handler-media.php:323
 msgid "Attachment not found."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:206
+#. translators: %s: attachment title
+#: includes/handlers/class-handler-media.php:212
 #, php-format
 msgid "Details for \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:221
+#: includes/handlers/class-handler-media.php:229
 msgid "You do not have permission to edit this attachment."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:268
+#. translators: %d: target post ID
+#: includes/handlers/class-handler-media.php:278
 #, php-format
 msgid "featured image for post #%d"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:286
+#. translators: 1: attachment title, 2: comma-separated list of updated fields
+#: includes/handlers/class-handler-media.php:300
 #, php-format
-msgid "Updated attachment \"%s\": %s."
+msgid "Updated attachment \"%1$s\": %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:301
+#: includes/handlers/class-handler-media.php:318
 msgid "You do not have permission to delete this attachment."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:314
+#: includes/handlers/class-handler-media.php:331
 msgid "Failed to delete attachment."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:319
+#. translators: %s: attachment title
+#: includes/handlers/class-handler-media.php:338
 #, php-format
 msgid "Deleted attachment \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:330
+#: includes/handlers/class-handler-media.php:351
 msgid "Attachment IDs array is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:345
+#. translators: %d: attachment ID
+#: includes/handlers/class-handler-media.php:368
 #, php-format
 msgid "#%d: no permission"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:351
+#. translators: %d: attachment ID
+#: includes/handlers/class-handler-media.php:378
 #, php-format
 msgid "#%d: not found"
 msgstr ""
 
 #. translators: 1: deleted count 2: total count
-#: includes/handlers/class-handler-media.php:373
+#: includes/handlers/class-handler-media.php:402
 #, php-format
 msgid "Deleted %1$d of %2$d attachments."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:401
+#: includes/handlers/class-handler-media.php:430
 msgid "Provide media_id, media_ids, or post_id."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:413
+#: includes/handlers/class-handler-media.php:442
 msgid "No permission for this attachment."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:424
+#: includes/handlers/class-handler-media.php:453
 msgid "Original file not found on disk."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:435
+#: includes/handlers/class-handler-media.php:464
 msgid "Failed to generate metadata for this attachment."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:446
+#. translators: %d: number of generated image sizes
+#: includes/handlers/class-handler-media.php:477
 #, php-format
 msgid "%d sizes generated"
 msgstr ""
 
 #. translators: 1: success count 2: total count
-#: includes/handlers/class-handler-media.php:456
+#: includes/handlers/class-handler-media.php:489
 #, php-format
 msgid "Regenerated thumbnails for %1$d of %2$d image(s)."
 msgstr ""
 
 #. translators: 1: shown count 2: approved 3: pending 4: spam
-#: includes/handlers/class-handler-media.php:529
+#: includes/handlers/class-handler-media.php:562
 #, php-format
 msgid "Showing %1$d comment(s). Site totals: %2$d approved, %3$d pending, %4$d spam."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:543
+#: includes/handlers/class-handler-media.php:576
 msgid "You do not have permission to moderate comments."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:555
+#: includes/handlers/class-handler-media.php:588
 msgid "Comment IDs are required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:561
+#. translators: %s: requested comment moderation action
+#: includes/handlers/class-handler-media.php:598
 #, php-format
 msgid "Invalid action: %s. Use approve, unapprove/hold, spam, unspam, trash, or untrash."
 msgstr ""
 
 #. translators: 1: action 2: count
-#: includes/handlers/class-handler-media.php:599
+#: includes/handlers/class-handler-media.php:639
 #, php-format
 msgid "%1$s %2$d comment(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:611
+#: includes/handlers/class-handler-media.php:651
 msgid "You do not have permission to reply to comments."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:618
+#: includes/handlers/class-handler-media.php:658
 msgid "Parent comment ID is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:621
-#: includes/handlers/class-handler-woocommerce.php:2321
+#: includes/handlers/class-handler-media.php:661
+#: includes/handlers/class-handler-woocommerce.php:2362
 msgid "Reply content is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:626
+#: includes/handlers/class-handler-media.php:666
 msgid "Parent comment not found."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:641
+#: includes/handlers/class-handler-media.php:681
 msgid "Failed to post reply."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:648
+#. translators: 1: parent comment ID, 2: new reply comment ID
+#: includes/handlers/class-handler-media.php:690
 #, php-format
-msgid "Replied to comment #%d (new comment #%d)."
+msgid "Replied to comment #%1$d (new comment #%2$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:663
+#. translators: %s: taxonomy slug
+#: includes/handlers/class-handler-media.php:712
 #, php-format
 msgid "Taxonomy \"%s\" does not exist."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:690
+#. translators: 1: taxonomy label, 2: number of terms
+#: includes/handlers/class-handler-media.php:744
 #, php-format
-msgid "Taxonomy \"%s\" has %d term(s)."
+msgid "Taxonomy \"%1$s\" has %2$d term(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:717
+#. translators: %d: number of public taxonomies found
+#: includes/handlers/class-handler-media.php:776
 #, php-format
 msgid "Found %d public taxonomy/taxonomies."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:727
+#: includes/handlers/class-handler-media.php:788
 msgid "You do not have permission to manage taxonomy terms."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:734
-#: includes/handlers/class-handler-media.php:835
+#: includes/handlers/class-handler-media.php:795
+#: includes/handlers/class-handler-media.php:919
 msgid "Valid taxonomy slug is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:741
+#: includes/handlers/class-handler-media.php:802
 msgid "Term name is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:760
+#. translators: 1: term name, 2: taxonomy slug, 3: term ID
+#: includes/handlers/class-handler-media.php:823
 #, php-format
-msgid "Created term \"%s\" in %s (ID: %d)."
+msgid "Created term \"%1$s\" in %2$s (ID: %3$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:766
+#: includes/handlers/class-handler-media.php:833
 msgid "Term ID is required for editing."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:792
+#. translators: 1: term ID, 2: taxonomy slug
+#: includes/handlers/class-handler-media.php:861
 #, php-format
-msgid "Updated term #%d in %s."
+msgid "Updated term #%1$d in %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:798
+#: includes/handlers/class-handler-media.php:870
 msgid "Term ID is required for deletion."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:802
+#: includes/handlers/class-handler-media.php:874
 msgid "Term not found."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:811
+#. translators: 1: term name, 2: taxonomy slug
+#: includes/handlers/class-handler-media.php:885
 #, php-format
-msgid "Deleted term \"%s\" from %s."
+msgid "Deleted term \"%1$s\" from %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:815
+#. translators: %s: requested taxonomy operation
+#: includes/handlers/class-handler-media.php:896
 #, php-format
 msgid "Unknown taxonomy operation: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:838
+#: includes/handlers/class-handler-media.php:922
 msgid "Terms array is required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:864
+#. translators: 1: number of assigned terms, 2: post title, 3: taxonomy slug
+#: includes/handlers/class-handler-media.php:949
 #, php-format
-msgid "Assigned %d term(s) to \"%s\" in %s."
-msgstr ""
-
-#: includes/handlers/class-handler-media.php:982
-#: includes/handlers/class-handler-media.php:1052
-msgid "Use update_custom_field with the key name to update any field."
-msgstr ""
-
-#: includes/handlers/class-handler-media.php:1053
-msgid "ACF not detected. Showing public post meta and registered meta fields."
+msgid "Assigned %1$d term(s) to \"%2$s\" in %3$s."
 msgstr ""
 
 #: includes/handlers/class-handler-media.php:1067
+#: includes/handlers/class-handler-media.php:1137
+msgid "Use update_custom_field with the key name to update any field."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1138
+msgid "ACF not detected. Showing public post meta and registered meta fields."
+msgstr ""
+
+#: includes/handlers/class-handler-media.php:1152
 msgid "post_id and key are required."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1086
-#, php-format
-msgid "Field '%s' expects an integer, got: %s"
-msgstr ""
-
-#: includes/handlers/class-handler-media.php:1092
-#, php-format
-msgid "Field '%s' expects a number, got: %s"
-msgstr ""
-
-#: includes/handlers/class-handler-media.php:1121
+#. translators: %s: custom field key
+#: includes/handlers/class-handler-media.php:1223
 #, php-format
 msgid "Failed to update field '%s'."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1252
+#: includes/handlers/class-handler-media.php:1357
 msgid "No form plugin detected. Common plugins: Contact Form 7, WPForms, Gravity Forms."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1261
+#: includes/handlers/class-handler-media.php:1366
 msgid "If forms are not sending emails, check smtp_configured. Most issues = no SMTP plugin."
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1304
+#: includes/handlers/class-handler-media.php:1409
 msgid "Set as featured image"
 msgstr ""
 
 #. translators: 1: post title, 2: post ID
-#: includes/handlers/class-handler-media.php:1307
+#: includes/handlers/class-handler-media.php:1412
 #, php-format
 msgid "\"%1$s\" (#%2$d)"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1338
+#: includes/handlers/class-handler-media.php:1443
 msgid "Delete Attachment"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1341
+#: includes/handlers/class-handler-media.php:1446
 msgid "Permanently deleted"
 msgstr ""
 
 #. translators: %d: number of additional items
-#: includes/handlers/class-handler-media.php:1363
+#: includes/handlers/class-handler-media.php:1468
 #, php-format
 msgid "+%d more"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1367
+#. translators: %d: number of media files in the bulk delete
+#: includes/handlers/class-handler-media.php:1474
 #, php-format
 msgid "Bulk Delete Media — %d files"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1371
+#: includes/handlers/class-handler-media.php:1480
 msgid "Files to Delete"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1373
+#. translators: %d: number of files that will be permanently deleted
+#: includes/handlers/class-handler-media.php:1484
 #, php-format
 msgid "%d files will be permanently deleted"
 msgstr ""
 
 #. translators: %s: moderation action (e.g. Approve, Spam)
-#: includes/handlers/class-handler-media.php:1393
+#: includes/handlers/class-handler-media.php:1506
 #, php-format
 msgid "%s Comments"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1394
+#. translators: %d: number of comments
+#: includes/handlers/class-handler-media.php:1509
 #, php-format
 msgid "%d comment(s)"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1409
+#: includes/handlers/class-handler-media.php:1526
 msgid "Reply to Comment"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1410
-#: includes/handlers/class-handler-woocommerce.php:4147
-#: includes/handlers/class-handler-woocommerce.php:4203
+#. translators: 1: comment author, 2: comment excerpt
+#: includes/handlers/class-handler-media.php:1530
+#: includes/handlers/class-handler-woocommerce.php:4241
+#: includes/handlers/class-handler-woocommerce.php:4302
 #, php-format
 msgid "By %1$s: \"%2$s\""
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1410
+#. translators: %d: comment ID
+#: includes/handlers/class-handler-media.php:1536
 #, php-format
 msgid "Comment #%d"
 msgstr ""
 
 #. translators: %s: operation (e.g. Create, Edit, Delete)
-#: includes/handlers/class-handler-media.php:1434
+#: includes/handlers/class-handler-media.php:1562
 #, php-format
 msgid "%s Term"
 msgstr ""
 
 #. translators: 1: term name, 2: taxonomy name
-#: includes/handlers/class-handler-media.php:1437
-#: includes/handlers/class-handler-woocommerce.php:4111
+#: includes/handlers/class-handler-media.php:1565
+#: includes/handlers/class-handler-woocommerce.php:4205
 msgid "Deleted"
 msgstr ""
 
 #. translators: 1: term name, 2: taxonomy name
-#: includes/handlers/class-handler-media.php:1437
+#: includes/handlers/class-handler-media.php:1565
 #, php-format
 msgid "%1$s in %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-media.php:1453
+#: includes/handlers/class-handler-media.php:1581
 msgid "Assign Terms"
 msgstr ""
 
@@ -3565,145 +3675,148 @@ msgstr ""
 msgid "focus keyword"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:122
+#. translators: 1: post title, 2: comma-separated list of updated SEO fields
+#: includes/handlers/class-handler-seo.php:124
 #, php-format
 msgid "\"%1$s\": updated %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:127
+#: includes/handlers/class-handler-seo.php:132
 msgid "No valid fixes to apply."
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:132
+#. translators: %d: number of pages updated
+#: includes/handlers/class-handler-seo.php:139
 #, php-format
 msgid "SEO fixed on %d pages:"
 msgstr ""
 
 #. translators: 1: meta key 2: post ID
-#: includes/handlers/class-handler-seo.php:166
+#: includes/handlers/class-handler-seo.php:175
 #, php-format
 msgid "Set %1$s on post #%2$d."
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:175
+#: includes/handlers/class-handler-seo.php:184
 msgid "No fixes could be applied."
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:180
+#: includes/handlers/class-handler-seo.php:189
 msgid "SEO fixes applied: "
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:185
+#: includes/handlers/class-handler-seo.php:194
 msgid "No fixes provided."
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:195
+#: includes/handlers/class-handler-seo.php:204
 msgid "You do not have permission to run security scans."
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:233
+#: includes/handlers/class-handler-seo.php:242
 msgid "You do not have permission to apply security fixes."
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:248
+#: includes/handlers/class-handler-seo.php:257
 msgid "No auto-fixable security issues are currently available."
 msgstr ""
 
 #. translators: %s: comma-separated fix IDs
-#: includes/handlers/class-handler-seo.php:251
+#: includes/handlers/class-handler-seo.php:260
 #, php-format
 msgid "Requested security fixes are not currently applicable. Available fixes: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:281
+#: includes/handlers/class-handler-seo.php:290
 msgid "SEO Auto-Fix"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:295
+#: includes/handlers/class-handler-seo.php:304
 msgid "OG Image"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:296
+#: includes/handlers/class-handler-seo.php:305
 msgid "Focus Keyword"
 msgstr ""
 
 #. translators: %s: post title
-#: includes/handlers/class-handler-seo.php:338
-#: includes/handlers/class-handler-seo.php:363
+#: includes/handlers/class-handler-seo.php:347
+#: includes/handlers/class-handler-seo.php:372
 #, php-format
 msgid "SEO Title — \"%s\""
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:340
+#: includes/handlers/class-handler-seo.php:349
 msgid "(will be auto-generated from page title)"
 msgstr ""
 
 #. translators: %s: post title
-#: includes/handlers/class-handler-seo.php:345
-#: includes/handlers/class-handler-seo.php:369
+#: includes/handlers/class-handler-seo.php:354
+#: includes/handlers/class-handler-seo.php:378
 #, php-format
 msgid "Meta Desc — \"%s\""
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:347
+#: includes/handlers/class-handler-seo.php:356
 msgid "(will be auto-generated from content)"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:365
-#: includes/handlers/class-handler-seo.php:371
+#: includes/handlers/class-handler-seo.php:374
+#: includes/handlers/class-handler-seo.php:380
 msgid "(will be refreshed for this post)"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:379
+#: includes/handlers/class-handler-seo.php:388
 msgid "SEO Fix"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:380
+#: includes/handlers/class-handler-seo.php:389
 msgid "Missing meta data detected"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:382
+#: includes/handlers/class-handler-seo.php:391
 msgid "Refresh SEO metadata for the scoped target only"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:383
+#: includes/handlers/class-handler-seo.php:392
 msgid "Auto-generate titles and descriptions for all pages without them"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:403
+#: includes/handlers/class-handler-seo.php:412
 msgid "Security Fixes"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:427
+#: includes/handlers/class-handler-seo.php:436
 msgid "Delete Exposed Files"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:428
+#. translators: %s: comma-separated list of exposed file names
+#: includes/handlers/class-handler-seo.php:438
 #, php-format
 msgid "%s — publicly accessible (reveals WP version)"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:429
+#: includes/handlers/class-handler-seo.php:439
 msgid "Files deleted — no longer accessible"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:443
+#: includes/handlers/class-handler-seo.php:453
 msgid "Disable XML-RPC"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:444
+#: includes/handlers/class-handler-seo.php:454
 msgid "XML-RPC enabled — common brute-force attack vector"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:445
+#: includes/handlers/class-handler-seo.php:455
 msgid "XML-RPC disabled via mu-plugin filter"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:451
+#: includes/handlers/class-handler-seo.php:461
 msgid "Security"
 msgstr ""
 
-#: includes/handlers/class-handler-seo.php:453
+#: includes/handlers/class-handler-seo.php:463
 msgid "No auto-fixable issues found — all clear!"
 msgstr ""
 
@@ -3711,661 +3824,710 @@ msgstr ""
 msgid "You do not have permission to view site settings."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:78
+#. translators: %s: requested settings section key.
+#: includes/handlers/class-handler-system.php:79
 #, php-format
 msgid "Section \"%s\" not found."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:86
+#. translators: 1: number of registered settings, 2: number of settings groups.
+#: includes/handlers/class-handler-system.php:88
 #, php-format
-msgid "Found %d registered settings across %d groups."
+msgid "Found %1$d registered settings across %2$d groups."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:89
+#: includes/handlers/class-handler-system.php:91
 msgid "These are Settings-API-registered options. Use keys param to read specific values."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:108
+#: includes/handlers/class-handler-system.php:110
 msgid "Site settings retrieved."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:118
+#: includes/handlers/class-handler-system.php:120
 msgid "You do not have permission to update site settings."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:123
+#: includes/handlers/class-handler-system.php:125
 msgid "No settings changes specified."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:145
+#: includes/handlers/class-handler-system.php:147
 msgid "No valid settings to update."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:155
-#: includes/handlers/class-handler-system.php:177
+#: includes/handlers/class-handler-system.php:157
+#: includes/handlers/class-handler-system.php:179
 msgid "Permalink structure updated and rewrite rules flushed. All URLs are now active."
 msgstr ""
 
 #. translators: %s: list of updated settings
-#: includes/handlers/class-handler-system.php:170
+#: includes/handlers/class-handler-system.php:172
 #, php-format
 msgid "Updated settings: %s."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:209
+#: includes/handlers/class-handler-system.php:211
 msgid "Menu not found."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:250
+#. translators: 1: menu name, 2: number of menu items.
+#: includes/handlers/class-handler-system.php:253
 #, php-format
-msgid "Menu \"%s\" has %d items."
+msgid "Menu \"%1$s\" has %2$d items."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:284
+#. translators: %d: number of menus found.
+#: includes/handlers/class-handler-system.php:288
 #, php-format
 msgid "Found %d menu(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:302
+#: includes/handlers/class-handler-system.php:306
 msgid "FSE navigation not found."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:315
+#. translators: 1: navigation menu title, 2: number of navigation items.
+#: includes/handlers/class-handler-system.php:320
 #, php-format
-msgid "Navigation \"%s\" has %d items."
+msgid "Navigation \"%1$s\" has %2$d items."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:315
+#. translators: 1: navigation menu title, 2: number of navigation items.
+#: includes/handlers/class-handler-system.php:320
 msgid "(untitled)"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:318
-#: includes/handlers/class-handler-system.php:347
+#: includes/handlers/class-handler-system.php:323
+#: includes/handlers/class-handler-system.php:352
 msgid "(untitled navigation)"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:360
+#: includes/handlers/class-handler-system.php:365
 msgid "This site uses block-based navigation (FSE theme). Navigation is stored as wp_navigation posts containing blocks. Use update_menu with a navigation post ID to modify."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:361
+#. translators: %d: number of FSE navigation menus found.
+#: includes/handlers/class-handler-system.php:367
 #, php-format
 msgid "Found %d FSE navigation menu(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:381
+#: includes/handlers/class-handler-system.php:387
 msgid "(Auto-generated page list)"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:382
+#: includes/handlers/class-handler-system.php:388
 msgid "This item automatically shows all published pages."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:400
+#: includes/handlers/class-handler-system.php:406
 msgid "You do not have permission to manage menus."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:419
+#: includes/handlers/class-handler-system.php:425
 msgid "Menu name is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:428
+#. translators: 1: menu name, 2: created menu ID.
+#: includes/handlers/class-handler-system.php:435
 #, php-format
-msgid "Created menu \"%s\" (ID: %d)."
+msgid "Created menu \"%1$s\" (ID: %2$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:434
-#: includes/handlers/class-handler-system.php:479
-#: includes/handlers/class-handler-system.php:492
-#: includes/handlers/class-handler-system.php:506
+#: includes/handlers/class-handler-system.php:441
+#: includes/handlers/class-handler-system.php:488
+#: includes/handlers/class-handler-system.php:502
+#: includes/handlers/class-handler-system.php:517
 msgid "Menu ID is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:463
+#. translators: 1: menu item title, 2: created menu item ID.
+#: includes/handlers/class-handler-system.php:471
 #, php-format
-msgid "Added item \"%s\" to menu (item ID: %d)."
+msgid "Added item \"%1$s\" to menu (item ID: %2$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:469
+#: includes/handlers/class-handler-system.php:477
 msgid "Item ID is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:473
+#: includes/handlers/class-handler-system.php:481
 msgid "Failed to remove menu item."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:475
+#. translators: %d: removed menu item ID.
+#: includes/handlers/class-handler-system.php:484
 #, php-format
 msgid "Removed menu item #%d."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:483
+#: includes/handlers/class-handler-system.php:492
 msgid "Location slug is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:488
+#. translators: 1: assigned menu ID, 2: menu location slug.
+#: includes/handlers/class-handler-system.php:498
 #, php-format
-msgid "Assigned menu #%d to location \"%s\"."
+msgid "Assigned menu #%1$d to location \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:496
-#: includes/handlers/class-handler-system.php:586
+#: includes/handlers/class-handler-system.php:506
+#: includes/handlers/class-handler-system.php:599
 msgid "New name is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:502
+#. translators: %s: new menu name.
+#: includes/handlers/class-handler-system.php:513
 #, php-format
 msgid "Renamed menu to \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:512
+#. translators: %d: deleted menu ID.
+#: includes/handlers/class-handler-system.php:524
 #, php-format
 msgid "Deleted menu #%d."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:515
+#. translators: %s: requested menu operation name.
+#: includes/handlers/class-handler-system.php:528
 #, php-format
 msgid "Unknown menu operation: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:535
+#: includes/handlers/class-handler-system.php:548
 msgid "label and url are required to add a navigation item."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:570
+#: includes/handlers/class-handler-system.php:583
 msgid "label or item_id is required to remove a navigation item."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:598
+#. translators: %s: new FSE navigation title.
+#: includes/handlers/class-handler-system.php:612
 #, php-format
 msgid "Renamed FSE navigation to \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:619
+#: includes/handlers/class-handler-system.php:633
 msgid "FSE navigation updated successfully."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:632
+#. translators: %d: number of logged emails.
+#: includes/handlers/class-handler-system.php:647
 #, php-format
 msgid "%d emails in log."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:710
+#. translators: 1: matched user count, 2: total users on the site.
+#: includes/handlers/class-handler-system.php:726
 #, php-format
 msgid "%1$d users found. %2$d total on site."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:719
+#. translators: %d: number of users without an assigned role.
+#: includes/handlers/class-handler-system.php:736
 #, php-format
 msgid "%d user(s) with no role assigned — possible orphaned accounts."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:739
-#: includes/handlers/class-handler-system.php:796
+#: includes/handlers/class-handler-system.php:756
+#: includes/handlers/class-handler-system.php:814
 msgid "User not found."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:787
+#. translators: %s: user display name.
+#: includes/handlers/class-handler-system.php:805
 #, php-format
 msgid "User profile for \"%s\""
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:801
+#: includes/handlers/class-handler-system.php:819
 msgid "You do not have permission to edit this user."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:805
+#: includes/handlers/class-handler-system.php:823
 msgid "Cannot change your own admin role for safety."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:813
+#: includes/handlers/class-handler-system.php:831
 msgid "display name"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:817
+#: includes/handlers/class-handler-system.php:835
 msgid "first name"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:821
+#: includes/handlers/class-handler-system.php:839
 msgid "last name"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:825
+#: includes/handlers/class-handler-system.php:843
 msgid "bio"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:829
+#: includes/handlers/class-handler-system.php:847
 msgid "website"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:833
+#: includes/handlers/class-handler-system.php:851
 msgid "You do not have permission to change user roles."
 msgstr ""
 
 #. translators: 1: role slug, 2: list of available roles
-#: includes/handlers/class-handler-system.php:846
+#: includes/handlers/class-handler-system.php:864
 #, php-format
 msgid "Role \"%1$s\" does not exist. Available roles: %2$s"
 msgstr ""
 
 #. translators: %s: role slug
-#: includes/handlers/class-handler-system.php:856
+#: includes/handlers/class-handler-system.php:874
 #, php-format
 msgid "You don't have permission to assign the \"%s\" role."
 msgstr ""
 
 #. translators: %s: role name
-#: includes/handlers/class-handler-system.php:864
+#: includes/handlers/class-handler-system.php:882
 #, php-format
 msgid "role → %s"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:894
+#. translators: 1: user display name, 2: comma-separated list of updated fields.
+#: includes/handlers/class-handler-system.php:913
 #, php-format
 msgid "Updated user \"%1$s\": %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:988
+#. translators: %d: number of critical site health issues.
+#: includes/handlers/class-handler-system.php:1009
 #, php-format
 msgid "%d critical issue(s) need attention."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:990
+#. translators: %d: number of recommended improvements.
+#: includes/handlers/class-handler-system.php:1015
 #, php-format
 msgid "No critical issues. %d improvements recommended."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:991
+#: includes/handlers/class-handler-system.php:1018
 msgid "All site health checks passed."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1051
+#: includes/handlers/class-handler-system.php:1078
 msgid "system_info contains server config, plugin versions, disk usage, PHP limits, and more."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1068
+#: includes/handlers/class-handler-system.php:1095
 msgid "No scheduled tasks found."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1082
+#: includes/handlers/class-handler-system.php:1109
 msgid "One-time"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1090
+#. translators: %s: human-readable time interval until the next scheduled run.
+#: includes/handlers/class-handler-system.php:1119
 #, php-format
 msgid "%s from now"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1091
+#. translators: %s: human-readable time interval since the missed scheduled run.
+#: includes/handlers/class-handler-system.php:1124
 #, php-format
 msgid "%s ago (overdue)"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1115
+#. translators: 1: number of scheduled tasks, 2: number of overdue tasks.
+#: includes/handlers/class-handler-system.php:1152
 #, php-format
 msgid "%1$d scheduled tasks. %2$d overdue."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1116
+#. translators: %d: number of scheduled tasks.
+#: includes/handlers/class-handler-system.php:1158
 #, php-format
 msgid "%d scheduled tasks. All on schedule."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1139
+#: includes/handlers/class-handler-system.php:1183
 msgid "DISABLE_WP_CRON is true — WordPress cron requires a system-level cron job (crontab) to run."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1142
+#: includes/handlers/class-handler-system.php:1186
 msgid "Cron lock is stuck. WP-Cron is locked but the process appears to have died. Run wp_unschedule_hook to clear specific stuck hooks."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1145
+#: includes/handlers/class-handler-system.php:1189
 msgid "ALTERNATE_WP_CRON is enabled — cron runs on redirect instead of background HTTP request."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1158
+#: includes/handlers/class-handler-system.php:1202
 msgid "Hook name is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1163
+#. translators: %s: scheduled task hook name.
+#: includes/handlers/class-handler-system.php:1208
 #, php-format
 msgid "Executed scheduled task \"%s\" immediately."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1173
+#. translators: %s: unscheduled task hook name.
+#: includes/handlers/class-handler-system.php:1219
 #, php-format
 msgid "Unscheduled task \"%s\"."
 msgstr ""
 
 #. translators: 1: number of cleared instances, 2: hook name
-#: includes/handlers/class-handler-system.php:1182
+#: includes/handlers/class-handler-system.php:1228
 #, php-format
 msgid "Cleared %1$d scheduled instance(s) of \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1189
+#: includes/handlers/class-handler-system.php:1235
 msgid "Invalid action. Use \"run\", \"remove\", or \"remove_all\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1193
+#. translators: %d: number of seconds.
+#: includes/handlers/class-handler-system.php:1241
 #, php-format
 msgid "%d seconds"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1194
+#. translators: %d: number of minutes.
+#: includes/handlers/class-handler-system.php:1245
 #, php-format
 msgid "%d minutes"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1195
+#. translators: %s: number of hours, possibly with one decimal place.
+#: includes/handlers/class-handler-system.php:1249
 #, php-format
 msgid "%s hours"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1196
+#. translators: %s: number of days, possibly with one decimal place.
+#: includes/handlers/class-handler-system.php:1252
 #, php-format
 msgid "%s days"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1212
+#. translators: 1: total plugins, 2: active plugins, 3: inactive plugins, 4: plugins with updates available.
+#: includes/handlers/class-handler-system.php:1270
 #, php-format
 msgid "%1$d plugins installed (%2$d active, %3$d inactive, %4$d updates available)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1213
+#. translators: 1: total plugins, 2: active plugins, 3: inactive plugins.
+#: includes/handlers/class-handler-system.php:1278
 #, php-format
 msgid "%1$d plugins installed (%2$d active, %3$d inactive)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1224
+#: includes/handlers/class-handler-system.php:1293
 msgid "Plugin file path is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1231
+#: includes/handlers/class-handler-system.php:1300
 msgid "PressArk cannot deactivate itself. Deactivate it from the Plugins page."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1258
+#. translators: 1: total installed themes, 2: active theme name.
+#: includes/handlers/class-handler-system.php:1328
 #, php-format
 msgid "%1$d themes installed. Active: \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1305
+#: includes/handlers/class-handler-system.php:1375
 msgid "Site Editor (not Customizer)"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1310
+#: includes/handlers/class-handler-system.php:1380
 msgid "This is a block theme. Settings are managed via the Site Editor, not the Customizer. Use the Site Editor for design changes."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1312
+#. translators: 1: number of theme colors, 2: number of theme font sizes.
+#: includes/handlers/class-handler-system.php:1383
 #, php-format
 msgid "Block theme detected. %1$d colors, %2$d font sizes. Use Site Editor for customization."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1342
+#. translators: %d: number of theme customizer settings.
+#: includes/handlers/class-handler-system.php:1414
 #, php-format
 msgid "%d theme customizer settings."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1355
+#: includes/handlers/class-handler-system.php:1427
 msgid "This is a block theme. Use get_theme_settings to see design settings via the Site Editor."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1415
+#: includes/handlers/class-handler-system.php:1487
 msgid "General"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1425
+#: includes/handlers/class-handler-system.php:1497
 msgid "Use update_theme_setting with the setting id to change any value."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1436
+#. translators: %s: Customizer schema load error message.
+#: includes/handlers/class-handler-system.php:1509
 #, php-format
 msgid "Could not load Customizer schema: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1437
+#: includes/handlers/class-handler-system.php:1510
 msgid "Use get_theme_settings to see current theme_mods values."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1448
+#: includes/handlers/class-handler-system.php:1521
 msgid "Setting name is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1461
+#. translators: %s: updated theme setting key.
+#: includes/handlers/class-handler-system.php:1535
 #, php-format
 msgid "Updated theme setting \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1472
+#: includes/handlers/class-handler-system.php:1546
 msgid "Theme slug is required."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1545
+#. translators: %d: configured post revision limit.
+#: includes/handlers/class-handler-system.php:1620
 #, php-format
 msgid "Revision limit is %d. AI checkpoints may be pruned quickly — consider increasing WP_POST_REVISIONS."
 msgstr ""
 
 #. translators: 1: total size in MB, 2: table count, 3: revisions, 4: auto-drafts, 5: trashed, 6: spam comments, 7: expired transients
-#: includes/handlers/class-handler-system.php:1554
+#: includes/handlers/class-handler-system.php:1629
 #, php-format
 msgid "Database: %1$s MB total, %2$d tables. Cleanup candidates: %3$d revisions, %4$d auto-drafts, %5$d trashed, %6$d spam comments, %7$d expired transients."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1600
+#. translators: %d: number of revisions deleted in this batch.
+#: includes/handlers/class-handler-system.php:1677
 #, php-format
 msgid "Deleted %d (batched to 500 max). Run again for more."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1601
+#: includes/handlers/class-handler-system.php:1680
 msgid "All revisions deleted."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1643
-#: includes/handlers/class-handler-system.php:1666
+#: includes/handlers/class-handler-system.php:1722
+#: includes/handlers/class-handler-system.php:1746
 msgid "Query returned false"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1659
+#. translators: %d: number of expired transients deleted.
+#: includes/handlers/class-handler-system.php:1739
 #, php-format
 msgid "%d expired transients deleted."
 msgstr ""
 
 #. translators: 1: cleanup item name, 2: error message
-#: includes/handlers/class-handler-system.php:1678
+#: includes/handlers/class-handler-system.php:1758
 #, php-format
 msgid "%1$s: ERROR — %2$s"
 msgstr ""
 
 #. translators: 1: number deleted, 2: item type name
-#: includes/handlers/class-handler-system.php:1685
+#: includes/handlers/class-handler-system.php:1765
 #, php-format
 msgid "%1$d %2$s"
 msgstr ""
 
 #. translators: 1: number deleted, 2: item type name
-#: includes/handlers/class-handler-system.php:1685
+#: includes/handlers/class-handler-system.php:1765
 msgid "items"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1695
+#. translators: %s: comma-separated summary of database cleanup actions.
+#: includes/handlers/class-handler-system.php:1776
 #, php-format
 msgid "Database cleaned: %s."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1737
+#. translators: %s: reclaimable database size in kilobytes.
+#: includes/handlers/class-handler-system.php:1819
 #, php-format
 msgid "%sKB reclaimable"
 msgstr ""
 
 #. translators: 1: total tables, 2: MyISAM count, 3: InnoDB count
-#: includes/handlers/class-handler-system.php:1748
+#: includes/handlers/class-handler-system.php:1830
 #, php-format
 msgid "Processed %1$d tables (%2$d MyISAM optimized, %3$d InnoDB analyzed)."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1762
+#: includes/handlers/class-handler-system.php:1844
 msgid "Site profile not yet generated. Generating now..."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1766
+#. translators: %s: site profile generation timestamp.
+#: includes/handlers/class-handler-system.php:1849
 #, php-format
 msgid "Site profile generated on %s"
 msgstr ""
 
 #. translators: 1: detected industry, 2: tone, 3: number of pages
-#: includes/handlers/class-handler-system.php:1778
+#: includes/handlers/class-handler-system.php:1861
 #, php-format
 msgid "Site profile regenerated. Detected industry: %1$s, tone: %2$s, %3$d pages analyzed."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1793
+#. translators: %d: number of log files found.
+#: includes/handlers/class-handler-system.php:1877
 #, php-format
 msgid "%d log files found."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1815
+#: includes/handlers/class-handler-system.php:1899
 msgid "Only debug.log can be cleared through PressArk for safety."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1819
+#: includes/handlers/class-handler-system.php:1903
 msgid "debug.log does not exist."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1829
+#: includes/handlers/class-handler-system.php:1913
 msgid "debug.log cleared."
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1863
+#: includes/handlers/class-handler-system.php:1947
 msgid "Menu:"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1863
+#: includes/handlers/class-handler-system.php:1947
 msgid "New Menu"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1896
+#: includes/handlers/class-handler-system.php:1980
 msgid "User"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1910
+#: includes/handlers/class-handler-system.php:1994
 msgid "Scheduled Task"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1911
-#: includes/handlers/class-handler-woocommerce.php:514
+#: includes/handlers/class-handler-system.php:1995
+#: includes/handlers/class-handler-woocommerce.php:522
 msgid "unknown"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1912
+#: includes/handlers/class-handler-system.php:1996
 msgid "Execute immediately"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1912
+#: includes/handlers/class-handler-system.php:1996
 msgid "Remove from schedule"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1927
+#: includes/handlers/class-handler-system.php:2011
 msgid "Plugin"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1929
+#: includes/handlers/class-handler-system.php:2013
 msgid "Activate"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1929
+#: includes/handlers/class-handler-system.php:2013
 msgid "Deactivate"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1944
+#. translators: %s: theme setting key.
+#: includes/handlers/class-handler-system.php:2029
 #, php-format
 msgid "Theme Setting: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1960
+#: includes/handlers/class-handler-system.php:2045
 msgid "Switch Theme"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1980
+#: includes/handlers/class-handler-system.php:2065
 msgid "Post Revisions"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1980
+#: includes/handlers/class-handler-system.php:2065
 msgid "revisions"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1981
+#: includes/handlers/class-handler-system.php:2066
 msgid "Auto-Drafts"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1981
+#: includes/handlers/class-handler-system.php:2066
 msgid "auto-drafts"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1982
+#: includes/handlers/class-handler-system.php:2067
 msgid "Trashed Posts"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1982
+#: includes/handlers/class-handler-system.php:2067
 msgid "trashed posts"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1983
+#: includes/handlers/class-handler-system.php:2068
 msgid "Spam Comments"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1983
+#: includes/handlers/class-handler-system.php:2068
 msgid "spam comments"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1985
+#: includes/handlers/class-handler-system.php:2070
 msgid "Expired Transients"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1987
+#: includes/handlers/class-handler-system.php:2072
 msgid "expired transients"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1990
+#: includes/handlers/class-handler-system.php:2075
 msgid "Orphaned Post Meta"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:1990
+#: includes/handlers/class-handler-system.php:2075
 msgid "orphaned meta rows"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2003
+#. translators: 1: number of found items, 2: item label such as revisions or transients.
+#: includes/handlers/class-handler-system.php:2090
 #, php-format
 msgid "%1$d %2$s found"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2004
+#. translators: %s: item label such as revisions or transients.
+#: includes/handlers/class-handler-system.php:2096
 #, php-format
 msgid "0 %s"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2005
+#: includes/handlers/class-handler-system.php:2099
 msgid "Will be deleted"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2005
+#: includes/handlers/class-handler-system.php:2099
 msgid "Nothing to clean"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2009
+#: includes/handlers/class-handler-system.php:2103
 msgid "Database Cleanup"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2018
+#: includes/handlers/class-handler-system.php:2112
 msgid "Optimize Database"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2018
+#: includes/handlers/class-handler-system.php:2112
 msgid "All tables"
 msgstr ""
 
-#: includes/handlers/class-handler-system.php:2018
+#: includes/handlers/class-handler-system.php:2112
 msgid "OPTIMIZE TABLE on all tables"
 msgstr ""
 
@@ -4385,783 +4547,852 @@ msgstr ""
 msgid "Missing product_id."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:84
+#. translators: %d: WooCommerce product ID.
+#: includes/handlers/class-handler-woocommerce.php:85
 #, php-format
 msgid "Product #%d not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:171
+#. translators: 1: product name, 2: product ID.
+#: includes/handlers/class-handler-woocommerce.php:173
 #, php-format
-msgid "Product \"%s\" (#%d)."
+msgid "Product \"%1$s\" (#%2$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:185
+#: includes/handlers/class-handler-woocommerce.php:187
 msgid "Invalid product ID."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:189
+#: includes/handlers/class-handler-woocommerce.php:191
 msgid "You do not have permission to edit this product."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:194
-#: includes/handlers/class-handler-woocommerce.php:2580
+#: includes/handlers/class-handler-woocommerce.php:196
+#: includes/handlers/class-handler-woocommerce.php:2624
 msgid "Product not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:257
-#: includes/handlers/class-handler-woocommerce.php:2631
+#. translators: 1: field key, 2: WooCommerce error message.
+#: includes/handlers/class-handler-woocommerce.php:260
+#: includes/handlers/class-handler-woocommerce.php:2677
 #, php-format
-msgid "Error setting %s: %s"
+msgid "Error setting %1$s: %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:345
+#: includes/handlers/class-handler-woocommerce.php:348
 msgid "No product changes specified."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:346
+#: includes/handlers/class-handler-woocommerce.php:349
 msgid "Available fields: name, regular_price, sale_price, price_delta, price_adjust_pct, sale_from, sale_to, sku, stock_quantity, stock_adjust, stock_status, manage_stock, description, short_description, weight, length, width, height, tax_status, tax_class, featured, virtual, downloadable, category_ids, tag_ids, image_id, gallery_image_ids, and more."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:359
+#. translators: %s: WooCommerce save error message.
+#: includes/handlers/class-handler-woocommerce.php:363
 #, php-format
 msgid "Product save failed: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:360
+#: includes/handlers/class-handler-woocommerce.php:364
 msgid "A WooCommerce extension blocked the save. Check if Subscriptions, Memberships, or another plugin is throwing errors."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:382
+#. translators: %s: comma-separated list of updated product fields.
+#: includes/handlers/class-handler-woocommerce.php:387
 #, php-format
 msgid "Product updated: %s."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:397
+#: includes/handlers/class-handler-woocommerce.php:402
 msgid "Insufficient permissions to create products."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:412
+#. translators: %s: requested WooCommerce product type slug.
+#: includes/handlers/class-handler-woocommerce.php:418
 #, php-format
 msgid "Invalid product type '%s'."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:425
+#: includes/handlers/class-handler-woocommerce.php:431
 msgid "Failed to create product."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:438
+#. translators: %s: product field update error summary.
+#: includes/handlers/class-handler-woocommerce.php:445
 #, php-format
 msgid "Product created but some fields failed: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:451
+#. translators: 1: product type, 2: product name, 3: product ID, 4: product status.
+#: includes/handlers/class-handler-woocommerce.php:459
 #, php-format
 msgid "Created %1$s product \"%2$s\" (ID: %3$d) as %4$s."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:470
-#: includes/handlers/class-handler-woocommerce.php:479
+#: includes/handlers/class-handler-woocommerce.php:478
+#: includes/handlers/class-handler-woocommerce.php:487
 msgid "No products to update."
 msgstr ""
 
 #. translators: 1: max batch size 2: actual count sent
-#: includes/handlers/class-handler-woocommerce.php:490
+#: includes/handlers/class-handler-woocommerce.php:498
 #, php-format
 msgid "Bulk edit limited to %1$d products per request. You sent %2$d. Break into smaller batches."
 msgstr ""
 
 #. translators: 1: product ID 2: product name 3: error message
-#: includes/handlers/class-handler-woocommerce.php:512
+#: includes/handlers/class-handler-woocommerce.php:520
 #, php-format
 msgid "#%1$d (%2$s): %3$s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:515
-#: includes/handlers/class-handler-woocommerce.php:2421
+#: includes/handlers/class-handler-woocommerce.php:523
+#: includes/handlers/class-handler-woocommerce.php:2463
 msgid "Unknown error"
 msgstr ""
 
-#. translators: 1: product ID 2: exception message
-#: includes/handlers/class-handler-woocommerce.php:522
+#. translators: 1: product ID, 2: exception message.
+#: includes/handlers/class-handler-woocommerce.php:530
 #, php-format
-msgid "#%d: Exception — %s"
+msgid "#%1$d: Exception — %2$s"
 msgstr ""
 
 #. translators: 1: updated count 2: error count
-#: includes/handlers/class-handler-woocommerce.php:539
+#: includes/handlers/class-handler-woocommerce.php:547
 #, php-format
 msgid "Bulk update: %1$d product(s) updated, %2$d error(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:596
+#: includes/handlers/class-handler-woocommerce.php:604
 msgid "No valid products were supplied for bulk update."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:604
+#: includes/handlers/class-handler-woocommerce.php:612
 msgid "Provide either a products array or a scope such as \"all\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:613
+#: includes/handlers/class-handler-woocommerce.php:621
 msgid "No bulk product changes were specified."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:620
+#: includes/handlers/class-handler-woocommerce.php:628
 msgid "Supported product bulk scopes are \"all\" and \"matching\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:657
+#: includes/handlers/class-handler-woocommerce.php:665
 msgid "No matching products found for this bulk update."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:813
+#. translators: %d: number of products with sale price greater than or equal to regular price.
+#: includes/handlers/class-handler-woocommerce.php:822
 #, php-format
 msgid "%d product(s) have sale price >= regular price."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:816
+#. translators: %d: number of products with expired scheduled sales still active.
+#: includes/handlers/class-handler-woocommerce.php:826
 #, php-format
 msgid "%d product(s) have expired scheduled sales still active."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:819
+#. translators: %d: number of variable products without any variations.
+#: includes/handlers/class-handler-woocommerce.php:830
 #, php-format
 msgid "%d variable product(s) have no variations — they cannot be purchased."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:822
+#. translators: %d: number of duplicate product SKUs found.
+#: includes/handlers/class-handler-woocommerce.php:834
 #, php-format
 msgid "%d duplicate SKU(s) found — may cause order processing issues."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:825
+#. translators: %d: number of products with lookup table price mismatches.
+#: includes/handlers/class-handler-woocommerce.php:838
 #, php-format
 msgid "%d product(s) have price mismatch between postmeta and lookup table. Run WooCommerce → Status → Tools → Update product lookup tables."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:839
+#: includes/handlers/class-handler-woocommerce.php:852
 msgid "Run WooCommerce → Status → Tools → Update product lookup tables"
 msgstr ""
 
 #. translators: 1: total products 2: total issues 3: issue category count
-#: includes/handlers/class-handler-woocommerce.php:858
+#: includes/handlers/class-handler-woocommerce.php:871
 #, php-format
 msgid "Analyzed %1$d products, found %2$d issues across %3$d categories."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:985
+#. translators: %d: number of WooCommerce orders found.
+#: includes/handlers/class-handler-woocommerce.php:999
 #, php-format
 msgid "Found %d order(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1006
-#: includes/handlers/class-handler-woocommerce.php:1141
+#: includes/handlers/class-handler-woocommerce.php:1020
+#: includes/handlers/class-handler-woocommerce.php:1156
 msgid "Order ID is required."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1011
-#: includes/handlers/class-handler-woocommerce.php:1146
-#: includes/handlers/class-handler-woocommerce.php:2827
+#: includes/handlers/class-handler-woocommerce.php:1025
+#: includes/handlers/class-handler-woocommerce.php:1161
+#: includes/handlers/class-handler-woocommerce.php:2875
 msgid "Order not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1122
+#. translators: %s: WooCommerce order number.
+#: includes/handlers/class-handler-woocommerce.php:1137
 #, php-format
 msgid "Order #%s details."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1136
+#: includes/handlers/class-handler-woocommerce.php:1151
 msgid "You do not have permission to edit orders."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1161
+#. translators: 1: requested order status, 2: comma-separated list of valid order statuses.
+#: includes/handlers/class-handler-woocommerce.php:1177
 #, php-format
-msgid "Invalid order status: %s. Valid statuses: %s"
+msgid "Invalid order status: %1$s. Valid statuses: %2$s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1166
+#. translators: 1: previous order status, 2: new order status.
+#: includes/handlers/class-handler-woocommerce.php:1183
 #, php-format
-msgid "status: %s → %s"
-msgstr ""
-
-#: includes/handlers/class-handler-woocommerce.php:1172
-msgid "note added"
+msgid "status: %1$s → %2$s"
 msgstr ""
 
 #: includes/handlers/class-handler-woocommerce.php:1189
-#, php-format
-msgid "Updated order #%s: %s."
+msgid "note added"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1202
+#. translators: 1: WooCommerce order number, 2: comma-separated list of applied changes.
+#: includes/handlers/class-handler-woocommerce.php:1207
+#, php-format
+msgid "Updated order #%1$s: %2$s."
+msgstr ""
+
+#: includes/handlers/class-handler-woocommerce.php:1220
 msgid "You do not have permission to manage coupons."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1216
+#: includes/handlers/class-handler-woocommerce.php:1234
 msgid "Provide coupon_id or code."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1221
-#: includes/handlers/class-handler-woocommerce.php:1318
-#: includes/handlers/class-handler-woocommerce.php:1355
+#: includes/handlers/class-handler-woocommerce.php:1239
+#: includes/handlers/class-handler-woocommerce.php:1337
+#: includes/handlers/class-handler-woocommerce.php:1375
 msgid "Coupon not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1281
+#: includes/handlers/class-handler-woocommerce.php:1299
 msgid "Coupon code is required."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1308
+#. translators: 1: coupon code, 2: coupon ID.
+#: includes/handlers/class-handler-woocommerce.php:1327
 #, php-format
-msgid "Created coupon \"%s\" (ID: %d)."
+msgid "Created coupon \"%1$s\" (ID: %2$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1314
-#: includes/handlers/class-handler-woocommerce.php:1351
+#: includes/handlers/class-handler-woocommerce.php:1333
+#: includes/handlers/class-handler-woocommerce.php:1371
 msgid "Coupon ID is required."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1345
+#. translators: %s: coupon code.
+#: includes/handlers/class-handler-woocommerce.php:1365
 #, php-format
 msgid "Updated coupon \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1361
+#. translators: %s: deleted coupon code.
+#: includes/handlers/class-handler-woocommerce.php:1382
 #, php-format
 msgid "Deleted coupon \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1365
+#. translators: %s: requested coupon operation name.
+#: includes/handlers/class-handler-woocommerce.php:1387
 #, php-format
 msgid "Unknown coupon operation: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1470
+#. translators: 1: out-of-stock count, 2: low-stock count, 3: low-stock threshold.
+#: includes/handlers/class-handler-woocommerce.php:1493
 #, php-format
-msgid "%d out of stock, %d low stock (threshold: %d)."
+msgid "%1$d out of stock, %2$d low stock (threshold: %3$d)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1573
-#: includes/handlers/class-handler-woocommerce.php:1682
+#: includes/handlers/class-handler-woocommerce.php:1596
+#: includes/handlers/class-handler-woocommerce.php:1705
 msgid "You do not have permission to view customer data."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1688
-#: includes/handlers/class-handler-woocommerce.php:1764
+#: includes/handlers/class-handler-woocommerce.php:1711
+#: includes/handlers/class-handler-woocommerce.php:1788
 msgid "Customer not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1718
+#. translators: %s: customer full name.
+#: includes/handlers/class-handler-woocommerce.php:1742
 #, php-format
 msgid "Customer profile for \"%s\""
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1769
+#: includes/handlers/class-handler-woocommerce.php:1793
 msgid "Customer has no email address."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1776
+#: includes/handlers/class-handler-woocommerce.php:1800
 msgid "Subject and body are required."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1784
+#. translators: %d: customer ID.
+#: includes/handlers/class-handler-woocommerce.php:1809
 #, php-format
 msgid "Email to customer #%d was already sent on a previous attempt (skipped to prevent duplicate)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1817
+#. translators: 1: customer name, 2: email address, 3: email subject.
+#: includes/handlers/class-handler-woocommerce.php:1843
 #, php-format
 msgid "Email sent to %1$s (%2$s): \"%3$s\""
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1820
+#: includes/handlers/class-handler-woocommerce.php:1846
 msgid "Failed to send email. Check SMTP configuration."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1849
+#. translators: %d: number of configured shipping zones.
+#: includes/handlers/class-handler-woocommerce.php:1876
 #, php-format
 msgid "%d shipping zones configured."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1906
+#. translators: %d: number of configured tax rates.
+#: includes/handlers/class-handler-woocommerce.php:1936
 #, php-format
 msgid "Tax is enabled with %d rate(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1906
+#: includes/handlers/class-handler-woocommerce.php:1939
 msgid "Tax calculation is disabled."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1953
+#. translators: %s: payment gateway title.
+#: includes/handlers/class-handler-woocommerce.php:1987
 #, php-format
 msgid "Gateway '%s' is enabled but not available — check currency, country, or SSL requirements."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:1956
+#. translators: %s: payment gateway title.
+#: includes/handlers/class-handler-woocommerce.php:1991
 #, php-format
 msgid "Gateway '%s' is in TEST MODE — customers cannot make real payments."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2032
+#: includes/handlers/class-handler-woocommerce.php:2067
 msgid "Available sections: general, products, accounts"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2037
+#. translators: %s: WooCommerce settings section slug.
+#: includes/handlers/class-handler-woocommerce.php:2073
 #, php-format
 msgid "WooCommerce %s settings retrieved."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2074
+#. translators: 1: total email notification count, 2: enabled email notification count.
+#: includes/handlers/class-handler-woocommerce.php:2111
 #, php-format
 msgid "%1$d email notifications (%2$d enabled)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2103
+#: includes/handlers/class-handler-woocommerce.php:2140
 msgid "Could not load full system status."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2139
+#: includes/handlers/class-handler-woocommerce.php:2176
 msgid "WooCommerce database update required — go to WooCommerce → Status → Tools → Update Database."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2142
+#. translators: %d: number of outdated WooCommerce template overrides.
+#: includes/handlers/class-handler-woocommerce.php:2180
 #, php-format
 msgid "%d outdated WC template override(s) — may cause frontend display bugs after WC update."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2145
+#: includes/handlers/class-handler-woocommerce.php:2183
 msgid "Store is not using HTTPS — payment security risk."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2148
+#: includes/handlers/class-handler-woocommerce.php:2186
 msgid "WordPress memory limit is 64MB — may cause issues with large stores. Recommend 256MB+."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2254
+#. translators: %d: number of product reviews found.
+#: includes/handlers/class-handler-woocommerce.php:2293
 #, php-format
 msgid "%d product reviews found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2301
+#: includes/handlers/class-handler-woocommerce.php:2340
 msgid "Review not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2309
+#. translators: %s: review author name.
+#: includes/handlers/class-handler-woocommerce.php:2349
 #, php-format
 msgid "Review by \"%s\" approved."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2312
+#. translators: %s: review author name.
+#: includes/handlers/class-handler-woocommerce.php:2353
 #, php-format
 msgid "Review by \"%s\" held for moderation."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2315
+#: includes/handlers/class-handler-woocommerce.php:2356
 msgid "Review marked as spam."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2318
+#: includes/handlers/class-handler-woocommerce.php:2359
 msgid "Review trashed."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2334
+#. translators: %s: review author name.
+#: includes/handlers/class-handler-woocommerce.php:2376
 #, php-format
 msgid "Reply posted to review by \"%s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2336
+#: includes/handlers/class-handler-woocommerce.php:2378
 msgid "Invalid action. Use: approve, unapprove, spam, trash, or reply."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2374
+#: includes/handlers/class-handler-woocommerce.php:2416
 msgid "No reviews to reply to."
 msgstr ""
 
 #. translators: 1: max batch size 2: actual count sent
-#: includes/handlers/class-handler-woocommerce.php:2383
+#: includes/handlers/class-handler-woocommerce.php:2425
 #, php-format
 msgid "Bulk replies limited to %1$d reviews per request. You sent %2$d. Break into smaller batches."
 msgstr ""
 
 #. translators: %d: batch position
-#: includes/handlers/class-handler-woocommerce.php:2399
+#: includes/handlers/class-handler-woocommerce.php:2441
 #, php-format
 msgid "Item #%d: Invalid review reply payload."
 msgstr ""
 
 #. translators: 1: review ID or item number 2: error message
-#: includes/handlers/class-handler-woocommerce.php:2419
+#: includes/handlers/class-handler-woocommerce.php:2461
 #, php-format
 msgid "#%1$d: %2$s"
 msgstr ""
 
 #. translators: 1: review ID or item number 2: exception message
-#: includes/handlers/class-handler-woocommerce.php:2428
+#: includes/handlers/class-handler-woocommerce.php:2470
 #, php-format
 msgid "#%1$d: Exception: %2$s"
 msgstr ""
 
 #. translators: 1: replied count 2: error count
-#: includes/handlers/class-handler-woocommerce.php:2441
+#: includes/handlers/class-handler-woocommerce.php:2483
 #, php-format
 msgid "Bulk review replies: %1$d review(s) replied to, %2$d error(s)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2467
+#: includes/handlers/class-handler-woocommerce.php:2509
 msgid "Product not found or not a variable product."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2489
+#. translators: 1: number of variations, 2: parent product name.
+#: includes/handlers/class-handler-woocommerce.php:2532
 #, php-format
 msgid "%1$d variations for \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2509
+#: includes/handlers/class-handler-woocommerce.php:2552
 msgid "Variation not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2562
+#. translators: 1: variation ID, 2: comma-separated list of applied changes.
+#: includes/handlers/class-handler-woocommerce.php:2606
 #, php-format
 msgid "Variation #%1$d updated: %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2577
-#: includes/handlers/class-handler-woocommerce.php:2667
+#: includes/handlers/class-handler-woocommerce.php:2621
+#: includes/handlers/class-handler-woocommerce.php:2714
 msgid "product_id is required."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2582
+#. translators: %d: WooCommerce product ID.
+#: includes/handlers/class-handler-woocommerce.php:2627
 #, php-format
 msgid "Product %d is not a variable product."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2639
+#: includes/handlers/class-handler-woocommerce.php:2685
 msgid "Failed to create variation."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2651
+#. translators: 1: variation ID, 2: parent product name.
+#: includes/handlers/class-handler-woocommerce.php:2698
 #, php-format
 msgid "Created variation #%1$d on \"%2$s\"."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2652
+#: includes/handlers/class-handler-woocommerce.php:2699
 msgid "Parent product price range has been synced."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2671
+#: includes/handlers/class-handler-woocommerce.php:2718
 msgid "Not a variable product."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2676
+#: includes/handlers/class-handler-woocommerce.php:2723
 msgid "This variable product has no variations."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2761
+#. translators: 1: number of updated variations, 2: total variations processed.
+#: includes/handlers/class-handler-woocommerce.php:2809
 #, php-format
 msgid "Updated %1$d of %2$d variations."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2808
+#: includes/handlers/class-handler-woocommerce.php:2856
 msgid "Use taxonomy name (e.g. pa_color) when setting attributes on products or variations."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2838
+#. translators: %d: WooCommerce order ID.
+#: includes/handlers/class-handler-woocommerce.php:2887
 #, php-format
 msgid "Refund for order #%d was already issued on a previous attempt (skipped to prevent double refund)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2868
+#. translators: 1: refund amount with currency symbol, 2: WooCommerce order number.
+#: includes/handlers/class-handler-woocommerce.php:2919
 #, php-format
 msgid "Refund of %1$s issued for order #%2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2868
+#. translators: %s: refund reason text.
+#: includes/handlers/class-handler-woocommerce.php:2925
 #, php-format
 msgid "Reason: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:2941
+#: includes/handlers/class-handler-woocommerce.php:3001
 msgid "Order creation was already completed on a previous attempt (skipped to prevent duplicate order)."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3013
+#: includes/handlers/class-handler-woocommerce.php:3073
 msgid "No valid products could be added to the order."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3050
+#. translators: 1: WooCommerce order number, 2: customer first name or guest label.
+#: includes/handlers/class-handler-woocommerce.php:3111
 #, php-format
 msgid "Order #%1$s created for %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3050
+#. translators: 1: WooCommerce order number, 2: customer first name or guest label.
+#: includes/handlers/class-handler-woocommerce.php:3111
 msgid "guest"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3077
+#: includes/handlers/class-handler-woocommerce.php:3138
 msgid "WC Analytics data unavailable. Ensure WooCommerce analytics are enabled."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3078
+#: includes/handlers/class-handler-woocommerce.php:3139
 msgid "WooCommerce → Settings → Analytics"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3132
+#: includes/handlers/class-handler-woocommerce.php:3193
 msgid "WC Analytics data unavailable."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3133
+#: includes/handlers/class-handler-woocommerce.php:3194
 msgid "Ensure WooCommerce Analytics is enabled and data has been processed. Check WooCommerce → Settings → Analytics."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3350
+#. translators: %d: number of webhooks with delivery failures.
+#: includes/handlers/class-handler-woocommerce.php:3414
 #, php-format
 msgid "%d webhook(s) have delivery failures — integrations may be broken."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3358
-#: includes/handlers/class-handler-woocommerce.php:3381
+#: includes/handlers/class-handler-woocommerce.php:3425
+#: includes/handlers/class-handler-woocommerce.php:3449
 msgid "webhook_id required."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3361
-#: includes/handlers/class-handler-woocommerce.php:3390
+#: includes/handlers/class-handler-woocommerce.php:3428
+#: includes/handlers/class-handler-woocommerce.php:3458
 msgid "Webhook not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3376
+#. translators: 1: webhook name, 2: webhook status.
+#: includes/handlers/class-handler-woocommerce.php:3444
 #, php-format
 msgid "Webhook '%1$s' %2$s."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3386
+#: includes/handlers/class-handler-woocommerce.php:3454
 msgid "Webhook already deleted on a previous attempt."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3397
+#. translators: %s: deleted webhook name.
+#: includes/handlers/class-handler-woocommerce.php:3466
 #, php-format
 msgid "Webhook '%s' deleted."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3400
+#. translators: %s: requested webhook action.
+#: includes/handlers/class-handler-woocommerce.php:3470
 #, php-format
 msgid "Unknown action '%s'. Use list, pause, activate, disable, delete."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3415
+#: includes/handlers/class-handler-woocommerce.php:3485
 msgid "No new WooCommerce alerts."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3477
+#: includes/handlers/class-handler-woocommerce.php:3547
 msgid "Specify email_type. Available types below."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3484
+#. translators: %s: requested WooCommerce email type key.
+#: includes/handlers/class-handler-woocommerce.php:3555
 #, php-format
 msgid "Email type '%s' not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3485
+#: includes/handlers/class-handler-woocommerce.php:3556
 msgid "Call trigger_wc_email without email_type to see available types."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3493
+#. translators: %s: WooCommerce email title.
+#: includes/handlers/class-handler-woocommerce.php:3565
 #, php-format
 msgid "Email '%s' is disabled in WooCommerce settings."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3494
+#: includes/handlers/class-handler-woocommerce.php:3566
 msgid "Enable it at WooCommerce → Settings → Emails."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3512
+#. translators: %s: WooCommerce email type key.
+#: includes/handlers/class-handler-woocommerce.php:3585
 #, php-format
 msgid "Email type '%s' requires order_id."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3518
+#. translators: %d: WooCommerce order ID.
+#: includes/handlers/class-handler-woocommerce.php:3592
 #, php-format
 msgid "Order %d not found."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3530
+#. translators: %s: WooCommerce email title.
+#: includes/handlers/class-handler-woocommerce.php:3605
 #, php-format
 msgid "'%s' email triggered successfully."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3558
+#: includes/handlers/class-handler-woocommerce.php:3633
 msgid "Use the slug (without wc- prefix) in list_orders status filter."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3607
+#: includes/handlers/class-handler-woocommerce.php:3682
 msgid "Sorted by sale end date — soonest expiring first."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3625
+#: includes/handlers/class-handler-woocommerce.php:3700
 msgid "WC Analytics tables not found. Run WooCommerce → Status → Tools → Update database."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3658
+#: includes/handlers/class-handler-woocommerce.php:3733
 msgid "Active (bought in last 30 days)"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3659
+#: includes/handlers/class-handler-woocommerce.php:3734
 msgid "Cooling (31-90 days)"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3660
+#: includes/handlers/class-handler-woocommerce.php:3735
 msgid "At Risk (91-180 days)"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3661
+#: includes/handlers/class-handler-woocommerce.php:3736
 msgid "Churned (180+ days)"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3697
+#: includes/handlers/class-handler-woocommerce.php:3772
 msgid "More churned customers than active — consider a win-back campaign."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3700
+#. translators: %d: number of customers in the at-risk segment.
+#: includes/handlers/class-handler-woocommerce.php:3777
 #, php-format
 msgid "%d customers are at risk of churning."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3725
+#: includes/handlers/class-handler-woocommerce.php:3804
 msgid "Cost can include product class surcharges"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3734
+#. translators: %s: minimum order amount formatted with currency.
+#: includes/handlers/class-handler-woocommerce.php:3815
 #, php-format
 msgid "Free shipping when order >= %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3735
+#: includes/handlers/class-handler-woocommerce.php:3818
 msgid "Free shipping with valid coupon"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3736
+#. translators: %s: minimum order amount formatted with currency.
+#: includes/handlers/class-handler-woocommerce.php:3821
 #, php-format
 msgid "Free shipping with coupon AND order >= %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3737
+#. translators: %s: minimum order amount formatted with currency.
+#: includes/handlers/class-handler-woocommerce.php:3826
 #, php-format
 msgid "Free shipping with coupon OR order >= %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3738
+#: includes/handlers/class-handler-woocommerce.php:3829
 msgid "Always free shipping"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:3743
+#: includes/handlers/class-handler-woocommerce.php:3834
 msgid "Free"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4025
-#: includes/handlers/class-handler-woocommerce.php:4034
+#: includes/handlers/class-handler-woocommerce.php:4116
+#: includes/handlers/class-handler-woocommerce.php:4125
 msgid "Bulk product update"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4026
+#: includes/handlers/class-handler-woocommerce.php:4117
 msgid "No matching products"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4027
+#: includes/handlers/class-handler-woocommerce.php:4118
 msgid "No changes resolved."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4035
+#. translators: %1$d: number of products that will be updated.
+#: includes/handlers/class-handler-woocommerce.php:4127
 #, php-format
 msgid "%1$d product(s) will be updated."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4054
+#. translators: %d: WooCommerce product ID.
+#: includes/handlers/class-handler-woocommerce.php:4147
 #, php-format
 msgid "Product #%d"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4068
+#: includes/handlers/class-handler-woocommerce.php:4161
 msgid "Only the first batch of matching products is shown in this preview."
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4084
+#. translators: %s: WooCommerce order number.
+#: includes/handlers/class-handler-woocommerce.php:4178
 #, php-format
 msgid "Order #%s Status"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4091
+#: includes/handlers/class-handler-woocommerce.php:4185
 msgid "Order Note"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4111
+#: includes/handlers/class-handler-woocommerce.php:4205
 msgid "Coupon"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4127
+#: includes/handlers/class-handler-woocommerce.php:4221
 msgid "To"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4128
+#: includes/handlers/class-handler-woocommerce.php:4222
 msgid "Subject"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4129
+#: includes/handlers/class-handler-woocommerce.php:4223
 msgid "Body Preview"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4146
+#: includes/handlers/class-handler-woocommerce.php:4240
 msgid "Reply to Review"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4158
+#. translators: %s: review author name.
+#: includes/handlers/class-handler-woocommerce.php:4254
 #, php-format
 msgid "By %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4192
+#. translators: %d: sequential review reply number in the preview.
+#: includes/handlers/class-handler-woocommerce.php:4291
 #, php-format
 msgid "Review Reply #%d"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4193
+#: includes/handlers/class-handler-woocommerce.php:4292
 msgid "Invalid review payload"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4194
+#: includes/handlers/class-handler-woocommerce.php:4293
 msgid "Skipped until corrected"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4207
+#. translators: %d: WooCommerce review ID or reply sequence number.
+#: includes/handlers/class-handler-woocommerce.php:4307
 #, php-format
 msgid "Reply to Review #%d"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4215
+#: includes/handlers/class-handler-woocommerce.php:4315
 msgid "Additional Replies"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4216
+#: includes/handlers/class-handler-woocommerce.php:4316
 msgid "More reviews selected"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4217
+#. translators: %d: number of additional review replies not shown in the preview.
+#: includes/handlers/class-handler-woocommerce.php:4318
 #, php-format
 msgid "+%d more review replies"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4256
+#. translators: %s: WooCommerce order number or ID.
+#: includes/handlers/class-handler-woocommerce.php:4358
 #, php-format
 msgid "Refund Order #%s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4257
+#: includes/handlers/class-handler-woocommerce.php:4359
 msgid "Order total"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4258
+#. translators: %s: refund amount.
+#: includes/handlers/class-handler-woocommerce.php:4361
 #, php-format
 msgid "Refund: %s"
 msgstr ""
 
-#: includes/handlers/class-handler-woocommerce.php:4273
+#: includes/handlers/class-handler-woocommerce.php:4376
 msgid "New Manual Order"
 msgstr ""
 
@@ -5232,23 +5463,24 @@ msgstr ""
 msgid "No saved chats yet"
 msgstr ""
 
-#: templates/chat-panel.php:100
+#. translators: %s: settings page URL
+#: templates/chat-panel.php:101
 #, php-format
 msgid "Welcome to PressArk! To get started, <a href=\"%s\">add your API key</a> in settings."
 msgstr ""
 
-#: templates/chat-panel.php:111
+#: templates/chat-panel.php:112
 msgid "Chat messages"
 msgstr ""
 
-#: templates/chat-panel.php:120
+#: templates/chat-panel.php:121
 msgid "Ask PressArk anything..."
 msgstr ""
 
-#: templates/chat-panel.php:121
+#: templates/chat-panel.php:122
 msgid "Type your message to PressArk"
 msgstr ""
 
-#: templates/chat-panel.php:123
+#: templates/chat-panel.php:124
 msgid "Send"
 msgstr ""

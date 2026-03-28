@@ -79,6 +79,7 @@ class PressArk_Throttle {
 			return new WP_Error(
 				'pressark_rate_limit',
 				sprintf(
+					/* translators: %d: number of seconds until the user can retry */
 					__( 'Too many requests. Please wait %d seconds and try again.', 'pressark' ),
 					$retry_after
 				),
@@ -96,6 +97,7 @@ class PressArk_Throttle {
 			return new WP_Error(
 				'pressark_rate_limit',
 				sprintf(
+					/* translators: %d: number of minutes until the user can retry */
 					__( 'Hourly request limit reached. Please wait %d minutes.', 'pressark' ),
 					(int) ceil( $retry_after / 60 )
 				),
@@ -113,6 +115,7 @@ class PressArk_Throttle {
 			return new WP_Error(
 				'pressark_rate_limit',
 				sprintf(
+					/* translators: %d: number of seconds until the IP can retry */
 					__( 'Too many requests from this IP. Please wait %d seconds.', 'pressark' ),
 					$retry_after
 				),

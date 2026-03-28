@@ -292,6 +292,7 @@ class PressArk_SEO_Scanner {
 					'status'   => 'warning',
 					'category' => 'indexing_health',
 					'message'  => sprintf(
+						/* translators: %s: canonical URL */
 						__( 'Canonical URL differs from permalink: %s', 'pressark' ),
 						$canonical
 					),
@@ -376,6 +377,7 @@ class PressArk_SEO_Scanner {
 				'status'   => 'fail',
 				'category' => 'indexing_health',
 				'message'  => sprintf(
+					/* translators: %s: semicolon-separated list of indexing conflicts */
 					__( 'Indexing conflict detected: %s.', 'pressark' ),
 					implode( '; ', $conflicts )
 				),
@@ -472,7 +474,12 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'Meta Title', 'pressark' ),
 					'status'   => 'pass',
 					'category' => 'search_appearance',
-					'message'  => sprintf( __( 'Meta title set (%d chars): "%s"', 'pressark' ), $title_len, $display_title ),
+					'message'  => sprintf(
+						/* translators: 1: meta title length in characters, 2: meta title text */
+						__( 'Meta title set (%1$d chars): "%2$s"', 'pressark' ),
+						$title_len,
+						$display_title
+					),
 				);
 			} else {
 				$score   += 20;
@@ -480,7 +487,11 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'Meta Title', 'pressark' ),
 					'status'   => 'warning',
 					'category' => 'search_appearance',
-					'message'  => sprintf( __( 'Meta title is %d chars. Ideal range: 30-70 characters (sweet spot: ~55).', 'pressark' ), $title_len ),
+					'message'  => sprintf(
+						/* translators: %d: meta title length in characters */
+						__( 'Meta title is %d chars. Ideal range: 30-70 characters (sweet spot: ~55).', 'pressark' ),
+						$title_len
+					),
 					'fix'      => __( 'Adjust meta title length to 30-70 characters.', 'pressark' ),
 				);
 			}
@@ -502,7 +513,11 @@ class PressArk_SEO_Scanner {
 				'name'     => __( 'Meta Title', 'pressark' ),
 				'status'   => 'fail',
 				'category' => 'search_appearance',
-				'message'  => sprintf( __( 'No meta title set. Using default: "%s"', 'pressark' ), $display_title ),
+				'message'  => sprintf(
+					/* translators: %s: fallback generated meta title */
+					__( 'No meta title set. Using default: "%s"', 'pressark' ),
+					$display_title
+				),
 				'fix'      => __( 'Set a custom meta title (30-70 characters).', 'pressark' ),
 			);
 			$suggested_title = mb_substr( $title . ' | ' . $site_name, 0, 60 );
@@ -542,7 +557,11 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'Meta Description', 'pressark' ),
 					'status'   => 'pass',
 					'category' => 'search_appearance',
-					'message'  => sprintf( __( 'Meta description set (%d chars).', 'pressark' ), $desc_len ),
+					'message'  => sprintf(
+						/* translators: %d: meta description length in characters */
+						__( 'Meta description set (%d chars).', 'pressark' ),
+						$desc_len
+					),
 				);
 			} else {
 				$score   += 18;
@@ -550,7 +569,11 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'Meta Description', 'pressark' ),
 					'status'   => 'warning',
 					'category' => 'search_appearance',
-					'message'  => sprintf( __( 'Meta description is %d chars. Ideal range: 50-200 characters (sweet spot: ~155).', 'pressark' ), $desc_len ),
+					'message'  => sprintf(
+						/* translators: %d: meta description length in characters */
+						__( 'Meta description is %d chars. Ideal range: 50-200 characters (sweet spot: ~155).', 'pressark' ),
+						$desc_len
+					),
 					'fix'      => __( 'Adjust meta description to 50-200 characters.', 'pressark' ),
 				);
 			}
@@ -599,7 +622,11 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'URL Slug', 'pressark' ),
 					'status'   => 'pass',
 					'category' => 'search_appearance',
-					'message'  => sprintf( __( 'Clean slug: /%s', 'pressark' ), $slug ),
+					'message'  => sprintf(
+						/* translators: %s: URL slug */
+						__( 'Clean slug: /%s', 'pressark' ),
+						$slug
+					),
 				);
 			} else {
 				$score  += 10;
@@ -614,7 +641,12 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'URL Slug', 'pressark' ),
 					'status'   => 'warning',
 					'category' => 'search_appearance',
-					'message'  => sprintf( __( 'Slug "/%s" %s.', 'pressark' ), $slug, implode( ', ', $issues ) ),
+					'message'  => sprintf(
+						/* translators: 1: URL slug, 2: comma-separated list of slug issues */
+						__( 'Slug "/%1$s" %2$s.', 'pressark' ),
+						$slug,
+						implode( ', ', $issues )
+					),
 					'fix'      => __( 'Shorten the slug and remove stop words.', 'pressark' ),
 				);
 			}
@@ -664,7 +696,11 @@ class PressArk_SEO_Scanner {
 				'name'     => __( 'H1 Tag', 'pressark' ),
 				'status'   => 'pass',
 				'category' => 'content_quality',
-				'message'  => sprintf( __( 'H1 tag found: "%s"', 'pressark' ), $h1_text ?: $title ),
+				'message'  => sprintf(
+					/* translators: %s: detected H1 text */
+					__( 'H1 tag found: "%s"', 'pressark' ),
+					$h1_text ?: $title
+				),
 			);
 		} else {
 			$checks[] = array(
@@ -693,6 +729,7 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'Heading Hierarchy', 'pressark' ),
 					'status'   => 'pass',
 					'category' => 'content_quality',
+					/* translators: %s: heading level sequence, for example 1->2->3 */
 					'message'  => sprintf( __( 'Heading hierarchy is correct (H%s).', 'pressark' ), implode( '→H', $levels ) ),
 				);
 			} else {
@@ -732,14 +769,23 @@ class PressArk_SEO_Scanner {
 					'name'     => __( 'Image Alt Text', 'pressark' ),
 					'status'   => 'pass',
 					'category' => 'content_quality',
-					'message'  => sprintf( __( 'All %d images have alt text.', 'pressark' ), $total_images ),
+					'message'  => sprintf(
+						/* translators: %d: total number of images */
+						__( 'All %d images have alt text.', 'pressark' ),
+						$total_images
+					),
 				);
 			} else {
 				$checks[] = array(
 					'name'     => __( 'Image Alt Text', 'pressark' ),
 					'status'   => 'fail',
 					'category' => 'content_quality',
-					'message'  => sprintf( __( '%d of %d images missing alt text.', 'pressark' ), $missing_alt, $total_images ),
+					'message'  => sprintf(
+						/* translators: 1: number of images missing alt text, 2: total number of images */
+						__( '%1$d of %2$d images missing alt text.', 'pressark' ),
+						$missing_alt,
+						$total_images
+					),
 					'fix'      => __( 'Add descriptive alt text to all images.', 'pressark' ),
 				);
 			}
@@ -769,7 +815,11 @@ class PressArk_SEO_Scanner {
 				'name'     => __( 'Internal Links', 'pressark' ),
 				'status'   => 'pass',
 				'category' => 'content_quality',
-				'message'  => sprintf( __( '%d internal link(s) found.', 'pressark' ), $internal_count ),
+				'message'  => sprintf(
+					/* translators: %d: number of internal links found */
+					__( '%d internal link(s) found.', 'pressark' ),
+					$internal_count
+				),
 			);
 		} else {
 			$checks[] = array(
@@ -878,21 +928,33 @@ class PressArk_SEO_Scanner {
 				'name'     => __( 'Content Length', 'pressark' ),
 				'status'   => 'info',
 				'category' => 'observation',
-				'message'  => sprintf( __( 'Content has %d words.', 'pressark' ), $word_count ),
+				'message'  => sprintf(
+					/* translators: %d: content word count */
+					__( 'Content has %d words.', 'pressark' ),
+					$word_count
+				),
 			);
 		} elseif ( $word_count >= 300 ) {
 			$observations[] = array(
 				'name'     => __( 'Content Length', 'pressark' ),
 				'status'   => 'info',
 				'category' => 'observation',
-				'message'  => sprintf( __( 'Content has %d words. Longer content may perform better for competitive topics.', 'pressark' ), $word_count ),
+				'message'  => sprintf(
+					/* translators: %d: content word count */
+					__( 'Content has %d words. Longer content may perform better for competitive topics.', 'pressark' ),
+					$word_count
+				),
 			);
 		} else {
 			$observations[] = array(
 				'name'     => __( 'Content Length', 'pressark' ),
 				'status'   => 'info',
 				'category' => 'observation',
-				'message'  => sprintf( __( 'Content has %d words. Consider whether more depth is needed for this topic.', 'pressark' ), $word_count ),
+				'message'  => sprintf(
+					/* translators: %d: content word count */
+					__( 'Content has %d words. Consider whether more depth is needed for this topic.', 'pressark' ),
+					$word_count
+				),
 			);
 		}
 
@@ -911,7 +973,11 @@ class PressArk_SEO_Scanner {
 				'name'     => __( 'External Links', 'pressark' ),
 				'status'   => 'info',
 				'category' => 'observation',
-				'message'  => sprintf( __( '%d external link(s) found.', 'pressark' ), $external_count ),
+				'message'  => sprintf(
+					/* translators: %d: number of external links found */
+					__( '%d external link(s) found.', 'pressark' ),
+					$external_count
+				),
 			);
 		} else {
 			$observations[] = array(
@@ -952,7 +1018,11 @@ class PressArk_SEO_Scanner {
 				'name'     => __( 'Multiple H1 Tags', 'pressark' ),
 				'status'   => 'info',
 				'category' => 'observation',
-				'message'  => sprintf( __( '%d H1 tags found. HTML5 allows multiple, but a single H1 is conventional.', 'pressark' ), $h1_count ),
+				'message'  => sprintf(
+					/* translators: %d: number of H1 tags found */
+					__( '%d H1 tags found. HTML5 allows multiple, but a single H1 is conventional.', 'pressark' ),
+					$h1_count
+				),
 			);
 		}
 

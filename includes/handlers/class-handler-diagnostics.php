@@ -49,7 +49,15 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		if ( isset( $result['error'] ) ) {
 			return array( 'success' => false, 'message' => $result['error'] );
 		}
-		return array( 'success' => true, 'message' => sprintf( __( 'Page audit for "%s".', 'pressark' ), $result['title'] ?? '' ), 'data' => $result );
+		return array(
+			'success' => true,
+			'message' => sprintf(
+				/* translators: %s: audited page title */
+				__( 'Page audit for "%s".', 'pressark' ),
+				$result['title'] ?? ''
+			),
+			'data'    => $result,
+		);
 	}
 
 	// ── Evidence-Based Diagnostics ──────────────────────────────────────
@@ -92,7 +100,16 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		if ( isset( $data['error'] ) ) {
 			return array( 'success' => false, 'message' => $data['error'], 'data' => $data );
 		}
-		return array( 'success' => true, 'message' => sprintf( __( 'Page speed: %dms (%s).', 'pressark' ), $data['load_time_ms'] ?? 0, $data['assessment'] ?? 'unknown' ), 'data' => $data );
+		return array(
+			'success' => true,
+			'message' => sprintf(
+				/* translators: 1: page load time in milliseconds, 2: performance assessment */
+				__( 'Page speed: %1$dms (%2$s).', 'pressark' ),
+				$data['load_time_ms'] ?? 0,
+				$data['assessment'] ?? 'unknown'
+			),
+			'data'    => $data,
+		);
 	}
 
 	public function handle_check_crawlability( array $params ): array {
@@ -162,7 +179,11 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 
 			$entry = array(
 				'revision_id' => $rev->ID,
-				'time_ago'    => sprintf( __( '%s ago', 'pressark' ), $time_ago ),
+				'time_ago'    => sprintf(
+					/* translators: %s: human-readable elapsed time */
+					__( '%s ago', 'pressark' ),
+					$time_ago
+				),
 				'author'      => $author ? $author->display_name : __( 'Unknown', 'pressark' ),
 				'changed'     => $changes ?: array( __( 'initial version', 'pressark' ) ),
 				'title_then'  => $rev->post_title,
@@ -182,7 +203,11 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 						$entry['diff'][] = array(
 							'field'    => $field_diff['name'],
 							'has_diff' => true,
-							'summary'  => sprintf( __( 'Changes detected in %s', 'pressark' ), $field_diff['name'] ),
+							'summary'  => sprintf(
+								/* translators: %s: revision field name */
+								__( 'Changes detected in %s', 'pressark' ),
+								$field_diff['name']
+							),
 						);
 					}
 				}
@@ -213,7 +238,12 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		$data = $diagnostics->discover_rest_routes( $params );
 		return array(
 			'success' => true,
-			'message' => sprintf( __( '%d REST routes across %d namespaces.', 'pressark' ), $data['total_routes'], $data['namespace_count'] ),
+			'message' => sprintf(
+				/* translators: 1: number of REST routes, 2: number of namespaces */
+				__( '%1$d REST routes across %2$d namespaces.', 'pressark' ),
+				$data['total_routes'],
+				$data['namespace_count']
+			),
 			'data'    => $data,
 		);
 	}
@@ -233,7 +263,14 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		return array(
 			'success' => $success,
 			'message' => $success
-				? sprintf( __( 'REST %s %s → %d', 'pressark' ), strtoupper( $params['method'] ?? 'GET' ), $params['route'] ?? '', $data['status'] ?? 200 )
+				/* translators: 1: HTTP method, 2: REST route, 3: HTTP status code */
+				? sprintf(
+					/* translators: 1: HTTP method, 2: REST route, 3: HTTP status code */
+					__( 'REST %1$s %2$s → %3$d', 'pressark' ),
+					strtoupper( $params['method'] ?? 'GET' ),
+					$params['route'] ?? '',
+					$data['status'] ?? 200
+				)
 				: ( $data['error'] ?? __( 'REST request failed.', 'pressark' ) ),
 			'data'    => $data,
 		);
@@ -283,6 +320,7 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		$mod_keys     = get_option( 'moderation_keys', '' );
 
 		if ( $link_count >= $link_limit ) {
+			/* translators: 1: number of links found, 2: configured comment link limit */
 			$reasons[] = sprintf( __( 'Too many links (%1$d — limit is %2$d)', 'pressark' ), $link_count, $link_limit );
 		}
 		if ( $blocklist && $c->comment_content ) {
@@ -308,7 +346,11 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 			'success'       => true,
 			'message'       => $would_approve
 				? __( 'Comment would be auto-approved.', 'pressark' )
-				: sprintf( __( 'Comment held: %s', 'pressark' ), implode( '; ', $reasons ) ),
+				: sprintf(
+					/* translators: %s: semicolon-separated list of moderation reasons */
+					__( 'Comment held: %s', 'pressark' ),
+					implode( '; ', $reasons )
+				),
 			'data'          => array(
 				'comment_id'    => $comment_id,
 				'author'        => $c->comment_author,
@@ -384,7 +426,13 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 			$template = get_block_template( $theme . '//' . $slug, $type );
 
 			if ( ! $template ) {
-				return array( 'error' => sprintf( __( 'Template "%s" not found.', 'pressark' ), $slug ) );
+				return array(
+					'error' => sprintf(
+						/* translators: %s: template slug */
+						__( 'Template "%s" not found.', 'pressark' ),
+						$slug
+					),
+				);
 			}
 
 			$blocks_handler = new PressArk_Blocks();
@@ -481,7 +529,11 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		// Template part reference.
 		if ( $name === 'core/template-part' && ! empty( $attrs['slug'] ) ) {
 			$node['template_part_slug'] = $attrs['slug'];
-			$node['hint'] = sprintf( __( 'Use get_templates with type=wp_template_part and slug=%s to inspect this part.', 'pressark' ), $attrs['slug'] );
+			$node['hint'] = sprintf(
+				/* translators: %s: template part slug */
+				__( 'Use get_templates with type=wp_template_part and slug=%s to inspect this part.', 'pressark' ),
+				$attrs['slug']
+			);
 		}
 
 		// Recurse into inner blocks.
@@ -529,7 +581,13 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		$template = get_block_template( $theme . '//' . $slug, $type );
 
 		if ( ! $template ) {
-			return array( 'error' => sprintf( __( 'Template "%s" not found.', 'pressark' ), $slug ) );
+			return array(
+				'error' => sprintf(
+					/* translators: %s: template slug */
+					__( 'Template "%s" not found.', 'pressark' ),
+					$slug
+				),
+			);
 		}
 
 		// If the template comes from the theme, we need to create a user override.
@@ -546,7 +604,13 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 			) );
 
 			if ( is_wp_error( $post_id ) ) {
-				return array( 'error' => sprintf( __( 'Failed to create template override: %s', 'pressark' ), $post_id->get_error_message() ) );
+				return array(
+					'error' => sprintf(
+						/* translators: %s: WordPress error message */
+						__( 'Failed to create template override: %s', 'pressark' ),
+						$post_id->get_error_message()
+					),
+				);
 			}
 
 			wp_set_object_terms( $post_id, get_stylesheet(), 'wp_theme' );
@@ -751,7 +815,13 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		$pattern  = $registry->get_registered( $pattern_name );
 
 		if ( ! $pattern ) {
-			return array( 'error' => sprintf( __( 'Pattern "%s" not found.', 'pressark' ), $pattern_name ) );
+			return array(
+				'error' => sprintf(
+					/* translators: %s: block pattern name */
+					__( 'Pattern "%s" not found.', 'pressark' ),
+					$pattern_name
+				),
+			);
 		}
 
 		$pattern_blocks = parse_blocks( $pattern['content'] );

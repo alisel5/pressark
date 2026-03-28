@@ -46,7 +46,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'updates',
 				'status'       => 'pass',
 				'severity'     => 'high',
-				'message'      => sprintf( __( 'WordPress %s is up to date.', 'pressark' ), $wp_version ),
+				'message'      => sprintf(
+					/* translators: %s: installed WordPress version */
+					__( 'WordPress %s is up to date.', 'pressark' ),
+					$wp_version
+				),
 				'fix'          => '',
 				'auto_fixable' => false,
 			);
@@ -56,7 +60,12 @@ class PressArk_Security_Scanner {
 				'category'     => 'updates',
 				'status'       => 'fail',
 				'severity'     => 'high',
-				'message'      => sprintf( __( 'WordPress %s is outdated. Latest: %s', 'pressark' ), $wp_version, $latest->current ?? 'unknown' ),
+				'message'      => sprintf(
+					/* translators: 1: installed WordPress version, 2: latest available WordPress version */
+					__( 'WordPress %1$s is outdated. Latest: %2$s', 'pressark' ),
+					$wp_version,
+					$latest->current ?? 'unknown'
+				),
 				'fix'          => __( 'Update WordPress to the latest version from Dashboard > Updates.', 'pressark' ),
 				'auto_fixable' => false,
 			);
@@ -73,7 +82,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'server',
 				'status'       => 'pass',
 				'severity'     => 'medium',
-				'message'      => sprintf( __( 'PHP %s (supported and current).', 'pressark' ), $php_version ),
+				'message'      => sprintf(
+					/* translators: %s: installed PHP version */
+					__( 'PHP %s (supported and current).', 'pressark' ),
+					$php_version
+				),
 				'fix'          => '',
 				'auto_fixable' => false,
 			);
@@ -84,7 +97,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'server',
 				'status'       => 'warning',
 				'severity'     => 'medium',
-				'message'      => sprintf( __( 'PHP %s is nearing end of life. Consider upgrading to 8.1+.', 'pressark' ), $php_version ),
+				'message'      => sprintf(
+					/* translators: %s: installed PHP version */
+					__( 'PHP %s is nearing end of life. Consider upgrading to 8.1+.', 'pressark' ),
+					$php_version
+				),
 				'fix'          => __( 'Contact your hosting provider to upgrade PHP.', 'pressark' ),
 				'auto_fixable' => false,
 			);
@@ -94,7 +111,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'server',
 				'status'       => 'fail',
 				'severity'     => 'medium',
-				'message'      => sprintf( __( 'PHP %s is unsupported and insecure.', 'pressark' ), $php_version ),
+				'message'      => sprintf(
+					/* translators: %s: installed PHP version */
+					__( 'PHP %s is unsupported and insecure.', 'pressark' ),
+					$php_version
+				),
 				'fix'          => __( 'Urgently upgrade to PHP 8.1 or later.', 'pressark' ),
 				'auto_fixable' => false,
 			);
@@ -245,7 +266,11 @@ class PressArk_Security_Scanner {
 					'category'     => 'files',
 					'status'       => 'pass',
 					'severity'     => 'medium',
-					'message'      => sprintf( __( 'wp-config.php permissions: %s (secure).', 'pressark' ), decoct( $config_perms ) ),
+					'message'      => sprintf(
+						/* translators: %s: wp-config.php file permissions in octal notation */
+						__( 'wp-config.php permissions: %s (secure).', 'pressark' ),
+						decoct( $config_perms )
+					),
 					'fix'          => '',
 					'auto_fixable' => false,
 				);
@@ -256,7 +281,11 @@ class PressArk_Security_Scanner {
 					'category'     => 'files',
 					'status'       => 'warning',
 					'severity'     => 'medium',
-					'message'      => sprintf( __( 'wp-config.php permissions: %s (group-readable).', 'pressark' ), decoct( $config_perms ) ),
+					'message'      => sprintf(
+						/* translators: %s: wp-config.php file permissions in octal notation */
+						__( 'wp-config.php permissions: %s (group-readable).', 'pressark' ),
+						decoct( $config_perms )
+					),
 					'fix'          => __( 'Set wp-config.php to 644 or stricter.', 'pressark' ),
 					'auto_fixable' => false,
 				);
@@ -266,7 +295,11 @@ class PressArk_Security_Scanner {
 					'category'     => 'files',
 					'status'       => 'fail',
 					'severity'     => 'medium',
-					'message'      => sprintf( __( 'wp-config.php permissions: %s (too permissive!).', 'pressark' ), decoct( $config_perms ) ),
+					'message'      => sprintf(
+						/* translators: %s: wp-config.php file permissions in octal notation */
+						__( 'wp-config.php permissions: %s (too permissive!).', 'pressark' ),
+						decoct( $config_perms )
+					),
 					'fix'          => __( 'Set wp-config.php permissions to 644 or 600.', 'pressark' ),
 					'auto_fixable' => false,
 				);
@@ -316,7 +349,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'files',
 				'status'       => 'warning',
 				'severity'     => 'low',
-				'message'      => sprintf( __( 'Exposed files: %s. These reveal WordPress version info.', 'pressark' ), implode( ', ', $exposed_files ) ),
+				'message'      => sprintf(
+					/* translators: %s: comma-separated list of exposed files */
+					__( 'Exposed files: %s. These reveal WordPress version info.', 'pressark' ),
+					implode( ', ', $exposed_files )
+				),
 				'fix'          => __( 'Delete readme.html, license.txt, and wp-config-sample.php from the server.', 'pressark' ),
 				'auto_fixable' => true,
 			);
@@ -426,7 +463,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'updates',
 				'status'       => 'fail',
 				'severity'     => 'medium',
-				'message'      => sprintf( __( '%d plugin(s) have updates available.', 'pressark' ), $plugins_need ),
+				'message'      => sprintf(
+					/* translators: %d: number of plugins with available updates */
+					__( '%d plugin(s) have updates available.', 'pressark' ),
+					$plugins_need
+				),
 				'fix'          => __( 'Update all plugins from Dashboard > Updates.', 'pressark' ),
 				'auto_fixable' => false,
 			);
@@ -454,7 +495,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'updates',
 				'status'       => 'fail',
 				'severity'     => 'low',
-				'message'      => sprintf( __( '%d theme(s) have updates available.', 'pressark' ), $themes_need ),
+				'message'      => sprintf(
+					/* translators: %d: number of themes with available updates */
+					__( '%d theme(s) have updates available.', 'pressark' ),
+					$themes_need
+				),
 				'fix'          => __( 'Update themes from Dashboard > Updates.', 'pressark' ),
 				'auto_fixable' => false,
 			);
@@ -483,7 +528,11 @@ class PressArk_Security_Scanner {
 				'category'     => 'attack_surface',
 				'status'       => 'warning',
 				'severity'     => 'low',
-				'message'      => sprintf( __( '%d inactive plugin(s) installed. These can still be exploited.', 'pressark' ), $inactive_count ),
+				'message'      => sprintf(
+					/* translators: %d: number of inactive plugins */
+					__( '%d inactive plugin(s) installed. These can still be exploited.', 'pressark' ),
+					$inactive_count
+				),
 				'fix'          => __( 'Delete inactive plugins you no longer need.', 'pressark' ),
 				'auto_fixable' => false,
 			);
@@ -617,7 +666,11 @@ class PressArk_Security_Scanner {
 					'category'     => 'server',
 					'status'       => 'warning',
 					'severity'     => 'low',
-					'message'      => sprintf( __( 'Missing security header(s): %s.', 'pressark' ), implode( ', ', $missing ) ),
+					'message'      => sprintf(
+						/* translators: %s: comma-separated list of missing security headers */
+						__( 'Missing security header(s): %s.', 'pressark' ),
+						implode( ', ', $missing )
+					),
 					'fix'          => __( 'Add missing headers via your server config or a security plugin.', 'pressark' ),
 					'auto_fixable' => false,
 				);
@@ -711,11 +764,13 @@ class PressArk_Security_Scanner {
 		$summary = '';
 		if ( $failed > 0 ) {
 			$summary = sprintf(
+				/* translators: %d: number of critical security issues */
 				__( 'Your site has %d critical security issue(s) that should be addressed.', 'pressark' ),
 				$failed
 			);
 		} elseif ( $warnings > 0 ) {
 			$summary = sprintf(
+				/* translators: %d: number of warning-level security issues */
 				__( 'Your site has %d warning(s) to review, but no critical issues.', 'pressark' ),
 				$warnings
 			);
@@ -765,7 +820,11 @@ class PressArk_Security_Scanner {
 				default:
 					$results[] = array(
 						'success' => false,
-						'message' => sprintf( __( 'Unknown fix type: %s', 'pressark' ), $fix_type ),
+						'message' => sprintf(
+							/* translators: %s: requested security fix type */
+							__( 'Unknown fix type: %s', 'pressark' ),
+							$fix_type
+						),
 					);
 			}
 		}
@@ -798,7 +857,11 @@ class PressArk_Security_Scanner {
 		if ( ! empty( $deleted ) ) {
 			return array(
 				'success' => true,
-				'message' => sprintf( __( 'Deleted: %s', 'pressark' ), implode( ', ', $deleted ) ),
+				'message' => sprintf(
+					/* translators: %s: comma-separated list of deleted files */
+					__( 'Deleted: %s', 'pressark' ),
+					implode( ', ', $deleted )
+				),
 			);
 		}
 

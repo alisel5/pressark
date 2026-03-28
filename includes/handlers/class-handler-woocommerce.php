@@ -81,6 +81,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		$product = wc_get_product( $post_id );
 		if ( ! $product ) {
+			/* translators: %d: WooCommerce product ID. */
 			return array( 'success' => false, 'message' => sprintf( __( 'Product #%d not found.', 'pressark' ), $post_id ) );
 		}
 
@@ -168,7 +169,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Product "%s" (#%d).', 'pressark' ), $product->get_name(), $post_id ),
+			/* translators: 1: product name, 2: product ID. */
+			'message' => sprintf( __( 'Product "%1$s" (#%2$d).', 'pressark' ), $product->get_name(), $post_id ),
 			'data'    => $data,
 		);
 	}
@@ -254,7 +256,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 				$changed_list[] = $key;
 			} catch ( \WC_Data_Exception $e ) {
 				return array(
-					'error'   => sprintf( __( 'Error setting %s: %s', 'pressark' ), $key, $e->getMessage() ),
+					/* translators: 1: field key, 2: WooCommerce error message. */
+					'error'   => sprintf( __( 'Error setting %1$s: %2$s', 'pressark' ), $key, $e->getMessage() ),
 					'field'   => $key,
 					'value'   => $changes[ $key ],
 				);
@@ -356,6 +359,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			return array(
 				'success' => false,
 				'post_id' => $post_id,
+				/* translators: %s: WooCommerce save error message. */
 				'message' => sprintf( __( 'Product save failed: %s', 'pressark' ), $e->getMessage() ),
 				'hint'    => __( 'A WooCommerce extension blocked the save. Check if Subscriptions, Memberships, or another plugin is throwing errors.', 'pressark' ),
 				'changed_before_error' => $changed_list,
@@ -379,6 +383,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'post_id'        => $post_id,
 			'name'           => $product->get_name(),
 			'changed'        => $changed_list,
+			/* translators: %s: comma-separated list of updated product fields. */
 			'message'        => sprintf( __( 'Product updated: %s.', 'pressark' ), implode( ', ', $changed_list ) ),
 			'lookup_updated' => true,
 		);
@@ -409,6 +414,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		$class = $class_map[ $type ] ?? null;
 		if ( ! $class || ! class_exists( $class ) ) {
 			return array(
+				/* translators: %s: requested WooCommerce product type slug. */
 				'error'       => sprintf( __( 'Invalid product type \'%s\'.', 'pressark' ), $type ),
 				'valid_types' => array_keys( $class_map ),
 			);
@@ -435,6 +441,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 					'success'    => true,
 					'partial'    => true,
 					'product_id' => $product_id,
+					/* translators: %s: product field update error summary. */
 					'warning'    => sprintf( __( 'Product created but some fields failed: %s', 'pressark' ), $edit_result['error'] ),
 					'edit_url'   => get_edit_post_link( $product_id, 'raw' ),
 				);
@@ -448,6 +455,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'type'       => $type,
 			'status'     => $params['status'] ?? 'draft',
 			'edit_url'   => get_edit_post_link( $product_id, 'raw' ),
+			/* translators: 1: product type, 2: product name, 3: product ID, 4: product status. */
 			'message'    => sprintf( __( 'Created %1$s product "%2$s" (ID: %3$d) as %4$s.', 'pressark' ), $type, $params['name'] ?? 'New Product', $product_id, $params['status'] ?? 'draft' ),
 		);
 	}
@@ -518,8 +526,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			} catch ( \Throwable $e ) {
 				$errors++;
 				$details[] = sprintf(
-					/* translators: 1: product ID 2: exception message */
-					__( '#%d: Exception — %s', 'pressark' ),
+					/* translators: 1: product ID, 2: exception message. */
+					__( '#%1$d: Exception — %2$s', 'pressark' ),
 					$product_update['post_id'] ?? $i,
 					$e->getMessage()
 				);
@@ -810,18 +818,23 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		// Build flags summary.
 		if ( ! empty( $inverted_sales ) ) {
+			/* translators: %d: number of products with sale price greater than or equal to regular price. */
 			$flags[] = sprintf( __( '%d product(s) have sale price >= regular price.', 'pressark' ), count( $inverted_sales ) );
 		}
 		if ( ! empty( $expired_sales ) ) {
+			/* translators: %d: number of products with expired scheduled sales still active. */
 			$flags[] = sprintf( __( '%d product(s) have expired scheduled sales still active.', 'pressark' ), count( $expired_sales ) );
 		}
 		if ( ! empty( $no_variations ) ) {
+			/* translators: %d: number of variable products without any variations. */
 			$flags[] = sprintf( __( '%d variable product(s) have no variations — they cannot be purchased.', 'pressark' ), count( $no_variations ) );
 		}
 		if ( ! empty( $dup_skus ) ) {
+			/* translators: %d: number of duplicate product SKUs found. */
 			$flags[] = sprintf( __( '%d duplicate SKU(s) found — may cause order processing issues.', 'pressark' ), count( $dup_skus ) );
 		}
 		if ( ! empty( $desync ) ) {
+			/* translators: %d: number of products with lookup table price mismatches. */
 			$flags[] = sprintf( __( '%d product(s) have price mismatch between postmeta and lookup table. Run WooCommerce → Status → Tools → Update product lookup tables.', 'pressark' ), count( $desync ) );
 		}
 
@@ -982,6 +995,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success'     => true,
+			/* translators: %d: number of WooCommerce orders found. */
 			'message'     => sprintf( __( 'Found %d order(s).', 'pressark' ), count( $list ) ),
 			'data'        => $list,
 			'_pagination' => array(
@@ -1119,6 +1133,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: %s: WooCommerce order number. */
 			'message' => sprintf( __( 'Order #%s details.', 'pressark' ), $order->get_order_number() ),
 			'data'    => $data,
 		);
@@ -1158,12 +1173,14 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			if ( ! in_array( $bare_status, $valid_bare, true ) ) {
 				return array(
 					'success'        => false,
-					'message'        => sprintf( __( 'Invalid order status: %s. Valid statuses: %s', 'pressark' ), $new_status, implode( ', ', $valid_bare ) ),
+					/* translators: 1: requested order status, 2: comma-separated list of valid order statuses. */
+					'message'        => sprintf( __( 'Invalid order status: %1$s. Valid statuses: %2$s', 'pressark' ), $new_status, implode( ', ', $valid_bare ) ),
 					'valid_statuses' => $valid_bare,
 				);
 			}
 			$order->update_status( $bare_status );
-			$changes[] = sprintf( __( 'status: %s → %s', 'pressark' ), $old_status, $bare_status );
+			/* translators: 1: previous order status, 2: new order status. */
+			$changes[] = sprintf( __( 'status: %1$s → %2$s', 'pressark' ), $old_status, $bare_status );
 		}
 
 		if ( ! empty( $params['note'] ) ) {
@@ -1186,7 +1203,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( 'Updated order #%s: %s.', 'pressark' ), $order->get_order_number(), implode( ', ', $changes ) ),
+			/* translators: 1: WooCommerce order number, 2: comma-separated list of applied changes. */
+			'message' => sprintf( __( 'Updated order #%1$s: %2$s.', 'pressark' ), $order->get_order_number(), implode( ', ', $changes ) ),
 		);
 	}
 
@@ -1305,7 +1323,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 				return array(
 					'success' => true,
-					'message' => sprintf( __( 'Created coupon "%s" (ID: %d).', 'pressark' ), $code, $coupon->get_id() ),
+					/* translators: 1: coupon code, 2: coupon ID. */
+					'message' => sprintf( __( 'Created coupon "%1$s" (ID: %2$d).', 'pressark' ), $code, $coupon->get_id() ),
 				);
 
 			case 'edit':
@@ -1342,6 +1361,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 				return array(
 					'success' => true,
+					/* translators: %s: coupon code. */
 					'message' => sprintf( __( 'Updated coupon "%s".', 'pressark' ), $coupon->get_code() ),
 				);
 
@@ -1358,10 +1378,12 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 				$coupon->delete( true );
 				return array(
 					'success' => true,
+					/* translators: %s: deleted coupon code. */
 					'message' => sprintf( __( 'Deleted coupon "%s".', 'pressark' ), $code ),
 				);
 
 			default:
+				/* translators: %s: requested coupon operation name. */
 				return array( 'success' => false, 'message' => sprintf( __( 'Unknown coupon operation: %s', 'pressark' ), $operation ) );
 		}
 	}
@@ -1467,7 +1489,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => sprintf( __( '%d out of stock, %d low stock (threshold: %d).', 'pressark' ), count( $oos_list ), count( $low_list ), $threshold ),
+			/* translators: 1: out-of-stock count, 2: low-stock count, 3: low-stock threshold. */
+			'message' => sprintf( __( '%1$d out of stock, %2$d low stock (threshold: %3$d).', 'pressark' ), count( $oos_list ), count( $low_list ), $threshold ),
 			'data'    => array(
 				'out_of_stock'   => $oos_list,
 				'low_stock'      => $low_list,
@@ -1715,6 +1738,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: %s: customer full name. */
 			'message' => sprintf( __( 'Customer profile for "%s"', 'pressark' ), trim( $customer->get_first_name() . ' ' . $customer->get_last_name() ) ),
 			'data'    => array(
 				'id'               => $customer_id,
@@ -1781,6 +1805,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		if ( $this->has_operation_receipt( $receipt_key ) ) {
 			return array(
 				'success' => true,
+				/* translators: %d: customer ID. */
 				'message' => sprintf( __( 'Email to customer #%d was already sent on a previous attempt (skipped to prevent duplicate).', 'pressark' ), $customer_id ),
 				'skipped_duplicate' => true,
 			);
@@ -1814,6 +1839,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 			return array(
 				'success' => true,
+				/* translators: 1: customer name, 2: email address, 3: email subject. */
 				'message' => sprintf( __( 'Email sent to %1$s (%2$s): "%3$s"', 'pressark' ), $customer_name, $email, $subject ),
 			);
 		}
@@ -1846,6 +1872,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: %d: number of configured shipping zones. */
 			'message' => sprintf( __( '%d shipping zones configured.', 'pressark' ), count( $zones ) ),
 			'data'    => $zones,
 		);
@@ -1903,7 +1930,13 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
-			'message' => $tax_enabled ? sprintf( __( 'Tax is enabled with %d rate(s).', 'pressark' ), count( $data['rates'] ?? array() ) ) : __( 'Tax calculation is disabled.', 'pressark' ),
+			'message' => $tax_enabled
+				? sprintf(
+					/* translators: %d: number of configured tax rates. */
+					__( 'Tax is enabled with %d rate(s).', 'pressark' ),
+					count( $data['rates'] ?? array() )
+				)
+				: __( 'Tax calculation is disabled.', 'pressark' ),
 			'data'    => $data,
 		);
 	}
@@ -1950,9 +1983,11 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		$flags = array();
 		foreach ( $results as $gw ) {
 			if ( $gw['enabled'] && ! $gw['available'] ) {
+				/* translators: %s: payment gateway title. */
 				$flags[] = sprintf( __( 'Gateway \'%s\' is enabled but not available — check currency, country, or SSL requirements.', 'pressark' ), $gw['title'] );
 			}
 			if ( $gw['enabled'] && $gw['test_mode'] ) {
+				/* translators: %s: payment gateway title. */
 				$flags[] = sprintf( __( 'Gateway \'%s\' is in TEST MODE — customers cannot make real payments.', 'pressark' ), $gw['title'] );
 			}
 		}
@@ -2034,6 +2069,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: %s: WooCommerce settings section slug. */
 			'message' => sprintf( __( 'WooCommerce %s settings retrieved.', 'pressark' ), $section ),
 			'data'    => $data,
 		);
@@ -2071,6 +2107,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: 1: total email notification count, 2: enabled email notification count. */
 			'message' => sprintf( __( '%1$d email notifications (%2$d enabled).', 'pressark' ), count( $results ), $enabled_count ),
 			'data'    => $results,
 		);
@@ -2139,6 +2176,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			$flags[] = __( 'WooCommerce database update required — go to WooCommerce → Status → Tools → Update Database.', 'pressark' );
 		}
 		if ( ! empty( $outdated_templates ) ) {
+			/* translators: %d: number of outdated WooCommerce template overrides. */
 			$flags[] = sprintf( __( '%d outdated WC template override(s) — may cause frontend display bugs after WC update.', 'pressark' ), count( $outdated_templates ) );
 		}
 		if ( ! ( $env['https'] ?? true ) ) {
@@ -2251,6 +2289,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		$data = array(
 			'success' => true,
+			/* translators: %d: number of product reviews found. */
 			'message' => sprintf( __( '%d product reviews found.', 'pressark' ), count( $results ) ),
 			'data'    => $results,
 		);
@@ -2306,9 +2345,11 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		switch ( $mod_action ) {
 			case 'approve':
 				wp_set_comment_status( $review_id, 'approve' );
+				/* translators: %s: review author name. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Review by "%s" approved.', 'pressark' ), $review->comment_author ) );
 			case 'unapprove':
 				wp_set_comment_status( $review_id, 'hold' );
+				/* translators: %s: review author name. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Review by "%s" held for moderation.', 'pressark' ), $review->comment_author ) );
 			case 'spam':
 				wp_spam_comment( $review_id );
@@ -2331,6 +2372,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 					'user_id'          => $current_user->ID,
 					'comment_type'     => 'review',
 				) );
+				/* translators: %s: review author name. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Reply posted to review by "%s".', 'pressark' ), $review->comment_author ) );
 			default:
 				return array( 'success' => false, 'message' => __( 'Invalid action. Use: approve, unapprove, spam, trash, or reply.', 'pressark' ) );
@@ -2486,6 +2528,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		}
 		return array(
 			'success' => true,
+			/* translators: 1: number of variations, 2: parent product name. */
 			'message' => sprintf( __( '%1$d variations for "%2$s".', 'pressark' ), count( $variations ), $product->get_name() ),
 			'data'    => $variations,
 		);
@@ -2559,6 +2602,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			/* translators: 1: variation ID, 2: comma-separated list of applied changes. */
 			'message' => sprintf( __( 'Variation #%1$d updated: %2$s.', 'pressark' ), $var_id, implode( ', ', $changes ) ),
 		);
 	}
@@ -2579,6 +2623,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		$parent = wc_get_product( $product_id );
 		if ( ! $parent ) return array( 'error' => __( 'Product not found.', 'pressark' ) );
 		if ( ! $parent->is_type( 'variable' ) ) {
+			/* translators: %d: WooCommerce product ID. */
 			return array( 'error' => sprintf( __( 'Product %d is not a variable product.', 'pressark' ), $product_id ) );
 		}
 
@@ -2628,7 +2673,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 				try {
 					$variation->$setter( $params[ $key ] );
 				} catch ( \WC_Data_Exception $e ) {
-					return array( 'error' => sprintf( __( 'Error setting %s: %s', 'pressark' ), $key, $e->getMessage() ) );
+					/* translators: 1: field key, 2: WooCommerce error message. */
+					return array( 'error' => sprintf( __( 'Error setting %1$s: %2$s', 'pressark' ), $key, $e->getMessage() ) );
 				}
 			}
 		}
@@ -2648,6 +2694,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'variation_id' => $variation_id,
 			'product_id'   => $product_id,
 			'attributes'   => $variation_attrs,
+			/* translators: 1: variation ID, 2: parent product name. */
 			'message'      => sprintf( __( 'Created variation #%1$d on "%2$s".', 'pressark' ), $variation_id, $parent->get_name() ),
 			'note'         => __( 'Parent product price range has been synced.', 'pressark' ),
 		);
@@ -2758,6 +2805,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'total'       => count( $children ),
 			'updated'     => $updated,
 			'errors'      => $errors,
+			/* translators: 1: number of updated variations, 2: total variations processed. */
 			'message'     => sprintf( __( 'Updated %1$d of %2$d variations.', 'pressark' ), $updated, count( $children ) ),
 			'changes'     => array_keys( $changes ),
 		);
@@ -2835,6 +2883,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		if ( $this->has_operation_receipt( $receipt_key ) ) {
 			return array(
 				'success' => true,
+				/* translators: %d: WooCommerce order ID. */
 				'message' => sprintf( __( 'Refund for order #%d was already issued on a previous attempt (skipped to prevent double refund).', 'pressark' ), $order_id ),
 				'skipped_duplicate' => true,
 			);
@@ -2865,7 +2914,18 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		return array(
 			'success'                  => true,
-			'message'                  => sprintf( __( 'Refund of %1$s issued for order #%2$s.', 'pressark' ), wc_price( $amount ), $order->get_order_number() ) . ( $reason ? ' ' . sprintf( __( 'Reason: %s', 'pressark' ), $reason ) : '' ),
+			'message'                  => sprintf(
+				/* translators: 1: refund amount with currency symbol, 2: WooCommerce order number. */
+				__( 'Refund of %1$s issued for order #%2$s.', 'pressark' ),
+				wc_price( $amount ),
+				$order->get_order_number()
+			) . ( $reason
+				? ' ' . sprintf(
+					/* translators: %s: refund reason text. */
+					__( 'Reason: %s', 'pressark' ),
+					$reason
+				)
+				: '' ),
 			'gateway_refund_supported' => $supports_gateway_refund,
 			'gateway_refund_processed' => $process_gateway,
 			'restock_applied'          => $restock,
@@ -3047,6 +3107,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'status'    => $order->get_status(),
 			'items'     => $items_added,
 			'edit_url'  => get_edit_post_link( $order->get_id(), 'raw' ),
+			/* translators: 1: WooCommerce order number, 2: customer first name or guest label. */
 			'message'   => sprintf( __( 'Order #%1$s created for %2$s.', 'pressark' ), $order->get_order_number(), $order->get_billing_first_name() ?: __( 'guest', 'pressark' ) ),
 		);
 	}
@@ -3347,7 +3408,13 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 					'count'    => count( $list ),
 					'webhooks' => $list,
 					'flags'    => ! empty( $failing )
-						? array( sprintf( __( '%d webhook(s) have delivery failures — integrations may be broken.', 'pressark' ), count( $failing ) ) )
+						? array(
+							sprintf(
+								/* translators: %d: number of webhooks with delivery failures. */
+								__( '%d webhook(s) have delivery failures — integrations may be broken.', 'pressark' ),
+								count( $failing )
+							)
+						)
 						: array(),
 				);
 
@@ -3373,6 +3440,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 					'id'      => $webhook_id,
 					'name'    => $webhook->get_name(),
 					'status'  => $new_status,
+					/* translators: 1: webhook name, 2: webhook status. */
 					'message' => sprintf( __( 'Webhook \'%1$s\' %2$s.', 'pressark' ), $webhook->get_name(), $new_status ),
 				);
 
@@ -3394,9 +3462,11 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 				$this->record_operation_receipt( $del_receipt_key, "Webhook '{$name}' deleted" );
 
+				/* translators: %s: deleted webhook name. */
 				return array( 'success' => true, 'message' => sprintf( __( 'Webhook \'%s\' deleted.', 'pressark' ), $name ) );
 
 			default:
+				/* translators: %s: requested webhook action. */
 				return array( 'error' => sprintf( __( 'Unknown action \'%s\'. Use list, pause, activate, disable, delete.', 'pressark' ), $action ) );
 		}
 	}
@@ -3481,6 +3551,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		if ( ! isset( $emails[ $email_type ] ) ) {
 			return array(
+				/* translators: %s: requested WooCommerce email type key. */
 				'error' => sprintf( __( 'Email type \'%s\' not found.', 'pressark' ), $email_type ),
 				'hint'  => __( 'Call trigger_wc_email without email_type to see available types.', 'pressark' ),
 			);
@@ -3490,6 +3561,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		if ( ! $email->is_enabled() ) {
 			return array(
+				/* translators: %s: WooCommerce email title. */
 				'error' => sprintf( __( 'Email \'%s\' is disabled in WooCommerce settings.', 'pressark' ), $email->get_title() ),
 				'hint'  => __( 'Enable it at WooCommerce → Settings → Emails.', 'pressark' ),
 			);
@@ -3509,12 +3581,14 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		), true );
 
 		if ( $order_required && ! $order_id ) {
+			/* translators: %s: WooCommerce email type key. */
 			return array( 'error' => sprintf( __( 'Email type \'%s\' requires order_id.', 'pressark' ), $email_type ) );
 		}
 
 		if ( $order_id ) {
 			$order = wc_get_order( $order_id );
 			if ( ! $order ) {
+				/* translators: %d: WooCommerce order ID. */
 				return array( 'error' => sprintf( __( 'Order %d not found.', 'pressark' ), $order_id ) );
 			}
 			$email->trigger( $order_id, $order );
@@ -3527,6 +3601,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'email_type' => $email_type,
 			'title'      => $email->get_title(),
 			'order_id'   => $order_id ?: null,
+			/* translators: %s: WooCommerce email title. */
 			'message'    => sprintf( __( '\'%s\' email triggered successfully.', 'pressark' ), $email->get_title() ),
 		);
 	}
@@ -3697,7 +3772,11 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 					? __( 'More churned customers than active — consider a win-back campaign.', 'pressark' )
 					: null,
 				$segments['at_risk']['count'] > 0
-					? sprintf( __( '%d customers are at risk of churning.', 'pressark' ), $segments['at_risk']['count'] )
+					? sprintf(
+						/* translators: %d: number of customers in the at-risk segment. */
+						__( '%d customers are at risk of churning.', 'pressark' ),
+						$segments['at_risk']['count']
+					)
 					: null,
 			) ) ),
 		);
@@ -3731,10 +3810,22 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 					$method_data['requires']   = $requires;
 					$method_data['min_amount'] = $min_amount;
 					$method_data['condition']  = match( $requires ) {
-						'min_amount' => sprintf( __( 'Free shipping when order >= %s', 'pressark' ), $min_amount ),
+						'min_amount' => sprintf(
+							/* translators: %s: minimum order amount formatted with currency. */
+							__( 'Free shipping when order >= %s', 'pressark' ),
+							$min_amount
+						),
 						'coupon'     => __( 'Free shipping with valid coupon', 'pressark' ),
-						'both'       => sprintf( __( 'Free shipping with coupon AND order >= %s', 'pressark' ), $min_amount ),
-						'either'     => sprintf( __( 'Free shipping with coupon OR order >= %s', 'pressark' ), $min_amount ),
+						'both'       => sprintf(
+							/* translators: %s: minimum order amount formatted with currency. */
+							__( 'Free shipping with coupon AND order >= %s', 'pressark' ),
+							$min_amount
+						),
+						'either'     => sprintf(
+							/* translators: %s: minimum order amount formatted with currency. */
+							__( 'Free shipping with coupon OR order >= %s', 'pressark' ),
+							$min_amount
+						),
 						default      => __( 'Always free shipping', 'pressark' ),
 					};
 					break;
@@ -4032,6 +4123,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 
 		$preview = array(
 			'title'   => __( 'Bulk product update', 'pressark' ),
+			/* translators: %1$d: number of products that will be updated. */
 			'summary' => sprintf( __( '%1$d product(s) will be updated.', 'pressark' ), count( $products ) ),
 			'changes' => array(),
 		);
@@ -4051,6 +4143,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			);
 
 			$preview['changes'][] = array(
+				/* translators: %d: WooCommerce product ID. */
 				'field'  => sprintf( __( 'Product #%d', 'pressark' ), $product->get_id() ),
 				'before' => $product->get_name(),
 				'after'  => $product->get_name(),
@@ -4081,6 +4174,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			if ( $prev_order ) {
 				if ( ! empty( $params['status'] ) ) {
 					$changes[] = array(
+						/* translators: %s: WooCommerce order number. */
 						'field'  => sprintf( __( 'Order #%s Status', 'pressark' ), $prev_order->get_order_number() ),
 						'before' => $prev_order->get_status(),
 						'after'  => $params['status'],
@@ -4155,7 +4249,11 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'changes' => array(
 				array(
 					'field'  => ucfirst( $rev_action ) . ' Review',
-					'before' => $rev ? sprintf( __( 'By %s', 'pressark' ), $rev->comment_author ) : '#' . $rev_id,
+					'before' => $rev ? sprintf(
+						/* translators: %s: review author name. */
+						__( 'By %s', 'pressark' ),
+						$rev->comment_author
+					) : '#' . $rev_id,
 					'after'  => ucfirst( $rev_action ),
 				),
 			),
@@ -4189,6 +4287,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		foreach ( array_slice( $review_replies, 0, 10 ) as $i => $review_reply ) {
 			if ( ! is_array( $review_reply ) ) {
 				$changes[] = array(
+					/* translators: %d: sequential review reply number in the preview. */
 					'field'  => sprintf( __( 'Review Reply #%d', 'pressark' ), $i + 1 ),
 					'before' => __( 'Invalid review payload', 'pressark' ),
 					'after'  => __( 'Skipped until corrected', 'pressark' ),
@@ -4204,6 +4303,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 				: '#' . ( $review_id ? $review_id : ( $i + 1 ) );
 
 			$changes[] = array(
+				/* translators: %d: WooCommerce review ID or reply sequence number. */
 				'field'  => sprintf( __( 'Reply to Review #%d', 'pressark' ), $review_id ? $review_id : ( $i + 1 ) ),
 				'before' => $review_excerpt,
 				'after'  => mb_substr( $reply_content, 0, 150 ),
@@ -4214,6 +4314,7 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			$changes[] = array(
 				'field'  => __( 'Additional Replies', 'pressark' ),
 				'before' => __( 'More reviews selected', 'pressark' ),
+				/* translators: %d: number of additional review replies not shown in the preview. */
 				'after'  => sprintf( __( '+%d more review replies', 'pressark' ), count( $review_replies ) - 10 ),
 			);
 		}
@@ -4253,8 +4354,10 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		return array(
 			'changes' => array(
 				array(
+					/* translators: %s: WooCommerce order number or ID. */
 					'field'  => sprintf( __( 'Refund Order #%s', 'pressark' ), $ref_oid ),
 					'before' => __( 'Order total', 'pressark' ),
+					/* translators: %s: refund amount. */
 					'after'  => sprintf( __( 'Refund: %s', 'pressark' ), $ref_amt ),
 				),
 			),

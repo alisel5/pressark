@@ -1142,9 +1142,9 @@ AUTOMATION;
 		$options['tool_heuristics']    = array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['tool_heuristics'] ?? $this->default_tool_heuristics( $phase, $tools ) ) ) ) );
 		$options['deliverable_schema'] = is_array( $options['deliverable_schema'] ?? null ) ? $options['deliverable_schema'] : array();
 		$options['schema_mode']        = sanitize_key( (string) ( $options['schema_mode'] ?? ( ! empty( $options['deliverable_schema'] ) ? 'strict' : 'none' ) ) );
-		$proxy_route                   = sanitize_key( (string) ( $options['proxy_route'] ?? ( 'summarize' === $phase ? 'summarize' : 'chat' ) ) );
-		$options['proxy_route']        = in_array( $proxy_route, array( 'chat', 'summarize' ), true ) ? $proxy_route : 'chat';
-		$options['estimated_icus']     = max( 0, (int) ( $options['estimated_icus'] ?? 0 ) );
+		$proxy_route                   = sanitize_key( (string) ( $options['proxy_route'] ?? ( 'summarize' === $phase && ! $is_byok ? 'summarize' : 'chat' ) ) );
+		$options['proxy_route']        = ! $is_byok && in_array( $proxy_route, array( 'chat', 'summarize' ), true ) ? $proxy_route : 'chat';
+		$options['estimated_icus']     = $is_byok ? 0 : max( 0, (int) ( $options['estimated_icus'] ?? 0 ) );
 
 		return $options;
 	}

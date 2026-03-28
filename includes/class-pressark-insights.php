@@ -328,7 +328,11 @@ class PressArk_Insights {
 			<!-- Model Breakdown -->
 			<div class="postbox" style="margin:20px 0;padding:0;">
 				<h2 class="hndle" style="padding:12px 16px;margin:0;"><span><?php
-					printf( esc_html__( '%s by Model', 'pressark' ), esc_html( $label ) );
+					printf(
+						/* translators: %s: selected metric label. */
+						esc_html__( '%s by Model', 'pressark' ),
+						esc_html( $label )
+					);
 				?></span></h2>
 				<div class="inside" style="padding:0 16px 16px;">
 					<?php
@@ -357,7 +361,11 @@ class PressArk_Insights {
 			<!-- Route Breakdown -->
 			<div class="postbox" style="margin:20px 0;padding:0;">
 				<h2 class="hndle" style="padding:12px 16px;margin:0;"><span><?php
-					printf( esc_html__( '%s by Route', 'pressark' ), esc_html( $label ) );
+					printf(
+						/* translators: %s: selected metric label. */
+						esc_html__( '%s by Route', 'pressark' ),
+						esc_html( $label )
+					);
 				?></span></h2>
 				<div class="inside" style="padding:0 16px 16px;">
 					<?php

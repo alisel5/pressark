@@ -4238,7 +4238,12 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 				'changes' => array(
 					array(
 						'field'  => __( 'Reply to Review', 'pressark' ),
-						'before' => $rev ? sprintf( __( 'By %1$s: "%2$s"', 'pressark' ), $rev->comment_author, mb_substr( wp_strip_all_tags( $rev->comment_content ), 0, 80 ) ) : '#' . $rev_id,
+						'before' => $rev ? sprintf(
+							/* translators: 1: review author name, 2: review excerpt. */
+							__( 'By %1$s: "%2$s"', 'pressark' ),
+							$rev->comment_author,
+							mb_substr( wp_strip_all_tags( $rev->comment_content ), 0, 80 )
+						) : '#' . $rev_id,
 						'after'  => mb_substr( $params['reply_content'] ?? '', 0, 150 ),
 					),
 				),
@@ -4299,7 +4304,12 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			$review         = get_comment( $review_id );
 			$reply_content  = $review_reply['reply_content'] ?? ( $review_reply['content'] ?? '' );
 			$review_excerpt = $review
-				? sprintf( __( 'By %1$s: "%2$s"', 'pressark' ), $review->comment_author, mb_substr( wp_strip_all_tags( $review->comment_content ), 0, 80 ) )
+				? sprintf(
+					/* translators: 1: review author name, 2: review excerpt. */
+					__( 'By %1$s: "%2$s"', 'pressark' ),
+					$review->comment_author,
+					mb_substr( wp_strip_all_tags( $review->comment_content ), 0, 80 )
+				)
 				: '#' . ( $review_id ? $review_id : ( $i + 1 ) );
 
 			$changes[] = array(

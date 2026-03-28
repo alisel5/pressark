@@ -1012,7 +1012,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			);
 		}
 		if ( ! empty( $errors ) ) {
-			$message .= ' ' . sprintf( __( 'Errors: %s', 'pressark' ), implode( '; ', $errors ) );
+			$message .= ' ' . sprintf(
+				/* translators: %s: semicolon-separated list of error messages. */
+				__( 'Errors: %s', 'pressark' ),
+				implode( '; ', $errors )
+			);
 		}
 
 		return array( 'success' => $trashed > 0 || $already_trash > 0, 'message' => $message );
@@ -1063,12 +1067,20 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			$post = get_post( $pid );
 
 			if ( ! $post ) {
-				$errors[] = sprintf( __( 'Post #%d not found', 'pressark' ), $pid );
+				$errors[] = sprintf(
+					/* translators: %d: WordPress post ID. */
+					__( 'Post #%d not found', 'pressark' ),
+					$pid
+				);
 				continue;
 			}
 
 			if ( ! current_user_can( 'delete_post', $pid ) ) {
-				$errors[] = sprintf( __( '"%s": no permission', 'pressark' ), $post->post_title );
+				$errors[] = sprintf(
+					/* translators: %s: WordPress post title. */
+					__( '"%s": no permission', 'pressark' ),
+					$post->post_title
+				);
 				continue;
 			}
 
@@ -1121,7 +1133,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			);
 		}
 		if ( ! empty( $errors ) ) {
-			$message .= ' ' . sprintf( __( 'Errors: %s', 'pressark' ), implode( '; ', $errors ) );
+			$message .= ' ' . sprintf(
+				/* translators: %s: semicolon-separated list of error messages. */
+				__( 'Errors: %s', 'pressark' ),
+				implode( '; ', $errors )
+			);
 		}
 
 		return array( 'success' => $deleted > 0, 'message' => $message );
@@ -1250,7 +1266,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 				__( 'Found %1$d post(s)%2$s.', 'pressark' ),
 				$wp_query->found_posts,
 				$wp_query->found_posts > count( $list )
-					? sprintf( __( ', showing %d', 'pressark' ), count( $list ) )
+					? sprintf(
+						/* translators: %d: number of posts included in the current response. */
+						__( ', showing %d', 'pressark' ),
+						count( $list )
+					)
 					: ''
 			),
 		);
@@ -1572,12 +1592,20 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			$pid  = intval( $pid );
 			$post = get_post( $pid );
 			if ( ! $post ) {
-				$errors[] = sprintf( __( 'Post #%d not found', 'pressark' ), $pid );
+				$errors[] = sprintf(
+					/* translators: %d: WordPress post ID. */
+					__( 'Post #%d not found', 'pressark' ),
+					$pid
+				);
 				continue;
 			}
 
 			if ( ! current_user_can( 'edit_post', $pid ) ) {
-				$errors[] = sprintf( __( '"%s": no permission', 'pressark' ), $post->post_title );
+				$errors[] = sprintf(
+					/* translators: %s: WordPress post title. */
+					__( '"%s": no permission', 'pressark' ),
+					$post->post_title
+				);
 				continue;
 			}
 
@@ -1650,7 +1678,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			count( $post_ids )
 		);
 		if ( ! empty( $errors ) ) {
-			$message .= ' ' . sprintf( __( 'Errors: %s', 'pressark' ), implode( '; ', $errors ) );
+			$message .= ' ' . sprintf(
+				/* translators: %s: semicolon-separated list of error messages. */
+				__( 'Errors: %s', 'pressark' ),
+				implode( '; ', $errors )
+			);
 		}
 
 		return array( 'success' => true, 'message' => $message );
@@ -2294,7 +2326,12 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 			'changes'    => array(
 				array(
 					'field'  => __( 'Delete', 'pressark' ),
-					'before' => sprintf( __( '"%1$s" (%2$s)', 'pressark' ), $post->post_title, $post->post_status ),
+					'before' => sprintf(
+						/* translators: 1: post title, 2: post status. */
+						__( '"%1$s" (%2$s)', 'pressark' ),
+						$post->post_title,
+						$post->post_status
+					),
 					'after'  => __( 'Moved to trash', 'pressark' ),
 				),
 			),

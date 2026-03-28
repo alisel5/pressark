@@ -540,7 +540,11 @@ class PressArk_Admin_Activity {
 
 		echo '<div class="tablenav bottom"><div class="tablenav-pages">';
 		echo '<span class="displaying-num">'
-			. sprintf( esc_html__( '%s items', 'pressark' ), number_format_i18n( $total ) )
+			. sprintf(
+				/* translators: %s: total number of items. */
+				esc_html__( '%s items', 'pressark' ),
+				number_format_i18n( $total )
+			)
 			. '</span>';
 
 		$page_links = paginate_links( array(

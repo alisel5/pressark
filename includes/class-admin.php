@@ -667,7 +667,11 @@ class PressArk_Admin {
 			<optgroup label="<?php esc_attr_e( 'Free Tier Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'free' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf( __( '%s models use about 1× credits.', 'pressark' ), $info['cost_class'] ) : '' ); ?>">
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+						/* translators: %s: model cost class label, such as Economy or Standard. */
+						__( '%s models use about 1× credits.', 'pressark' ),
+						$info['cost_class']
+					) : '' ); ?>">
 						<?php echo esc_html( $info['label'] ); ?>
 					</option>
 				<?php endforeach; ?>
@@ -676,7 +680,12 @@ class PressArk_Admin {
 			<optgroup label="<?php esc_attr_e( 'Pro Models (License Required)', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'pro' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_pro ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf( __( '%s models use about %s credits.', 'pressark' ), $info['cost_class'], 'Value' === $info['cost_class'] ? '3×' : '8×' ) : '' ); ?>">
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_pro ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
+						__( '%1$s models use about %2$s credits.', 'pressark' ),
+						$info['cost_class'],
+						'Value' === $info['cost_class'] ? '3×' : '8×'
+					) : '' ); ?>">
 						<?php echo esc_html( $info['label'] ); ?><?php echo $is_pro ? '' : ' &#9889; Pro'; ?>
 					</option>
 				<?php endforeach; ?>
@@ -685,7 +694,12 @@ class PressArk_Admin {
 			<optgroup label="<?php esc_attr_e( 'Team+ Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'team' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_team ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf( __( '%s models use about %s credits.', 'pressark' ), $info['cost_class'], 'Premium' === $info['cost_class'] ? '15×' : '8×' ) : '' ); ?>">
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_team ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
+						__( '%1$s models use about %2$s credits.', 'pressark' ),
+						$info['cost_class'],
+						'Premium' === $info['cost_class'] ? '15×' : '8×'
+					) : '' ); ?>">
 						<?php echo esc_html( $info['label'] ); ?><?php echo $is_team ? '' : ' &#9889; Team+'; ?>
 					</option>
 				<?php endforeach; ?>
@@ -713,13 +727,13 @@ class PressArk_Admin {
 		<?php if ( ! $is_pro ) : ?>
 		<p class="description" style="color: #e94560; margin-top: 4px;">
 			&#128274; <?php
-			printf(
-				/* translators: %s: upgrade URL */
-				wp_kses(
+			echo wp_kses(
+				sprintf(
+					/* translators: %s: Freemius upgrade URL. */
 					__( 'Paid models require an active plan. <a href="%s">Upgrade in Freemius</a>', 'pressark' ),
-					array( 'a' => array( 'href' => array() ) )
+					esc_url( $upgrade_url )
 				),
-				esc_url( $upgrade_url )
+				array( 'a' => array( 'href' => array() ) )
 			);
 			?>
 		</p>
@@ -776,7 +790,11 @@ class PressArk_Admin {
 			<optgroup label="<?php esc_attr_e( 'Free Tier Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'free' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf( __( '%s models use about 1× credits.', 'pressark' ), $info['cost_class'] ) : '' ); ?>">
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+						/* translators: %s: model cost class label, such as Economy or Standard. */
+						__( '%s models use about 1× credits.', 'pressark' ),
+						$info['cost_class']
+					) : '' ); ?>">
 						<?php echo esc_html( $info['label'] ); ?>
 					</option>
 				<?php endforeach; ?>
@@ -785,7 +803,12 @@ class PressArk_Admin {
 			<optgroup label="<?php esc_attr_e( 'Pro Models (License Required)', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'pro' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_pro ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf( __( '%s models use about %s credits.', 'pressark' ), $info['cost_class'], 'Value' === $info['cost_class'] ? '3×' : '8×' ) : '' ); ?>">
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_pro ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
+						__( '%1$s models use about %2$s credits.', 'pressark' ),
+						$info['cost_class'],
+						'Value' === $info['cost_class'] ? '3×' : '8×'
+					) : '' ); ?>">
 						<?php echo esc_html( $info['label'] ); ?><?php echo $is_pro ? '' : ' &#9889; Pro'; ?>
 					</option>
 				<?php endforeach; ?>
@@ -794,7 +817,12 @@ class PressArk_Admin {
 			<optgroup label="<?php esc_attr_e( 'Team+ Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'team' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_team ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf( __( '%s models use about %s credits.', 'pressark' ), $info['cost_class'], 'Premium' === $info['cost_class'] ? '15×' : '8×' ) : '' ); ?>">
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_team ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
+						__( '%1$s models use about %2$s credits.', 'pressark' ),
+						$info['cost_class'],
+						'Premium' === $info['cost_class'] ? '15×' : '8×'
+					) : '' ); ?>">
 						<?php echo esc_html( $info['label'] ); ?><?php echo $is_team ? '' : ' &#9889; Team+'; ?>
 					</option>
 				<?php endforeach; ?>
@@ -825,13 +853,13 @@ class PressArk_Admin {
 		<?php if ( ! $is_pro ) : ?>
 		<p class="description" style="color: #e94560; margin-top: 4px;">
 			&#128274; <?php
-			printf(
-				/* translators: %s: upgrade URL */
-				wp_kses(
+			echo wp_kses(
+				sprintf(
+					/* translators: %s: Freemius upgrade URL. */
 					__( 'Paid models require an active plan. <a href="%s">Upgrade in Freemius</a>', 'pressark' ),
-					array( 'a' => array( 'href' => array() ) )
+					esc_url( $upgrade_url )
 				),
-				esc_url( $upgrade_url )
+				array( 'a' => array( 'href' => array() ) )
 			);
 			?>
 		</p>

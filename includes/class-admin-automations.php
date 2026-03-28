@@ -106,7 +106,12 @@ class PressArk_Admin_Automations {
 		$max = PressArk_Entitlements::tier_value( $tier, 'max_automations' ) ?? 3;
 		$current = $store->count_active( $user_id );
 		if ( $max >= 0 && $current >= $max ) {
-			set_transient( 'pressark_auto_notice', array( 'error', sprintf( __( 'You have %d active automations (limit: %d). Pause or delete one first.', 'pressark' ), $current, $max ) ), 30 );
+			set_transient( 'pressark_auto_notice', array( 'error', sprintf(
+				/* translators: 1: current active automation count, 2: plan limit. */
+				__( 'You have %1$d active automations (limit: %2$d). Pause or delete one first.', 'pressark' ),
+				$current,
+				$max
+			) ), 30 );
 			return;
 		}
 
@@ -126,6 +131,7 @@ class PressArk_Admin_Automations {
 		$cadence_seconds = PressArk_Automation_Recurrence::cadence_seconds( $cadence_type, $cadence_value );
 		if ( $min_interval > 0 && $cadence_seconds < $min_interval ) {
 			set_transient( 'pressark_auto_notice', array( 'error', sprintf(
+				/* translators: %s: minimum allowed time between automation runs. */
 				__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 				human_time_diff( 0, $min_interval )
 			) ), 30 );
@@ -213,6 +219,7 @@ class PressArk_Admin_Automations {
 			$cadence_seconds = PressArk_Automation_Recurrence::cadence_seconds( $ct, $cv );
 			if ( $min_interval > 0 && $cadence_seconds < $min_interval ) {
 				set_transient( 'pressark_auto_notice', array( 'error', sprintf(
+					/* translators: %s: minimum allowed time between automation runs. */
 					__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 					human_time_diff( 0, $min_interval )
 				) ), 30 );
@@ -415,7 +422,8 @@ class PressArk_Admin_Automations {
 		?>
 		<p class="description">
 			<?php printf(
-				esc_html__( '%d automation(s) (limit: %s for your %s plan)', 'pressark' ),
+				/* translators: 1: current automation count, 2: plan limit label, 3: plan name. */
+				esc_html__( '%1$d automation(s) (limit: %2$s for your %3$s plan)', 'pressark' ),
 				count( $automations ),
 				esc_html( $max_label ),
 				esc_html( PressArk_Entitlements::tier_label( $tier ) )
@@ -455,7 +463,11 @@ class PressArk_Admin_Automations {
 							<?php echo esc_html( ucfirst( $a['status'] ) ); ?>
 						</span>
 						<?php if ( $a['failure_streak'] > 0 ) : ?>
-							<br><small style="color:#dc2626;"><?php printf( esc_html__( '%d failures', 'pressark' ), $a['failure_streak'] ); ?></small>
+							<br><small style="color:#dc2626;"><?php printf(
+								/* translators: %d: number of consecutive automation failures. */
+								esc_html__( '%d failures', 'pressark' ),
+								$a['failure_streak']
+							); ?></small>
 						<?php endif; ?>
 					</td>
 					<td>
@@ -582,7 +594,11 @@ class PressArk_Admin_Automations {
 						<th><label for="pw-auto-first-run"><?php esc_html_e( 'First Run', 'pressark' ); ?></label></th>
 						<td>
 							<input type="datetime-local" id="pw-auto-first-run" name="first_run_at" class="regular-text">
-							<p class="description"><?php printf( esc_html__( 'Site timezone: %s. Leave empty to start at the next scheduled slot.', 'pressark' ), esc_html( $tz ) ); ?></p>
+							<p class="description"><?php printf(
+								/* translators: %s: site timezone string. */
+								esc_html__( 'Site timezone: %s. Leave empty to start at the next scheduled slot.', 'pressark' ),
+								esc_html( $tz )
+							); ?></p>
 							<input type="hidden" name="timezone" value="<?php echo esc_attr( $tz ); ?>">
 						</td>
 					</tr>
@@ -730,7 +746,11 @@ class PressArk_Admin_Automations {
 			<?php if ( $has_token && $chat_id ) : ?>
 				<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:12px;margin-top:8px;">
 					<strong style="color:#16a34a;">&#10003; <?php esc_html_e( 'Telegram configured', 'pressark' ); ?></strong>
-					<span style="color:#64748b;margin-left:8px;"><?php printf( esc_html__( 'Chat ID: %s', 'pressark' ), esc_html( $chat_id ) ); ?></span>
+					<span style="color:#64748b;margin-left:8px;"><?php printf(
+						/* translators: %s: Telegram chat ID. */
+						esc_html__( 'Chat ID: %s', 'pressark' ),
+						esc_html( $chat_id )
+					); ?></span>
 				</div>
 			<?php elseif ( ! $has_token ) : ?>
 				<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:12px;margin-top:8px;">

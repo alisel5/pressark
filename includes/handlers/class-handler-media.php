@@ -393,7 +393,11 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 			if ( $result ) {
 				$deleted++;
 			} else {
-				$errors[] = sprintf( __( '"%s": delete failed', 'pressark' ), $att->post_title );
+				$errors[] = sprintf(
+					/* translators: %s: media attachment title. */
+					__( '"%s": delete failed', 'pressark' ),
+					$att->post_title
+				);
 			}
 		}
 
@@ -1171,7 +1175,7 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 						return array(
 							'error' => sprintf(
 								/* translators: 1: custom field key, 2: received PHP type */
-								__( "Field '%1$s' expects an integer, got: %2$s", 'pressark' ),
+								__( 'Field \'%1$s\' expects an integer, got: %2$s', 'pressark' ),
 								$key,
 								gettype( $value )
 							),
@@ -1184,7 +1188,7 @@ class PressArk_Handler_Media extends PressArk_Handler_Base {
 						return array(
 							'error' => sprintf(
 								/* translators: 1: custom field key, 2: received PHP type */
-								__( "Field '%1$s' expects a number, got: %2$s", 'pressark' ),
+								__( 'Field \'%1$s\' expects a number, got: %2$s', 'pressark' ),
 								$key,
 								gettype( $value )
 							),

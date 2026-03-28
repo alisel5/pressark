@@ -144,12 +144,13 @@ class PressArk_Dashboard {
 			<?php if ( ! $has_api_key ) : ?>
 				<div class="pressark-dash-nokey">
 					<?php
-					printf(
-						wp_kses(
+					echo wp_kses(
+						sprintf(
+							/* translators: %s: admin settings URL. */
 							__( 'PressArk needs an API key to work. <a href="%s">Configure it in settings</a>.', 'pressark' ),
-							array( 'a' => array( 'href' => array() ) )
+							esc_url( admin_url( 'admin.php?page=pressark' ) )
 						),
-						esc_url( admin_url( 'admin.php?page=pressark' ) )
+						array( 'a' => array( 'href' => array() ) )
 					);
 					?>
 				</div>

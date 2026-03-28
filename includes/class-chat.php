@@ -2236,8 +2236,18 @@ class PressArk_Chat {
 			if ( isset( $data['average_score'] ) ) {
 				// Site-wide scan.
 				$lines = array();
-				$lines[] = sprintf( __( 'SEO Site Scan: %s (%d/100)', 'pressark' ), $data['average_grade'] ?? '?', $data['average_score'] ?? 0 );
-				$lines[] = sprintf( __( 'Pages scanned: %d | Critical issues: %d', 'pressark' ), $data['total_pages'] ?? 0, $data['critical_issues'] ?? 0 );
+				$lines[] = sprintf(
+					/* translators: 1: SEO letter grade, 2: SEO score out of 100. */
+					__( 'SEO Site Scan: %1$s (%2$d/100)', 'pressark' ),
+					$data['average_grade'] ?? '?',
+					$data['average_score'] ?? 0
+				);
+				$lines[] = sprintf(
+					/* translators: 1: total scanned pages, 2: number of critical issues. */
+					__( 'Pages scanned: %1$d | Critical issues: %2$d', 'pressark' ),
+					$data['total_pages'] ?? 0,
+					$data['critical_issues'] ?? 0
+				);
 
 				if ( ! empty( $data['top_issues'] ) ) {
 					$lines[] = '';
@@ -2251,7 +2261,13 @@ class PressArk_Chat {
 			} else {
 				// Single page scan.
 				$lines   = array();
-				$lines[] = sprintf( __( 'SEO Score: %s (%d/100) for "%s"', 'pressark' ), $data['grade'] ?? '?', $data['score'] ?? 0, $data['post_title'] ?? '' );
+				$lines[] = sprintf(
+					/* translators: 1: SEO letter grade, 2: SEO score out of 100, 3: page title. */
+					__( 'SEO Score: %1$s (%2$d/100) for "%3$s"', 'pressark' ),
+					$data['grade'] ?? '?',
+					$data['score'] ?? 0,
+					$data['post_title'] ?? ''
+				);
 
 				foreach ( $data['checks'] ?? array() as $check ) {
 					$icon    = match ( $check['status'] ?? '' ) {
@@ -2269,8 +2285,19 @@ class PressArk_Chat {
 
 		if ( 'security' === $type ) {
 			$lines   = array();
-			$lines[] = sprintf( __( 'Security Score: %s (%d/100)', 'pressark' ), $data['grade'] ?? '?', $data['score'] ?? 0 );
-			$lines[] = sprintf( __( 'Passed: %d | Warnings: %d | Failed: %d', 'pressark' ), $data['passed'] ?? 0, $data['warnings'] ?? 0, $data['failed'] ?? 0 );
+			$lines[] = sprintf(
+				/* translators: 1: security letter grade, 2: security score out of 100. */
+				__( 'Security Score: %1$s (%2$d/100)', 'pressark' ),
+				$data['grade'] ?? '?',
+				$data['score'] ?? 0
+			);
+			$lines[] = sprintf(
+				/* translators: 1: passed checks, 2: warnings, 3: failed checks. */
+				__( 'Passed: %1$d | Warnings: %2$d | Failed: %3$d', 'pressark' ),
+				$data['passed'] ?? 0,
+				$data['warnings'] ?? 0,
+				$data['failed'] ?? 0
+			);
 
 			foreach ( $data['checks'] ?? array() as $check ) {
 				$icon    = match ( $check['status'] ?? '' ) {

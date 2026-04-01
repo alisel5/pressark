@@ -61,21 +61,35 @@ class PressArk_Insights {
 	 */
 	public function summary( string $since, string $metric = 'tokens' ): array {
 		global $wpdb;
-		$table  = PressArk_Cost_Ledger::table_name();
-		$column = self::metric_column( $metric );
+		$table = PressArk_Cost_Ledger::table_name();
 
-		$row = $wpdb->get_row( $wpdb->prepare(
-			"SELECT
-				COUNT(*) AS total_requests,
-				COALESCE(SUM({$column}), 0) AS total_metric,
-				COALESCE(SUM(input_tokens), 0) AS total_input,
-				COALESCE(SUM(output_tokens), 0) AS total_output,
-				COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read,
-				SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count
-			 FROM {$table}
-			 WHERE created_at >= %s",
-			$since
-		), ARRAY_A );
+		if ( 'icu' === $metric ) {
+			$row = $wpdb->get_row( $wpdb->prepare(
+				"SELECT
+					COUNT(*) AS total_requests,
+					COALESCE(SUM(settled_icus), 0) AS total_metric,
+					COALESCE(SUM(input_tokens), 0) AS total_input,
+					COALESCE(SUM(output_tokens), 0) AS total_output,
+					COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read,
+					SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+				 FROM {$table}
+				 WHERE created_at >= %s",
+				$since
+			), ARRAY_A );
+		} else {
+			$row = $wpdb->get_row( $wpdb->prepare(
+				"SELECT
+					COUNT(*) AS total_requests,
+					COALESCE(SUM(settled_tokens), 0) AS total_metric,
+					COALESCE(SUM(input_tokens), 0) AS total_input,
+					COALESCE(SUM(output_tokens), 0) AS total_output,
+					COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read,
+					SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+				 FROM {$table}
+				 WHERE created_at >= %s",
+				$since
+			), ARRAY_A );
+		}
 
 		return $row ? array_map( 'intval', $row ) : array(
 			'total_requests'   => 0,
@@ -94,13 +108,26 @@ class PressArk_Insights {
 	 */
 	public function by_provider( string $since, string $metric = 'tokens' ): array {
 		global $wpdb;
-		$table  = PressArk_Cost_Ledger::table_name();
-		$column = self::metric_column( $metric );
+		$table = PressArk_Cost_Ledger::table_name();
+
+		if ( 'icu' === $metric ) {
+			return $wpdb->get_results( $wpdb->prepare(
+				"SELECT
+					provider,
+					COALESCE(SUM(settled_icus), 0) AS total_metric,
+					COUNT(*) AS request_count
+				 FROM {$table}
+				 WHERE status = 'settled' AND created_at >= %s
+				 GROUP BY provider
+				 ORDER BY total_metric DESC",
+				$since
+			), ARRAY_A ) ?: array();
+		}
 
 		return $wpdb->get_results( $wpdb->prepare(
 			"SELECT
 				provider,
-				COALESCE(SUM({$column}), 0) AS total_metric,
+				COALESCE(SUM(settled_tokens), 0) AS total_metric,
 				COUNT(*) AS request_count
 			 FROM {$table}
 			 WHERE status = 'settled' AND created_at >= %s
@@ -117,13 +144,26 @@ class PressArk_Insights {
 	 */
 	public function by_model( string $since, string $metric = 'tokens' ): array {
 		global $wpdb;
-		$table  = PressArk_Cost_Ledger::table_name();
-		$column = self::metric_column( $metric );
+		$table = PressArk_Cost_Ledger::table_name();
+
+		if ( 'icu' === $metric ) {
+			return $wpdb->get_results( $wpdb->prepare(
+				"SELECT
+					model,
+					COALESCE(SUM(settled_icus), 0) AS total_metric,
+					COUNT(*) AS request_count
+				 FROM {$table}
+				 WHERE status = 'settled' AND created_at >= %s
+				 GROUP BY model
+				 ORDER BY total_metric DESC",
+				$since
+			), ARRAY_A ) ?: array();
+		}
 
 		return $wpdb->get_results( $wpdb->prepare(
 			"SELECT
 				model,
-				COALESCE(SUM({$column}), 0) AS total_metric,
+				COALESCE(SUM(settled_tokens), 0) AS total_metric,
 				COUNT(*) AS request_count
 			 FROM {$table}
 			 WHERE status = 'settled' AND created_at >= %s
@@ -169,13 +209,26 @@ class PressArk_Insights {
 	 */
 	public function by_route( string $since, string $metric = 'tokens' ): array {
 		global $wpdb;
-		$table  = PressArk_Cost_Ledger::table_name();
-		$column = self::metric_column( $metric );
+		$table = PressArk_Cost_Ledger::table_name();
+
+		if ( 'icu' === $metric ) {
+			return $wpdb->get_results( $wpdb->prepare(
+				"SELECT
+					route,
+					COALESCE(SUM(settled_icus), 0) AS total_metric,
+					COUNT(*) AS request_count
+				 FROM {$table}
+				 WHERE status = 'settled' AND created_at >= %s
+				 GROUP BY route
+				 ORDER BY total_metric DESC",
+				$since
+			), ARRAY_A ) ?: array();
+		}
 
 		return $wpdb->get_results( $wpdb->prepare(
 			"SELECT
 				route,
-				COALESCE(SUM({$column}), 0) AS total_metric,
+				COALESCE(SUM(settled_tokens), 0) AS total_metric,
 				COUNT(*) AS request_count
 			 FROM {$table}
 			 WHERE status = 'settled' AND created_at >= %s

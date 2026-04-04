@@ -1032,6 +1032,10 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'fix seo meta title description schema',
 				'interrupt'     => 'block',
 				'tags'          => array( 'seo', 'write' ),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'SEO edits stale prior reads of the affected content.',
+				),
 				'verification'  => array(
 					'strategy'     => 'field_check',
 					'read_tool'    => 'read_content',
@@ -1046,6 +1050,10 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'update post meta seo fields custom',
 				'interrupt'     => 'block',
 				'tags'          => array( 'content', 'meta', 'write' ),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Meta updates stale prior reads of the affected content.',
+				),
 				'verification'  => array(
 					'strategy'     => 'field_check',
 					'read_tool'    => 'read_content',
@@ -1060,6 +1068,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'edit FSE block template part',
 				'interrupt'     => 'block',
 				'tags'          => array( 'templates', 'design', 'write' ),
+				'read_invalidation' => array(
+					'scope'           => 'resource',
+					'resource_groups' => array( 'templates' ),
+					'reason'          => 'Template edits stale template resource snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'get_templates',
@@ -1074,6 +1087,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'update theme customizer setting',
 				'interrupt'     => 'block',
 				'tags'          => array( 'themes', 'design', 'system' ),
+				'read_invalidation' => array(
+					'scope'           => 'resource',
+					'resource_groups' => array( 'design' ),
+					'reason'          => 'Theme setting changes stale design resource snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'field_check',
 					'read_tool'    => 'get_theme_settings',
@@ -1216,6 +1234,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'edit update post page title content excerpt',
 				'interrupt'     => 'block',
 				'tags'          => array( 'content', 'write' ),
+				'read_invalidation' => array(
+					'scope'           => 'target_posts',
+					'resource_groups' => array( 'site' ),
+					'reason'          => 'Content edits stale prior reads of that content and site snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'read_content',
@@ -1231,6 +1254,11 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'block',
 				'tags'          => array( 'content', 'write' ),
 				'idempotent'    => false,
+				'read_invalidation' => array(
+					'scope'           => 'site_content',
+					'resource_groups' => array( 'site' ),
+					'reason'          => 'New content can stale prior search results and site snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'existence_check',
 					'read_tool'    => 'read_content',
@@ -1238,6 +1266,17 @@ class PressArk_Operation_Registry {
 					'check_fields' => array( 'title', 'status' ),
 					'intensity'    => 'standard',
 					'nudge'        => false,
+				),
+			),
+
+			'delete_content' => array(
+				'search_hint'   => 'delete remove post page content',
+				'interrupt'     => 'block',
+				'tags'          => array( 'content', 'write', 'destructive' ),
+				'read_invalidation' => array(
+					'scope'           => 'site_content',
+					'resource_groups' => array( 'site' ),
+					'reason'          => 'Deleted content invalidates prior content reads and site snapshots.',
 				),
 			),
 
@@ -1255,6 +1294,10 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'update site settings name url timezone',
 				'interrupt'     => 'block',
 				'tags'          => array( 'settings', 'system' ),
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'Site setting changes can stale broad site context.',
+				),
 				'verification'  => array(
 					'strategy'     => 'field_check',
 					'read_tool'    => 'get_site_settings',
@@ -1270,6 +1313,10 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'cancel',
 				'tags'          => array( 'themes', 'system', 'dangerous' ),
 				'idempotent'    => true,
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'Theme switches stale all previously captured site state.',
+				),
 				'verification'  => array(
 					'strategy'     => 'field_check',
 					'read_tool'    => 'list_themes',
@@ -1285,6 +1332,10 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'cancel',
 				'tags'          => array( 'plugins', 'system' ),
 				'idempotent'    => true,
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'Plugin changes can stale broad site context and resources.',
+				),
 				'verification'  => array(
 					'strategy'     => 'field_check',
 					'read_tool'    => 'list_plugins',
@@ -1445,6 +1496,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'elementor edit widget text heading image button',
 				'interrupt'     => 'block',
 				'tags'          => array( 'elementor', 'write' ),
+				'read_invalidation' => array(
+					'scope'           => 'target_posts',
+					'resource_groups' => array( 'elementor' ),
+					'reason'          => 'Elementor widget edits stale prior page-builder reads.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'elementor_read_page',
@@ -1459,6 +1515,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'elementor add new widget section',
 				'interrupt'     => 'block',
 				'tags'          => array( 'elementor', 'write' ),
+				'read_invalidation' => array(
+					'scope'           => 'target_posts',
+					'resource_groups' => array( 'elementor' ),
+					'reason'          => 'Elementor widget insertion stale prior page-builder reads.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'elementor_read_page',
@@ -1473,6 +1534,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'elementor add container section',
 				'interrupt'     => 'block',
 				'tags'          => array( 'elementor', 'write' ),
+				'read_invalidation' => array(
+					'scope'           => 'target_posts',
+					'resource_groups' => array( 'elementor' ),
+					'reason'          => 'Elementor container changes stale prior page-builder reads.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'elementor_read_page',
@@ -1488,6 +1554,11 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'block',
 				'tags'          => array( 'elementor', 'write' ),
 				'idempotent'    => false,
+				'read_invalidation' => array(
+					'scope'           => 'site_content',
+					'resource_groups' => array( 'elementor', 'site' ),
+					'reason'          => 'New Elementor pages can stale prior searches and site snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'existence_check',
 					'read_tool'    => 'read_content',
@@ -1504,6 +1575,11 @@ class PressArk_Operation_Registry {
 				'resumable'     => true,
 				'tags'          => array( 'elementor', 'bulk', 'dangerous' ),
 				'idempotent'    => false,
+				'read_invalidation' => array(
+					'scope'           => 'site_content',
+					'resource_groups' => array( 'elementor' ),
+					'reason'          => 'Bulk Elementor replacements stale prior page-builder and content reads.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'elementor_read_page',
@@ -1518,6 +1594,11 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'elementor global design system colors typography',
 				'interrupt'     => 'block',
 				'tags'          => array( 'elementor', 'design', 'system' ),
+				'read_invalidation' => array(
+					'scope'           => 'resource',
+					'resource_groups' => array( 'elementor', 'design' ),
+					'reason'          => 'Elementor global style updates stale design resource snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'read_back',
 					'read_tool'    => 'elementor_get_styles',

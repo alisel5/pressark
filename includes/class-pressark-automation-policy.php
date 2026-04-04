@@ -128,6 +128,271 @@ class PressArk_Automation_Policy {
 	);
 
 	/**
+	 * Build the canonical permission decision for an automation operation.
+	 *
+	 * @param string $operation_name Tool/operation name.
+	 * @param string $policy         Policy level.
+	 * @param array  $args           Operation arguments.
+	 * @return array Canonical permission decision.
+	 */
+	public static function decision( string $operation_name, string $policy, array $args = array() ): array {
+		$context = class_exists( 'PressArk_Policy_Engine' )
+			? PressArk_Policy_Engine::CONTEXT_AUTOMATION
+			: 'automation';
+
+		$is_registered = PressArk_Operation_Registry::exists( $operation_name );
+		$capability    = $is_registered
+			? PressArk_Operation_Registry::classify( $operation_name, $args )
+			: 'unknown';
+		$group         = $is_registered
+			? PressArk_Operation_Registry::get_group( $operation_name )
+			: '';
+
+		if ( $is_registered && 'read' === $capability ) {
+			return PressArk_Permission_Decision::with_visibility(
+				PressArk_Permission_Decision::create(
+					PressArk_Permission_Decision::ALLOW,
+					'Read operations are allowed in automation runs.',
+					'automation_policy',
+					array(
+						'operation'  => $operation_name,
+						'context'    => $context,
+						'debug'      => array(
+							'group'      => $group,
+							'capability' => $capability,
+							'policy'     => $policy,
+							'registered' => true,
+						),
+						'provenance' => array(
+							'authority' => 'automation_policy',
+							'source'    => $policy,
+							'kind'      => 'policy',
+						),
+					)
+				),
+				true
+			);
+		}
+
+		if ( ! $is_registered ) {
+			return PressArk_Permission_Decision::with_visibility(
+				PressArk_Permission_Decision::create(
+					PressArk_Permission_Decision::DENY,
+					sprintf(
+						'Operation "%s" is not registered and cannot be auto-approved in automation runs.',
+						$operation_name
+					),
+					'automation_policy',
+					array(
+						'operation'  => $operation_name,
+						'context'    => $context,
+						'debug'      => array(
+							'group'      => $group,
+							'capability' => $capability,
+							'policy'     => $policy,
+							'registered' => false,
+						),
+						'provenance' => array(
+							'authority' => 'automation_policy',
+							'source'    => $policy,
+							'kind'      => 'policy',
+						),
+					)
+				),
+				false,
+				array( 'unregistered', 'denied' )
+			);
+		}
+
+		if ( in_array( $operation_name, self::NEVER_AUTO_APPROVE, true ) ) {
+			$decision = PressArk_Permission_Decision::create(
+				PressArk_Permission_Decision::DENY,
+				sprintf(
+					'Operation "%s" is not allowed in unattended automation runs. This action requires human approval due to its potential impact.',
+					$operation_name
+				),
+				'automation_policy',
+				array(
+					'operation'  => $operation_name,
+					'context'    => $context,
+					'debug'      => array(
+						'group'      => $group,
+						'capability' => $capability,
+						'policy'     => $policy,
+						'registered' => true,
+					),
+					'provenance' => array(
+						'authority' => 'automation_policy',
+						'source'    => $policy,
+						'kind'      => 'never_auto_approve',
+					),
+				)
+			);
+
+			$decision = PressArk_Permission_Decision::with_approval(
+				$decision,
+				true,
+				PressArk_Permission_Decision::APPROVAL_UNAVAILABLE,
+				false
+			);
+
+			return PressArk_Permission_Decision::with_visibility(
+				$decision,
+				false,
+				array( 'approval_blocked', 'never_auto_approve', 'denied' )
+			);
+		}
+
+		switch ( $policy ) {
+			case self::POLICY_EDITORIAL:
+				if ( in_array( $operation_name, self::EDITORIAL_SAFE_OPS, true ) ) {
+					return PressArk_Permission_Decision::with_visibility(
+						PressArk_Permission_Decision::create(
+							PressArk_Permission_Decision::ALLOW,
+							'Allowed by the editorial automation policy.',
+							'automation_policy',
+							array(
+								'operation'  => $operation_name,
+								'context'    => $context,
+								'debug'      => array(
+									'group'      => $group,
+									'capability' => $capability,
+									'policy'     => $policy,
+									'registered' => true,
+								),
+								'provenance' => array(
+									'authority' => 'automation_policy',
+									'source'    => $policy,
+									'kind'      => 'policy',
+								),
+							)
+						),
+						true
+					);
+				}
+				break;
+
+			case self::POLICY_MERCHANDISING:
+				if ( in_array( $operation_name, self::EDITORIAL_SAFE_OPS, true )
+					|| in_array( $operation_name, self::MERCHANDISING_SAFE_OPS, true ) ) {
+					return PressArk_Permission_Decision::with_visibility(
+						PressArk_Permission_Decision::create(
+							PressArk_Permission_Decision::ALLOW,
+							'Allowed by the merchandising automation policy.',
+							'automation_policy',
+							array(
+								'operation'  => $operation_name,
+								'context'    => $context,
+								'debug'      => array(
+									'group'      => $group,
+									'capability' => $capability,
+									'policy'     => $policy,
+									'registered' => true,
+								),
+								'provenance' => array(
+									'authority' => 'automation_policy',
+									'source'    => $policy,
+									'kind'      => 'policy',
+								),
+							)
+						),
+						true
+					);
+				}
+				break;
+
+			case self::POLICY_FULL:
+				return PressArk_Permission_Decision::with_visibility(
+					PressArk_Permission_Decision::create(
+						PressArk_Permission_Decision::ALLOW,
+						'Allowed by the full automation policy.',
+						'automation_policy',
+						array(
+							'operation'  => $operation_name,
+							'context'    => $context,
+							'debug'      => array(
+								'group'      => $group,
+								'capability' => $capability,
+								'policy'     => $policy,
+								'registered' => true,
+							),
+							'provenance' => array(
+								'authority' => 'automation_policy',
+								'source'    => $policy,
+								'kind'      => 'policy',
+							),
+						)
+					),
+					true
+				);
+		}
+
+		if ( in_array( $group, self::ALWAYS_SAFE_GROUPS, true ) && 'read' === $capability ) {
+			return PressArk_Permission_Decision::with_visibility(
+				PressArk_Permission_Decision::create(
+					PressArk_Permission_Decision::ALLOW,
+					'Allowed because the tool is read-only in an always-safe group.',
+					'automation_policy',
+					array(
+						'operation'  => $operation_name,
+						'context'    => $context,
+						'debug'      => array(
+							'group'      => $group,
+							'capability' => $capability,
+							'policy'     => $policy,
+							'registered' => true,
+						),
+						'provenance' => array(
+							'authority' => 'automation_policy',
+							'source'    => $policy,
+							'kind'      => 'policy',
+						),
+					)
+				),
+				true
+			);
+		}
+
+		$decision = PressArk_Permission_Decision::create(
+			PressArk_Permission_Decision::DENY,
+			sprintf(
+				'Operation "%s" is outside the "%s" automation policy. Upgrade the automation policy or perform this action manually.',
+				$operation_name,
+				$policy
+			),
+			'automation_policy',
+			array(
+				'operation'  => $operation_name,
+				'context'    => $context,
+				'debug'      => array(
+					'group'      => $group,
+					'capability' => $capability,
+					'policy'     => $policy,
+					'registered' => true,
+				),
+				'provenance' => array(
+					'authority' => 'automation_policy',
+					'source'    => $policy,
+					'kind'      => 'policy',
+				),
+			)
+		);
+
+		$decision = PressArk_Permission_Decision::with_approval(
+			$decision,
+			true,
+			PressArk_Permission_Decision::APPROVAL_UNAVAILABLE,
+			false
+		);
+
+		return PressArk_Permission_Decision::with_visibility(
+			$decision,
+			false,
+			array( 'approval_blocked', 'policy_denied', 'denied' )
+		);
+	}
+
+	/**
 	 * Check whether an operation can be auto-approved under the given policy.
 	 *
 	 * @param string $operation_name Tool/operation name.
@@ -136,72 +401,12 @@ class PressArk_Automation_Policy {
 	 * @return array { allowed: bool, reason?: string }
 	 */
 	public static function check( string $operation_name, string $policy, array $args = array() ): array {
-		// Reads are always allowed — but only if the operation is actually
-		// registered. Unknown/unregistered operations must not be assumed safe.
-		$is_registered = PressArk_Operation_Registry::exists( $operation_name );
-		$capability    = null;
-		if ( $is_registered ) {
-			$capability = PressArk_Operation_Registry::classify( $operation_name, $args );
-			if ( 'read' === $capability ) {
-				return array( 'allowed' => true );
-			}
-		}
-
-		// Unregistered operations are never auto-approved regardless of policy.
-		if ( ! $is_registered ) {
-			return array(
-				'allowed' => false,
-				'reason'  => sprintf(
-					'Operation "%s" is not registered and cannot be auto-approved in automation runs.',
-					$operation_name
-				),
-			);
-		}
-
-		// Never-auto-approve list takes precedence.
-		if ( in_array( $operation_name, self::NEVER_AUTO_APPROVE, true ) ) {
-			return array(
-				'allowed' => false,
-				'reason'  => sprintf(
-					'Operation "%s" is not allowed in unattended automation runs. This action requires human approval due to its potential impact.',
-					$operation_name
-				),
-			);
-		}
-
-		// Check against policy level.
-		switch ( $policy ) {
-			case self::POLICY_EDITORIAL:
-				if ( in_array( $operation_name, self::EDITORIAL_SAFE_OPS, true ) ) {
-					return array( 'allowed' => true );
-				}
-				break;
-
-			case self::POLICY_MERCHANDISING:
-				if ( in_array( $operation_name, self::EDITORIAL_SAFE_OPS, true )
-					|| in_array( $operation_name, self::MERCHANDISING_SAFE_OPS, true ) ) {
-					return array( 'allowed' => true );
-				}
-				break;
-
-			case self::POLICY_FULL:
-				// Full policy allows all registered operations except NEVER_AUTO_APPROVE.
-				return array( 'allowed' => true );
-		}
-
-		// Check if it's in an always-safe group (for reads that slipped through).
-		$group = PressArk_Operation_Registry::get_group( $operation_name );
-		if ( in_array( $group, self::ALWAYS_SAFE_GROUPS, true ) && 'read' === $capability ) {
-			return array( 'allowed' => true );
-		}
+		$decision = self::decision( $operation_name, $policy, $args );
 
 		return array(
-			'allowed' => false,
-			'reason'  => sprintf(
-				'Operation "%s" is outside the "%s" automation policy. Upgrade the automation policy or perform this action manually.',
-				$operation_name,
-				$policy
-			),
+			'allowed'             => PressArk_Permission_Decision::is_allowed( $decision ),
+			'reason'              => implode( ' ', (array) ( $decision['reasons'] ?? array() ) ),
+			'permission_decision' => $decision,
 		);
 	}
 

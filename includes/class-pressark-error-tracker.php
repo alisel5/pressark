@@ -36,6 +36,15 @@ class PressArk_Error_Tracker {
 	 */
 	public static function log( string $severity, string $component, string $message, array $context = array() ): void {
 		$severity = in_array( $severity, self::LEVELS, true ) ? $severity : 'error';
+		$trace_context = class_exists( 'PressArk_Activity_Trace' )
+			? PressArk_Activity_Trace::current_context()
+			: array();
+
+		foreach ( array( 'correlation_id', 'run_id', 'task_id', 'reservation_id', 'route' ) as $key ) {
+			if ( empty( $context[ $key ] ) && ! empty( $trace_context[ $key ] ) ) {
+				$context[ $key ] = $trace_context[ $key ];
+			}
+		}
 
 		// Build the formatted log line.
 		$log_line = sprintf(

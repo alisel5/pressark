@@ -67,6 +67,9 @@ class PressArk_Resource_Registry {
 			'ttl'           => HOUR_IN_SECONDS,
 			'invalidate_on' => array(),
 			'requires'      => null,
+			'trust_class'   => 'trusted_system',
+			'provider'      => 'resource_registry',
+			'provenance'    => array(),
 		) );
 	}
 
@@ -98,6 +101,8 @@ class PressArk_Resource_Registry {
 				'description' => $def['description'],
 				'group'       => $def['group'],
 				'mime_type'   => $def['mime_type'],
+				'trust_class' => $def['trust_class'],
+				'provider'    => $def['provider'],
 			);
 		}
 
@@ -148,12 +153,18 @@ class PressArk_Resource_Registry {
 		if ( $def['ttl'] > 0 ) {
 			$cached = get_transient( $cache_key );
 			if ( false !== $cached ) {
-				return array(
-					'success' => true,
-					'data'    => $cached,
-					'cached'  => true,
-					'uri'     => $uri,
+				$cached_payload = self::normalize_cached_payload( $cached );
+				$payload        = array(
+					'success'   => true,
+					'data'      => $cached_payload['data'],
+					'cached'    => true,
+					'uri'       => $uri,
+					'stored_at' => $cached_payload['stored_at'],
 				);
+				if ( class_exists( 'PressArk_Read_Metadata' ) ) {
+					$payload = PressArk_Read_Metadata::annotate_resource_result( $uri, $def, $payload );
+				}
+				return $payload;
 			}
 		}
 
@@ -172,15 +183,20 @@ class PressArk_Resource_Registry {
 		// Cache if TTL > 0.
 		if ( $def['ttl'] > 0 && false !== $data ) {
 			$ttl = min( $def['ttl'], self::MAX_TTL );
-			set_transient( $cache_key, $data, $ttl );
+			set_transient( $cache_key, self::cache_payload( $data ), $ttl );
 		}
 
-		return array(
+		$payload = array(
 			'success' => true,
 			'data'    => $data,
 			'cached'  => false,
 			'uri'     => $uri,
+			'stored_at' => gmdate( 'c' ),
 		);
+		if ( class_exists( 'PressArk_Read_Metadata' ) ) {
+			$payload = PressArk_Read_Metadata::annotate_resource_result( $uri, $def, $payload );
+		}
+		return $payload;
 	}
 
 	/**
@@ -199,6 +215,25 @@ class PressArk_Resource_Registry {
 		foreach ( self::$resources as $uri => $def ) {
 			if ( $def['group'] === $group ) {
 				delete_transient( self::cache_key( $uri ) );
+			}
+		}
+	}
+
+	public static function apply_invalidation( array $descriptor ): void {
+		self::ensure_booted();
+		$uris   = array_map( 'sanitize_text_field', (array) ( $descriptor['resource_uris'] ?? array() ) );
+		$groups = array_map( 'sanitize_key', (array) ( $descriptor['resource_groups'] ?? array() ) );
+		$scope  = sanitize_key( (string) ( $descriptor['scope'] ?? '' ) );
+
+		foreach ( array_filter( $uris ) as $uri ) {
+			self::invalidate( $uri );
+		}
+		foreach ( array_filter( $groups ) as $group ) {
+			self::invalidate_group( $group );
+		}
+		if ( 'site' === $scope ) {
+			foreach ( array_keys( self::$resources ) as $uri ) {
+				self::invalidate( $uri );
 			}
 		}
 	}
@@ -907,6 +942,28 @@ class PressArk_Resource_Registry {
 	private static function cache_key( string $uri ): string {
 		// Transient keys max 172 chars. Use hash for safety.
 		return self::CACHE_PREFIX . substr( md5( $uri ), 0, 16 );
+	}
+
+	private static function cache_payload( $data ): array {
+		return array(
+			'__pressark_cached_resource' => true,
+			'data'                      => $data,
+			'stored_at'                 => gmdate( 'c' ),
+		);
+	}
+
+	private static function normalize_cached_payload( $cached ): array {
+		if ( is_array( $cached ) && ! empty( $cached['__pressark_cached_resource'] ) ) {
+			return array(
+				'data'      => $cached['data'] ?? array(),
+				'stored_at' => sanitize_text_field( (string) ( $cached['stored_at'] ?? '' ) ),
+			);
+		}
+
+		return array(
+			'data'      => $cached,
+			'stored_at' => '',
+		);
 	}
 
 	/**

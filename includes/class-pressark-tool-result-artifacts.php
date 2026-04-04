@@ -184,12 +184,17 @@ class PressArk_Tool_Result_Artifacts {
 		$entries = array();
 
 		foreach ( $index as $meta ) {
+			$read_meta = class_exists( 'PressArk_Read_Metadata' )
+				? PressArk_Read_Metadata::sanitize_snapshot( $meta['read_meta'] ?? array() )
+				: array();
 			$entries[] = array(
 				'uri'         => (string) ( $meta['uri'] ?? '' ),
 				'name'        => self::resource_name_from_meta( $meta ),
 				'description' => self::resource_description_from_meta( $meta ),
 				'group'       => 'tool-results',
 				'mime_type'   => 'application/json',
+				'trust_class' => sanitize_key( (string) ( $read_meta['trust_class'] ?? 'derived_summary' ) ),
+				'provider'    => sanitize_key( (string) ( $read_meta['provider'] ?? 'artifact_store' ) ),
 			);
 		}
 
@@ -217,6 +222,10 @@ class PressArk_Tool_Result_Artifacts {
 			return array( 'success' => false, 'error' => __( 'You do not have access to this tool-result artifact.', 'pressark' ), 'uri' => $uri );
 		}
 
+		$read_meta = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_snapshot( $record['read_meta'] ?? array() )
+			: array();
+
 		return array(
 			'success' => true,
 			'cached'  => false,
@@ -233,8 +242,11 @@ class PressArk_Tool_Result_Artifacts {
 				'stored_at'               => gmdate( 'c', (int) ( $record['created_at'] ?? time() ) ),
 				'stored_bytes'            => (int) ( $record['bytes'] ?? 0 ),
 				'estimated_inline_tokens' => (int) ( $record['estimated_inline_tokens'] ?? 0 ),
+				'meta'                    => $read_meta,
 				'result'                  => $record['result'] ?? array(),
 			),
+			'meta'    => $read_meta,
+			'read_meta' => $read_meta,
 		);
 	}
 
@@ -347,6 +359,16 @@ class PressArk_Tool_Result_Artifacts {
 	private function build_prompt_result( string $tool_name, array $result, array $record, string $reason ): array {
 		$preview = $this->build_preview( $tool_name, $result );
 		$message = $this->trim_message( (string) ( $result['message'] ?? '' ), 180 );
+		$preview_meta = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::preview_meta(
+				$record['read_meta'] ?? ( $result['read_meta'] ?? array() ),
+				array(
+					'artifact_uri' => $record['uri'] ?? '',
+					'reason'       => $reason,
+					'provider'     => 'artifact_store',
+				)
+			)
+			: array();
 		if ( '' === $message ) {
 			$message = $this->fallback_message( $tool_name, $preview );
 		}
@@ -370,9 +392,16 @@ class PressArk_Tool_Result_Artifacts {
 					'reason'                  => $reason,
 					'stored_bytes'            => $record['bytes'],
 					'estimated_inline_tokens' => $record['estimated_inline_tokens'],
+					'read_state'              => array_filter( array(
+						'trust_class'       => $preview_meta['trust_class'] ?? '',
+						'freshness'         => $preview_meta['freshness'] ?? '',
+						'completeness'      => $preview_meta['completeness'] ?? '',
+						'query_fingerprint' => $preview_meta['query_fingerprint'] ?? '',
+					) ),
 					'browse_hint'             => 'Use read_resource with this URI to inspect the full payload. Use list_resources with group \"tool-results\" to browse stored artifacts.',
 				),
 			),
+			'read_meta' => $preview_meta,
 			'_artifactized' => true,
 			'_artifact_uri' => $record['uri'],
 			'_tool_name'    => $tool_name,
@@ -395,6 +424,9 @@ class PressArk_Tool_Result_Artifacts {
 			'bytes'                   => $this->estimate_bytes( $result ),
 			'estimated_inline_tokens' => $inline_tokens,
 			'message'                 => $this->trim_message( (string) ( $result['message'] ?? '' ), 140 ),
+			'read_meta'               => class_exists( 'PressArk_Read_Metadata' )
+				? PressArk_Read_Metadata::sanitize_snapshot( $result['read_meta'] ?? array() )
+				: array(),
 			'result'                  => $result,
 		);
 
@@ -680,6 +712,9 @@ class PressArk_Tool_Result_Artifacts {
 			'bytes'                   => (int) ( $record['bytes'] ?? 0 ),
 			'estimated_inline_tokens' => (int) ( $record['estimated_inline_tokens'] ?? 0 ),
 			'message'                 => (string) ( $record['message'] ?? '' ),
+			'read_meta'               => class_exists( 'PressArk_Read_Metadata' )
+				? PressArk_Read_Metadata::sanitize_snapshot( $record['read_meta'] ?? array() )
+				: array(),
 		);
 
 		$index = array_values( array_filter( $index, static fn( array $item ): bool => (string) ( $item['artifact_id'] ?? '' ) !== $meta['artifact_id'] ) );
@@ -728,7 +763,16 @@ class PressArk_Tool_Result_Artifacts {
 	private static function resource_description_from_meta( array $meta ): string {
 		$message = trim( sanitize_text_field( (string) ( $meta['message'] ?? '' ) ) );
 		$size_kb = round( ( (int) ( $meta['bytes'] ?? 0 ) ) / 1024, 1 );
-		return sprintf( '%s [%s KB]', '' !== $message ? $message : 'Stored tool result kept off-prompt.', $size_kb );
+		$read_meta = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_snapshot( $meta['read_meta'] ?? array() )
+			: array();
+		$tags      = array_filter( array(
+			sanitize_key( (string) ( $read_meta['freshness'] ?? '' ) ),
+			sanitize_key( (string) ( $read_meta['completeness'] ?? '' ) ),
+			sanitize_key( (string) ( $read_meta['trust_class'] ?? '' ) ),
+		) );
+		$tag_text  = empty( $tags ) ? '' : ' [' . implode( ', ', $tags ) . ']';
+		return sprintf( '%s [%s KB]%s', '' !== $message ? $message : 'Stored tool result kept off-prompt.', $size_kb, $tag_text );
 	}
 
 	private static function record_cache_key( string $artifact_id ): string {

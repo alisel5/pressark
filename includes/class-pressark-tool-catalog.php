@@ -530,10 +530,11 @@ class PressArk_Tool_Catalog {
 	 * @param string[] $loaded_groups Group names already loaded.
 	 * @return string Compact text for system prompt, or empty if all groups loaded.
 	 */
-	public function get_capability_map( array $loaded_groups, string $resource_detail = 'full' ): string {
+	public function get_capability_map( array $loaded_groups, string $resource_detail = 'full', array $visible_tool_names = array() ): string {
 		$has_woo       = class_exists( 'WooCommerce' );
 		$has_elementor = class_exists( '\\Elementor\\Plugin' );
 		$loaded_set    = array_flip( $this->normalize_string_list( $loaded_groups ) );
+		$visible_groups = $this->visible_groups_from_tool_names( $visible_tool_names );
 
 		// v4.3.0: Enriched labels with representative tool names and actions.
 		// Adds ~50 tokens but eliminates a discover_tools round-trip (~7K tokens).
@@ -584,6 +585,9 @@ class PressArk_Tool_Catalog {
 			if ( ! PressArk_Operation_Registry::is_valid_group( $group ) ) {
 				continue;
 			}
+			if ( ! empty( $visible_groups ) && ! in_array( $group, $visible_groups, true ) ) {
+				continue;
+			}
 
 			$lines[] = "- {$group}: {$label}";
 		}
@@ -613,10 +617,11 @@ class PressArk_Tool_Catalog {
 	 * @param string[] $loaded_groups Group names already loaded.
 	 * @return string Compact text for the system prompt, or empty if all groups loaded.
 	 */
-	public function get_compact_capability_map( array $loaded_groups ): string {
+	public function get_compact_capability_map( array $loaded_groups, array $visible_tool_names = array() ): string {
 		$has_woo       = class_exists( 'WooCommerce' );
 		$has_elementor = class_exists( '\\Elementor\\Plugin' );
 		$loaded_set    = array_flip( $this->normalize_string_list( $loaded_groups ) );
+		$visible_groups = $this->visible_groups_from_tool_names( $visible_tool_names );
 		$group_labels  = array(
 			'seo'           => 'meta, crawl, SEO fixes',
 			'security'      => 'vulnerability scans and fixes',
@@ -663,6 +668,9 @@ class PressArk_Tool_Catalog {
 			if ( ! PressArk_Operation_Registry::is_valid_group( $group ) ) {
 				continue;
 			}
+			if ( ! empty( $visible_groups ) && ! in_array( $group, $visible_groups, true ) ) {
+				continue;
+			}
 
 			$lines[] = "- {$group}: {$label}";
 		}
@@ -691,10 +699,13 @@ class PressArk_Tool_Catalog {
 	 * @param string[] $loaded_groups Group names already loaded.
 	 * @return string
 	 */
-	public function get_minimal_capability_map( array $loaded_groups ): string {
+	public function get_minimal_capability_map( array $loaded_groups, array $visible_tool_names = array() ): string {
+		$visible_groups = $this->visible_groups_from_tool_names( $visible_tool_names );
 		$all_groups = array_values( array_filter(
 			PressArk_Operation_Registry::group_names(),
-			fn( $group ) => ! in_array( $group, $loaded_groups, true ) && 'discovery' !== $group
+			fn( $group ) => ! in_array( $group, $loaded_groups, true )
+				&& 'discovery' !== $group
+				&& ( empty( $visible_groups ) || in_array( $group, $visible_groups, true ) )
 		) );
 
 		if ( empty( $all_groups ) ) {
@@ -722,11 +733,11 @@ class PressArk_Tool_Catalog {
 	 * @param string[] $loaded_groups Group names already loaded.
 	 * @return array<string, string>
 	 */
-	public function get_capability_maps( array $loaded_groups ): array {
+	public function get_capability_maps( array $loaded_groups, array $visible_tool_names = array() ): array {
 		return array(
-			'full'    => $this->get_capability_map( $loaded_groups, 'full' ),
-			'compact' => $this->get_compact_capability_map( $loaded_groups ),
-			'minimal' => $this->get_minimal_capability_map( $loaded_groups ),
+			'full'    => $this->get_capability_map( $loaded_groups, 'full', $visible_tool_names ),
+			'compact' => $this->get_compact_capability_map( $loaded_groups, $visible_tool_names ),
+			'minimal' => $this->get_minimal_capability_map( $loaded_groups, $visible_tool_names ),
 		);
 	}
 
@@ -764,7 +775,7 @@ class PressArk_Tool_Catalog {
 	 * @param string[] $loaded_names Tool names already loaded in current session.
 	 * @return array[] Array of matches: { name, description, group, loaded }.
 	 */
-	public function discover( string $query, array $loaded_names = array() ): array {
+	public function discover( string $query, array $loaded_names = array(), array $options = array() ): array {
 		$query_lower = strtolower( trim( $query ) );
 		if ( empty( $query_lower ) ) {
 			return array();
@@ -897,7 +908,22 @@ class PressArk_Tool_Catalog {
 			$results[] = $rm;
 		}
 
-		return array_slice( $results, 0, 25 );
+		$results = array_slice( $results, 0, 25 );
+
+		if ( ! empty( $options ) && class_exists( 'PressArk_Permission_Service' ) ) {
+			$results = PressArk_Permission_Service::filter_discovery_results(
+				$results,
+				(string) (
+					$options['permission_context']
+					?? ( class_exists( 'PressArk_Policy_Engine' )
+						? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+						: 'interactive' )
+				),
+				(array) ( $options['permission_meta'] ?? array() )
+			);
+		}
+
+		return $results;
 	}
 
 	/**
@@ -1046,5 +1072,27 @@ class PressArk_Tool_Catalog {
 		}
 
 		return array_values( array_unique( $normalized ) );
+	}
+
+	/**
+	 * Derive visible groups from a set of tool names.
+	 *
+	 * @param string[] $tool_names Tool names.
+	 * @return string[]
+	 */
+	private function visible_groups_from_tool_names( array $tool_names ): array {
+		if ( empty( $tool_names ) ) {
+			return array();
+		}
+
+		$groups = array();
+		foreach ( $this->normalize_string_list( $tool_names ) as $tool_name ) {
+			$group = PressArk_Operation_Registry::get_group( $tool_name );
+			if ( '' !== $group ) {
+				$groups[] = $group;
+			}
+		}
+
+		return array_values( array_unique( $groups ) );
 	}
 }

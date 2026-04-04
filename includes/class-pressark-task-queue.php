@@ -307,6 +307,16 @@ class PressArk_Task_Queue {
 	): array {
 		$task_id = wp_generate_uuid4();
 		$user_id = $user_id ?: get_current_user_id();
+		$trace_context = PressArk_Activity_Trace::current_context();
+		$correlation_id = (string) ( $trace_context['correlation_id'] ?? '' );
+
+		if ( '' === $correlation_id && '' !== $run_id ) {
+			$run_store = new PressArk_Run_Store();
+			$run       = $run_store->get( $run_id );
+			if ( $run ) {
+				$correlation_id = (string) ( $run['correlation_id'] ?? '' );
+			}
+		}
 
 		$idem_key = ! empty( $idempotency_key )
 			? sanitize_text_field( $idempotency_key )
@@ -322,6 +332,7 @@ class PressArk_Task_Queue {
 				'loaded_groups'    => $loaded_groups,
 				'checkpoint'       => $checkpoint_data,
 				'run_id'           => $run_id,
+				'correlation_id'   => $correlation_id,
 				// v3.3.0: Resolved context captured at enqueue time so async
 				// execution has the same environmental awareness as foreground.
 				'resolved_context' => $resolved_context,
@@ -363,6 +374,28 @@ class PressArk_Task_Queue {
 				$run_store = new PressArk_Run_Store();
 				$run_store->link_task( $run_id, $task_id );
 			}
+
+			PressArk_Activity_Trace::publish(
+				array(
+					'event_type' => 'task.queued',
+					'phase'      => 'async',
+					'status'     => 'queued',
+					'reason'     => 'state_change',
+					'summary'    => 'Async task queued for background processing.',
+					'payload'    => array(
+						'max_retries' => 2,
+					),
+				),
+				array(
+					'correlation_id' => $correlation_id,
+					'run_id'         => $run_id,
+					'task_id'        => $task_id,
+					'reservation_id' => $reservation_id,
+					'user_id'        => $user_id,
+					'chat_id'        => (int) ( $resolved_context['chat_id'] ?? 0 ),
+					'route'          => ! empty( $resolved_context['automation_id'] ) ? 'automation' : 'async',
+				)
+			);
 		}
 
 		return array(
@@ -394,6 +427,37 @@ class PressArk_Task_Queue {
 		$reservation_id = $task['reservation_id'] ?? '';
 		$payload        = $task['payload'] ?? array();
 		$run_id         = $payload['run_id'] ?? '';
+		$correlation_id = (string) ( $payload['correlation_id'] ?? '' );
+		$run            = null;
+
+		if ( '' !== $run_id ) {
+			$run_store = new PressArk_Run_Store();
+			$run       = $run_store->get( $run_id );
+			if ( $run ) {
+				if ( '' === $correlation_id ) {
+					$correlation_id = (string) ( $run['correlation_id'] ?? '' );
+				}
+				if ( empty( $reservation_id ) ) {
+					$reservation_id = (string) ( $run['reservation_id'] ?? '' );
+				}
+			}
+		}
+
+		$resolved_pre = $payload['resolved_context'] ?? array();
+		$route        = $run['route'] ?? ( ! empty( $resolved_pre['automation_id'] ) ? 'automation' : 'async' );
+
+		PressArk_Activity_Trace::clear_current_context();
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => $correlation_id,
+				'run_id'         => $run_id,
+				'task_id'        => $task_id,
+				'reservation_id' => $reservation_id,
+				'chat_id'        => (int) ( $resolved_pre['chat_id'] ?? ( $run['chat_id'] ?? 0 ) ),
+				'user_id'        => (int) ( $task['user_id'] ?? 0 ),
+				'route'          => (string) $route,
+			)
+		);
 
 		try {
 			wp_set_current_user( (int) $task['user_id'] );
@@ -408,7 +472,6 @@ class PressArk_Task_Queue {
 			$agent->set_async_context( $task_id );
 
 			// v4.0.0: Set automation context for unattended execution.
-			$resolved_pre = $payload['resolved_context'] ?? array();
 			if ( ! empty( $resolved_pre['automation_id'] ) ) {
 				$auto_store  = new PressArk_Automation_Store();
 				$auto_record = $auto_store->get( $resolved_pre['automation_id'] );
@@ -475,6 +538,19 @@ class PressArk_Task_Queue {
 					);
 					$this->store->retry( $task_id );
 					$attempt = (int) $task['retries'];
+					PressArk_Activity_Trace::publish(
+						array(
+							'event_type' => 'task.retry_scheduled',
+							'phase'      => 'async',
+							'status'     => 'retrying',
+							'reason'     => 'retry_async_failure',
+							'summary'    => 'Async retry scheduled after a retryable failure.',
+							'payload'    => array(
+								'attempt'       => $attempt + 1,
+								'failure_class' => (string) $failure_class,
+							),
+						)
+					);
 					$this->backend->schedule( $task_id, $this->retry_backoff( $attempt, $failure_class ) );
 					return;
 				}
@@ -565,6 +641,9 @@ class PressArk_Task_Queue {
 				if ( ! empty( $run_id ) && empty( $task_result['run_id'] ) ) {
 					$task_result['run_id'] = $run_id;
 				}
+				if ( '' !== $correlation_id && empty( $task_result['correlation_id'] ) ) {
+					$task_result['correlation_id'] = $correlation_id;
+				}
 				$this->store->complete( $task_id, $task_result );
 			}
 
@@ -582,6 +661,19 @@ class PressArk_Task_Queue {
 			if ( $this->should_retry_failure( $failure_class, $task, $payload ) ) {
 				$this->store->retry( $task_id );
 				$attempt = (int) $task['retries'];
+				PressArk_Activity_Trace::publish(
+					array(
+						'event_type' => 'task.retry_scheduled',
+						'phase'      => 'async',
+						'status'     => 'retrying',
+						'reason'     => 'retry_async_failure',
+						'summary'    => 'Async retry scheduled after an exception.',
+						'payload'    => array(
+							'attempt'       => $attempt + 1,
+							'failure_class' => (string) $failure_class,
+						),
+					)
+				);
 				$this->backend->schedule( $task_id, $this->retry_backoff( $attempt, $failure_class ) );
 			} else {
 				// v3.7.0: Final failure — move to dead_letter for supportability.
@@ -609,6 +701,8 @@ class PressArk_Task_Queue {
 					);
 				}
 			}
+		} finally {
+			PressArk_Activity_Trace::clear_current_context();
 		}
 	}
 

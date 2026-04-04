@@ -450,6 +450,9 @@ class PressArk_Admin_Activity {
 		if ( ! empty( $run['reservation_id'] ) ) {
 			$this->detail_row( __( 'Reservation', 'pressark' ), $run['reservation_id'] );
 		}
+		if ( ! empty( $run['correlation_id'] ) ) {
+			$this->detail_row( __( 'Correlation ID', 'pressark' ), $run['correlation_id'] );
+		}
 
 		if ( 'failed' === $run['status'] ) {
 			$fail_reason = '';
@@ -468,6 +471,30 @@ class PressArk_Admin_Activity {
 			echo '<pre class="pressark-json">'
 				. esc_html( wp_json_encode( $run['pending_actions'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) )
 				. '</pre>';
+		}
+
+		$permission_surface = array();
+		if ( is_array( $run['result'] ?? null ) && ! empty( $run['result']['permission_surface'] ) ) {
+			$permission_surface = (array) $run['result']['permission_surface'];
+		} elseif ( is_array( $run['workflow_state'] ?? null ) && ! empty( $run['workflow_state']['permission_surface'] ) ) {
+			$permission_surface = (array) $run['workflow_state']['permission_surface'];
+		}
+
+		if ( ! empty( $permission_surface ) ) {
+			echo '<h3>' . esc_html__( 'Permission Surface', 'pressark' ) . '</h3>';
+			echo '<pre class="pressark-json">'
+				. esc_html( wp_json_encode( $permission_surface, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) )
+				. '</pre>';
+		}
+
+		$local_trace  = PressArk_Activity_Trace::get_local_trace( $run, 80 );
+		$remote_trace = PressArk_Activity_Trace::fetch_bank_trace( $run, 80 );
+		$joined_trace = PressArk_Activity_Trace::merge_traces( $local_trace, $remote_trace );
+
+		if ( ! empty( $joined_trace ) ) {
+			echo '<h3>' . esc_html__( 'Joined Trace', 'pressark' ) . '</h3>';
+			echo '<p class="description">' . esc_html__( 'Merged plugin and token-bank activity for this correlation spine.', 'pressark' ) . '</p>';
+			$this->render_trace_table( $joined_trace );
 		}
 
 		echo '</div></div>';
@@ -511,6 +538,43 @@ class PressArk_Admin_Activity {
 	private function detail_row_html( string $label, string $html ): void {
 		echo '<tr><th scope="row">' . esc_html( $label ) . '</th>'
 			. '<td>' . wp_kses_post( $html ) . '</td></tr>';
+	}
+
+	/**
+	 * Render a compact joined trace table.
+	 *
+	 * @param array<int,array<string,mixed>> $events Ordered trace events.
+	 */
+	private function render_trace_table( array $events ): void {
+		echo '<table class="wp-list-table widefat striped pressark-trace-table">';
+		echo '<thead><tr>';
+		echo '<th>' . esc_html__( 'When', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Source', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Event', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Reason', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Status', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Summary', 'pressark' ) . '</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( $events as $event ) {
+			$when    = (string) ( $event['occurred_at'] ?? $event['created_at'] ?? '' );
+			$source  = (string) ( $event['source'] ?? 'unknown' );
+			$type    = (string) ( $event['event_type'] ?? '' );
+			$reason  = (string) ( $event['reason'] ?? '' );
+			$status  = (string) ( $event['status'] ?? '' );
+			$summary = (string) ( $event['summary'] ?? '' );
+
+			echo '<tr>';
+			echo '<td>' . esc_html( $when ) . '</td>';
+			echo '<td><code>' . esc_html( $source ) . '</code></td>';
+			echo '<td><code>' . esc_html( $type ) . '</code></td>';
+			echo '<td><code>' . esc_html( $reason ) . '</code></td>';
+			echo '<td>' . esc_html( $status ) . '</td>';
+			echo '<td>' . esc_html( $summary ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
 	}
 
 	private function render_status_filters( array $counts, string $active, string $view, bool $support_mode ): void {

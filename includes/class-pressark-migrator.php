@@ -17,7 +17,7 @@ class PressArk_Migrator {
 	/**
 	 * Highest schema version in the migration chain.
 	 */
-	const LATEST = 13;
+	const LATEST = 14;
 
 	/**
 	 * Option key where the current schema version is stored.
@@ -36,6 +36,7 @@ class PressArk_Migrator {
 		'pressark_runs'          => 3,
 		'pressark_automations'   => 5,
 		'pressark_alert_batches' => 12,
+		'pressark_activity_events' => 14,
 	);
 
 	/**
@@ -549,6 +550,15 @@ class PressArk_Migrator {
 	}
 
 	/**
+	 * v14: Canonical activity events and correlation IDs.
+	 */
+	private static function migrate_to_14(): bool {
+		dbDelta( PressArk_Run_Store::get_schema() );
+		dbDelta( PressArk_Activity_Event_Store::get_schema() );
+		return true;
+	}
+
+	/**
 	 * Ensure a FULLTEXT index exists on a table.
 	 */
 	private static function ensure_fulltext_index( string $table, string $index_name, string $columns ): bool {
@@ -734,6 +744,23 @@ class PressArk_Migrator {
 				}
 				if ( ! self::table_has_index( $auto_table, 'idx_event_trigger' ) ) {
 					return 'Automations table is missing idx_event_trigger index.';
+				}
+				return '';
+
+			case 14:
+				$events_table = $wpdb->prefix . 'pressark_activity_events';
+				$runs_table   = $wpdb->prefix . 'pressark_runs';
+				if ( ! self::table_exists( $events_table ) ) {
+					return 'Activity events table is missing.';
+				}
+				if ( ! self::table_has_column( $runs_table, 'correlation_id' ) ) {
+					return 'Runs table is missing correlation_id column.';
+				}
+				if ( ! self::table_has_index( $runs_table, 'idx_correlation_id' ) ) {
+					return 'Runs table is missing idx_correlation_id.';
+				}
+				if ( ! self::table_has_index( $events_table, 'idx_correlation' ) ) {
+					return 'Activity events table is missing idx_correlation.';
 				}
 				return '';
 		}

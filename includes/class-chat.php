@@ -14,6 +14,55 @@ class PressArk_Chat {
 	}
 
 	/**
+	 * Start a canonical trace context for this request before reservation/run creation.
+	 */
+	private function begin_trace_context( int $user_id, int $chat_id, string $route = '' ): string {
+		$correlation_id = PressArk_Activity_Trace::new_correlation_id();
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => $correlation_id,
+				'user_id'        => $user_id,
+				'chat_id'        => $chat_id,
+				'route'          => $route,
+			)
+		);
+
+		PressArk_Activity_Trace::publish(
+			array(
+				'event_type' => 'request.started',
+				'phase'      => 'request',
+				'status'     => 'started',
+				'reason'     => 'request_started',
+				'summary'    => 'Request accepted and awaiting reservation/run creation.',
+				'payload'    => array(
+					'chat_id' => $chat_id,
+				),
+			)
+		);
+
+		return $correlation_id;
+	}
+
+	/**
+	 * Hydrate the current trace context from a stored run row.
+	 *
+	 * @param array<string,mixed> $run Stored run row.
+	 */
+	private function hydrate_trace_context_from_run( array $run ): void {
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
+				'run_id'         => (string) ( $run['run_id'] ?? '' ),
+				'reservation_id' => (string) ( $run['reservation_id'] ?? '' ),
+				'task_id'        => (string) ( $run['task_id'] ?? '' ),
+				'chat_id'        => (int) ( $run['chat_id'] ?? 0 ),
+				'user_id'        => (int) ( $run['user_id'] ?? 0 ),
+				'route'          => (string) ( $run['route'] ?? '' ),
+			)
+		);
+	}
+
+	/**
 	 * Register REST routes.
 	 */
 	public function register_routes(): void {
@@ -900,6 +949,8 @@ class PressArk_Chat {
 			), 429 );
 		}
 
+		$correlation_id = $this->begin_trace_context( $user_id, $chat_id );
+
 		// ── [2] Pre-flight write check ───────────────────────────────
 		$write_block = $this->quick_write_check( $tier, $message, $tracker );
 		if ( $write_block ) {
@@ -948,6 +999,12 @@ class PressArk_Chat {
 		}
 
 		$reservation_id = $reserve_result['reservation_id'];
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => $correlation_id,
+				'reservation_id' => $reservation_id,
+			)
+		);
 
 		// ── [5] Unified routing ─────────────────────────────────────
 		$connector = new PressArk_AI_Connector( $tier );
@@ -955,6 +1012,13 @@ class PressArk_Chat {
 		$engine    = new PressArk_Action_Engine( $logger );
 
 		$routing = PressArk_Router::resolve( $message, $conversation, $connector, $engine, $tier, $deep_mode, $screen, $post_id );
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => $correlation_id,
+				'reservation_id' => $reservation_id,
+				'route'          => (string) ( $routing['route'] ?? '' ),
+			)
+		);
 
 		// [5a] Async early return.
 		if ( PressArk_Router::ROUTE_ASYNC === $routing['route'] ) {
@@ -965,8 +1029,17 @@ class PressArk_Chat {
 				'route'          => 'async',
 				'message'        => $message,
 				'reservation_id' => $reservation_id,
+				'correlation_id' => $correlation_id,
 				'tier'           => $tier,
 			) );
+			PressArk_Activity_Trace::set_current_context(
+				array(
+					'correlation_id' => $correlation_id,
+					'run_id'         => $run_id,
+					'reservation_id' => $reservation_id,
+					'route'          => 'async',
+				)
+			);
 
 			$queue  = new PressArk_Task_Queue();
 			$queued = $queue->enqueue(
@@ -995,6 +1068,7 @@ class PressArk_Chat {
 					'usage'     => $tracker->get_usage_data(),
 					'plan_info' => $plan_info,
 					'run_id'    => $run_id,
+					'correlation_id' => $correlation_id,
 					'chat_id'   => $chat_id,
 				) ), 500 );
 			}
@@ -1003,6 +1077,7 @@ class PressArk_Chat {
 				'usage'     => $tracker->get_usage_data(),
 				'plan_info' => $plan_info,
 				'run_id'    => $run_id,
+				'correlation_id' => $correlation_id,
 				'chat_id'   => $chat_id,
 			) ) );
 		}
@@ -1029,8 +1104,17 @@ class PressArk_Chat {
 			'route'          => $routing['route'],
 			'message'        => $message,
 			'reservation_id' => $reservation_id,
+			'correlation_id' => $correlation_id,
 			'tier'           => $tier,
 		) );
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => $correlation_id,
+				'run_id'         => $run_id,
+				'reservation_id' => $reservation_id,
+				'route'          => (string) ( $routing['route'] ?? '' ),
+			)
+		);
 
 		return array(
 			'message'         => $message,
@@ -1051,6 +1135,7 @@ class PressArk_Chat {
 			'slot_id'         => $slot_id,
 			'pipeline'        => $pipeline,
 			'run_id'          => $run_id,
+			'correlation_id'  => $correlation_id,
 			'tracker'         => $tracker,
 			'user_id'         => $user_id,
 		);
@@ -1173,10 +1258,11 @@ class PressArk_Chat {
 
 		// Emit run metadata immediately so the frontend can cancel by run_id
 		// even on the first message (before it knows the chat_id).
-		$emitter->emit( 'run_started', array(
-			'run_id'  => $ctx['run_id'],
-			'chat_id' => $ctx['chat_id'],
-		) );
+			$emitter->emit( 'run_started', array(
+				'run_id'         => $ctx['run_id'],
+				'correlation_id' => $ctx['correlation_id'] ?? '',
+				'chat_id'        => $ctx['chat_id'],
+			) );
 
 		try {
 			if ( PressArk_Router::ROUTE_AGENT === $routing['route'] ) {
@@ -1228,6 +1314,7 @@ class PressArk_Chat {
 			}
 
 			$result['run_id'] = $ctx['run_id'];
+			$result['correlation_id'] = $ctx['correlation_id'] ?? '';
 
 			// Persist run state on approval boundaries.
 			$result_type = $result['type'] ?? 'final_response';
@@ -1328,6 +1415,7 @@ class PressArk_Chat {
 
 			// Attach run_id to result so pipeline passes it to the response.
 			$result['run_id'] = $run_id;
+			$result['correlation_id'] = $ctx['correlation_id'] ?? '';
 
 			// Persist run state on approval boundaries.
 			$result_type = $result['type'] ?? 'final_response';
@@ -1646,13 +1734,15 @@ class PressArk_Chat {
 					$run_store = new PressArk_Run_Store();
 					$run       = $run_store->get( $run_id );
 					if ( $run && (int) $run['user_id'] === get_current_user_id() ) {
+						$this->hydrate_trace_context_from_run( $run );
 						$run_store->settle( $run_id, array( 'cancelled' => true ) );
 					}
 				}
 				return rest_ensure_response( array(
-					'success'   => true,
-					'message'   => __( 'No changes were made. The action was cancelled.', 'pressark' ),
-					'cancelled' => true,
+					'success'        => true,
+					'message'        => __( 'No changes were made. The action was cancelled.', 'pressark' ),
+					'cancelled'      => true,
+					'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
 				) );
 			}
 
@@ -1703,6 +1793,8 @@ class PressArk_Chat {
 					'message' => __( 'You do not own this run.', 'pressark' ),
 				) );
 			}
+
+			$this->hydrate_trace_context_from_run( $run );
 
 			if ( ! in_array( $run['status'], array( 'awaiting_confirm', 'partially_confirmed' ), true ) ) {
 				return rest_ensure_response( array(
@@ -1769,9 +1861,11 @@ class PressArk_Chat {
 					$run['pending_actions'] = $pending;
 					$run['status']          = 'partially_confirmed';
 					$result['run_id']       = $run_id;
+					$result['correlation_id'] = (string) ( $run['correlation_id'] ?? '' );
 				}
 			} else {
-				$result['run_id'] = $run_id;
+				$result['run_id']         = $run_id;
+				$result['correlation_id'] = (string) ( $run['correlation_id'] ?? '' );
 			}
 
 			$action_args = is_array( $action['params'] ?? null ) ? $action['params'] : array();
@@ -1873,6 +1967,7 @@ class PressArk_Chat {
 			$run       = $run_store->get_by_preview_session( $session_id );
 
 			if ( $run && (int) $run['user_id'] === get_current_user_id() ) {
+				$this->hydrate_trace_context_from_run( $run );
 				$result = PressArk_Pipeline::settle_run( $run['run_id'], $result );
 
 				$checkpoint = $this->load_or_bootstrap_run_checkpoint( $run );
@@ -1961,7 +2056,9 @@ class PressArk_Chat {
 			$run_store = new PressArk_Run_Store();
 			$run       = $run_store->get_by_preview_session( $session_id );
 			if ( $run && (int) $run['user_id'] === get_current_user_id() ) {
+				$this->hydrate_trace_context_from_run( $run );
 				$run_store->settle( $run['run_id'], array( 'discarded' => true ) );
+				$result['correlation_id'] = (string) ( $run['correlation_id'] ?? '' );
 			}
 
 			return rest_ensure_response( $result );

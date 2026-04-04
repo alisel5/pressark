@@ -2100,6 +2100,7 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 
 		$formatted = array();
 		foreach ( $results as $r ) {
+			$age_hours = isset( $r['age_hours'] ) ? (float) $r['age_hours'] : null;
 			$formatted[] = array(
 				'post_id'         => $r['post_id'],
 				'title'           => $r['title'],
@@ -2108,6 +2109,12 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 				'content_preview' => mb_substr( $r['content'], 0, 500 ) . ( strlen( $r['content'] ) > 500 ? '...' : '' ),
 				'word_count'      => $r['meta']['word_count'] ?? str_word_count( $r['content'] ),
 				'is_homepage'     => $r['meta']['is_homepage'] ?? false,
+				'indexed_at'      => $r['indexed_at'] ?? null,
+				'age_hours'       => $age_hours,
+				'age_label'       => null !== $age_hours && class_exists( 'PressArk_Content_Index' )
+					? PressArk_Content_Index::human_age( $age_hours )
+					: '',
+				'is_stale'        => ! empty( $r['is_stale'] ),
 			);
 		}
 

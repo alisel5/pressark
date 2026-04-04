@@ -140,6 +140,31 @@ class PressArk_Automation_Dispatcher {
 
 			// Build conversation from automation memory.
 			$conversation = self::build_automation_conversation( $automation, $chat_id, $user_id );
+			$correlation_id = PressArk_Activity_Trace::new_correlation_id();
+
+			PressArk_Activity_Trace::clear_current_context();
+			PressArk_Activity_Trace::set_current_context(
+				array(
+					'correlation_id' => $correlation_id,
+					'user_id'        => $user_id,
+					'chat_id'        => $chat_id,
+					'route'          => 'automation',
+				)
+			);
+			PressArk_Activity_Trace::publish(
+				array(
+					'event_type' => 'request.started',
+					'phase'      => 'request',
+					'status'     => 'started',
+					'reason'     => 'request_started',
+					'summary'    => 'Automation dispatch accepted and awaiting reservation/run creation.',
+					'payload'    => array(
+						'automation_id' => $automation_id,
+						'scheduled_slot' => (string) $scheduled_slot,
+						'trigger_mode'  => $skip_claim ? 'event' : 'schedule',
+					),
+				)
+			);
 
 			// Create durable run.
 			$reservation    = new PressArk_Reservation();
@@ -166,8 +191,20 @@ class PressArk_Automation_Dispatcher {
 				'route'          => 'automation',
 				'message'        => $effective_prompt,
 				'reservation_id' => $reservation_id,
+				'correlation_id' => $correlation_id,
 				'tier'           => $tier,
 			) );
+
+			PressArk_Activity_Trace::set_current_context(
+				array(
+					'correlation_id' => $correlation_id,
+					'run_id'         => $run_id,
+					'reservation_id' => $reservation_id,
+					'user_id'        => $user_id,
+					'chat_id'        => $chat_id,
+					'route'          => 'automation',
+				)
+			);
 
 			// Build loaded groups from execution hints.
 			$hints         = $automation['execution_hints'] ?? array();
@@ -264,6 +301,8 @@ class PressArk_Automation_Dispatcher {
 			PressArk_Notification_Manager::notify_automation_failure( $automation, $e->getMessage() );
 
 			PressArk_Error_Tracker::error( 'AutomationDispatcher', 'Automation dispatch failed', array( 'automation_id' => $automation_id, 'error' => $e->getMessage() ) );
+		} finally {
+			PressArk_Activity_Trace::clear_current_context();
 		}
 	}
 

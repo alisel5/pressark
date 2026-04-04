@@ -275,7 +275,8 @@ class PressArk_History_Manager {
 			|| ! empty( $data['blockers'] )
 			|| ! empty( $data['context_capsule'] )
 			|| ! empty( $data['loaded_tool_groups'] )
-			|| ! empty( $data['bundle_ids'] ) ) {
+			|| ! empty( $data['bundle_ids'] )
+			|| ! empty( $data['read_state'] ) ) {
 			return true;
 		}
 

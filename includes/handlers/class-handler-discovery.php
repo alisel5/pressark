@@ -390,6 +390,32 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		$all_tools     = PressArk_Tools::get_all( $has_woo, $has_elementor );
 		$categories    = $this->get_available_tool_categories( $has_woo, $has_elementor );
 
+		if ( class_exists( 'PressArk_Permission_Service' ) ) {
+			$visible = PressArk_Permission_Service::evaluate_tool_set(
+				array_map(
+					static fn( array $tool ): string => (string) ( $tool['name'] ?? '' ),
+					$all_tools
+				),
+				class_exists( 'PressArk_Policy_Engine' )
+					? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+					: 'interactive',
+				array(
+					'tier' => class_exists( 'PressArk_License' ) ? ( new PressArk_License() )->get_tier() : 'free',
+				)
+			);
+			$visible_set = array_flip( $visible['visible_tool_names'] );
+			$all_tools   = array_values( array_filter(
+				$all_tools,
+				static fn( array $tool ): bool => isset( $visible_set[ sanitize_key( (string) ( $tool['name'] ?? '' ) ) ] )
+			) );
+			foreach ( $categories as $cat_key => $cat_tools ) {
+				$categories[ $cat_key ] = array_values( array_filter(
+					(array) $cat_tools,
+					static fn( string $tool_name ): bool => isset( $visible_set[ sanitize_key( $tool_name ) ] )
+				) );
+			}
+		}
+
 		$tool_map = array();
 		foreach ( $all_tools as $tool ) {
 			$tool_map[ $tool['name'] ] = $tool['description'];
@@ -477,7 +503,18 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		}
 
 		$catalog = PressArk_Tool_Catalog::instance();
-		$results = $catalog->discover( $query );
+		$results = $catalog->discover(
+			$query,
+			array(),
+			array(
+				'permission_context' => class_exists( 'PressArk_Policy_Engine' )
+					? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+					: 'interactive',
+				'permission_meta'    => array(
+					'tier' => class_exists( 'PressArk_License' ) ? ( new PressArk_License() )->get_tier() : 'free',
+				),
+			)
+		);
 
 		if ( empty( $results ) ) {
 			return $this->success(
@@ -602,6 +639,7 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		$data   = $result['data'];
 		$cached = $result['cached'] ?? false;
 		$meta   = $this->find_resource_meta( $uri );
+		$read_meta = is_array( $result['meta'] ?? null ) ? $result['meta'] : array();
 
 		if ( 'raw' === $mode ) {
 			$message = is_string( $data )
@@ -627,6 +665,23 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 			if ( ! empty( $meta['description'] ) ) {
 				$lines[] = sprintf( 'Description: %s', $meta['description'] );
 			}
+			if ( ! empty( $read_meta['trust_class'] ) || ! empty( $read_meta['provider'] ) ) {
+				$lines[] = sprintf(
+					'Trust: %s | Provider: %s',
+					$read_meta['trust_class'] ?? 'unknown',
+					$read_meta['provider'] ?? 'unknown'
+				);
+			}
+			if ( ! empty( $read_meta['freshness'] ) || ! empty( $read_meta['completeness'] ) ) {
+				$lines[] = sprintf(
+					'Read state: %s / %s',
+					$read_meta['freshness'] ?? 'fresh',
+					$read_meta['completeness'] ?? 'complete'
+				);
+			}
+			if ( ! empty( $read_meta['query_fingerprint'] ) ) {
+				$lines[] = 'Fingerprint: ' . $read_meta['query_fingerprint'];
+			}
 			$lines[] = sprintf( 'Shape: %s', $summary['shape'] );
 			if ( isset( $summary['count'] ) ) {
 				$lines[] = sprintf( 'Count: %d', $summary['count'] );
@@ -647,6 +702,7 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 				'name'  => $meta['name'] ?? '',
 				'group' => $meta['group'] ?? '',
 				'mode'  => 'summary',
+				'meta'  => $read_meta,
 			) );
 		}
 
@@ -661,6 +717,8 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 			'mode'    => $mode,
 			'uri'     => $uri,
 			'cached'  => $cached,
+			'meta'    => $read_meta,
+			'read_meta' => $read_meta,
 		);
 	}
 

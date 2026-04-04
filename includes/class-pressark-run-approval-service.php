@@ -128,6 +128,7 @@ class PressArk_Run_Approval_Service {
 		$results           = array();
 		$results_by_index  = array();
 		$blocked           = array();
+		$blocked_decisions = array();
 
 		wp_set_current_user( $user_id );
 		$logger  = new PressArk_Action_Logger();
@@ -149,6 +150,7 @@ class PressArk_Run_Approval_Service {
 				);
 				if ( ! PressArk_Policy_Engine::is_allowed( $verdict ) ) {
 					$blocked[] = implode( ' ', $verdict['reasons'] ?? array( "Blocked: {$op_name}" ) );
+					$blocked_decisions[ $idx ] = $verdict;
 					continue;
 				}
 			} else {
@@ -156,6 +158,9 @@ class PressArk_Run_Approval_Service {
 				$check = PressArk_Automation_Policy::check( $op_name, $policy, $action['params'] ?? array() );
 				if ( ! $check['allowed'] ) {
 					$blocked[] = $check['reason'] ?? "Blocked: {$op_name}";
+					if ( ! empty( $check['permission_decision'] ) ) {
+						$blocked_decisions[ $idx ] = $check['permission_decision'];
+					}
 					continue;
 				}
 			}
@@ -171,7 +176,12 @@ class PressArk_Run_Approval_Service {
 		// If any actions were blocked, fail the run with policy info.
 		if ( ! empty( $blocked ) && empty( $results ) ) {
 			PressArk_Pipeline::fail_run( $run_id, 'All actions blocked by automation policy: ' . implode( '; ', $blocked ) );
-			return array( 'success' => false, 'results' => array(), 'policy_blocked' => $blocked );
+			return array(
+				'success'              => false,
+				'results'              => array(),
+				'policy_blocked'       => $blocked,
+				'permission_decisions' => array( 'blocked' => $blocked_decisions ),
+			);
 		}
 
 		// Check if any executed actions failed.
@@ -245,6 +255,7 @@ class PressArk_Run_Approval_Service {
 			'results'          => $results,
 			'results_by_index' => $results_by_index,
 			'policy_blocked'   => $blocked,
+			'permission_decisions' => array( 'blocked' => $blocked_decisions ),
 			'message'          => $merged['message'],
 		);
 	}
@@ -282,7 +293,8 @@ class PressArk_Run_Approval_Service {
 		foreach ( $session_calls as $call ) {
 			$op_name  = $call['name'] ?? $call['type'] ?? '';
 			$op_args  = $call['arguments'] ?? array();
-			$blocked_reason = null;
+			$blocked_reason   = null;
+			$blocked_decision = null;
 
 			// v5.4.0: Route through Policy Engine for preview-keep.
 			if ( class_exists( 'PressArk_Policy_Engine' ) ) {
@@ -294,11 +306,13 @@ class PressArk_Run_Approval_Service {
 				);
 				if ( ! PressArk_Policy_Engine::is_allowed( $verdict ) ) {
 					$blocked_reason = implode( ' ', $verdict['reasons'] ?? array( $op_name ) );
+					$blocked_decision = $verdict;
 				}
 			} else {
 				$check = PressArk_Automation_Policy::check( $op_name, $policy, $op_args );
 				if ( ! $check['allowed'] ) {
 					$blocked_reason = $check['reason'] ?? $op_name;
+					$blocked_decision = $check['permission_decision'] ?? null;
 				}
 			}
 
@@ -315,6 +329,9 @@ class PressArk_Run_Approval_Service {
 					'success'        => false,
 					'message'        => 'Preview contained operations outside policy.',
 					'policy_blocked' => array( $blocked_reason ),
+					'permission_decisions' => array(
+						'blocked' => null !== $blocked_decision ? array( $blocked_decision ) : array(),
+					),
 				);
 			}
 		}

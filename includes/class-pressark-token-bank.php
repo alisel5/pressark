@@ -200,6 +200,13 @@ class PressArk_Token_Bank {
 	}
 
 	public function reserve( int $estimated_icus, string $reservation_id, string $tier = 'free', string $model = '' ): array {
+		$trace_context = $this->merge_trace_context(
+			array(
+				'reservation_id' => $reservation_id,
+				'route'          => 'reserve',
+			)
+		);
+
 		if ( $this->is_byok() || $this->is_proxy_mode() ) {
 			return array(
 				'ok'             => true,
@@ -218,7 +225,10 @@ class PressArk_Token_Bank {
 				'reservation_id'   => $reservation_id,
 				'model'            => $model,
 			),
-			5
+			5,
+			true,
+			false,
+			$trace_context
 		);
 
 		if ( is_wp_error( $response ) ) {
@@ -241,7 +251,10 @@ class PressArk_Token_Bank {
 					'reservation_id'   => $reservation_id,
 					'model'            => $model,
 				),
-				5
+				5,
+				true,
+				false,
+				$trace_context
 			);
 			if ( is_wp_error( $response ) ) {
 				return $this->offline_reserve( $estimated_icus, $tier );
@@ -296,6 +309,13 @@ class PressArk_Token_Bank {
 	}
 
 	public function settle( string $reservation_id, array|int $actual_usage, string $tier = 'free' ): array {
+		$trace_context = $this->merge_trace_context(
+			array(
+				'reservation_id' => $reservation_id,
+				'route'          => 'settle',
+			)
+		);
+
 		if ( $this->is_byok() || $this->is_proxy_mode() ) {
 			return $this->get_status();
 		}
@@ -321,7 +341,10 @@ class PressArk_Token_Bank {
 				'cache_write_tokens'=> (int) ( $payload['cache_write_tokens'] ?? 0 ),
 				'model'             => (string) ( $payload['model'] ?? '' ),
 			),
-			5
+			5,
+			true,
+			false,
+			$trace_context
 		);
 
 		if ( is_wp_error( $response ) ) {
@@ -343,6 +366,13 @@ class PressArk_Token_Bank {
 			return;
 		}
 
+		$trace_context = $this->merge_trace_context(
+			array(
+				'reservation_id' => $reservation_id,
+				'route'          => 'release',
+			)
+		);
+
 		$this->post(
 			'release',
 			array(
@@ -351,8 +381,57 @@ class PressArk_Token_Bank {
 				'reservation_id' => $reservation_id,
 			),
 			3,
-			false
+			false,
+			false,
+			$trace_context
 		);
+	}
+
+	/**
+	 * Fetch a sanitized bank-side trace by correlation or reservation.
+	 *
+	 * @param string $correlation_id Correlation ID.
+	 * @param string $reservation_id Reservation ID fallback.
+	 * @param int    $limit          Max rows.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function get_trace( string $correlation_id = '', string $reservation_id = '', int $limit = 80 ): array {
+		$this->ensure_handshaked();
+		if ( ! $this->site_token ) {
+			return array();
+		}
+
+		$url = add_query_arg(
+			array(
+				'correlation_id' => sanitize_text_field( $correlation_id ),
+				'reservation_id' => sanitize_text_field( $reservation_id ),
+				'limit'          => max( 1, min( 200, $limit ) ),
+			),
+			trailingslashit( $this->server_url ) . 'trace'
+		);
+
+		$response = wp_remote_get(
+			$url,
+			array(
+				'timeout' => 5,
+				'headers' => $this->auth_headers(
+					$this->merge_trace_context(
+						array(
+							'correlation_id' => $correlation_id,
+							'reservation_id' => $reservation_id,
+							'route'          => 'trace',
+						)
+					)
+				),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return array();
+		}
+
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		return is_array( $data['events'] ?? null ) ? $data['events'] : array();
 	}
 
 	public function get_status(): array {
@@ -707,6 +786,11 @@ class PressArk_Token_Bank {
 		int $timeout = 20
 	) {
 		$route = in_array( $route, array( 'chat', 'summarize' ), true ) ? $route : 'chat';
+		$trace_context = $this->merge_trace_context(
+			array(
+				'route' => $route,
+			)
+		);
 
 		if ( $estimated_icus <= 0 ) {
 			$estimated_icus = 'summarize' === $route ? 1200 : 5000;
@@ -723,7 +807,10 @@ class PressArk_Token_Bank {
 				'estimated_icus' => $estimated_icus,
 				'request_body'   => $request_body,
 			),
-			$timeout
+			$timeout,
+			true,
+			false,
+			$trace_context
 		);
 	}
 
@@ -744,9 +831,19 @@ class PressArk_Token_Bank {
 		return $this->proxy_request( 'summarize', $request_body, $tier, $model, $provider, $estimated_icus, $timeout );
 	}
 
-	private function post( string $path, array $payload, int $timeout = 5, bool $blocking = true, bool $is_retry = false ) {
+	private function post( string $path, array $payload, int $timeout = 5, bool $blocking = true, bool $is_retry = false, array $trace_context = array() ) {
+		$trace_context = $this->merge_trace_context( $trace_context );
 		$payload['installation_uuid'] = $payload['installation_uuid'] ?? $this->installation_uuid();
 		$payload['site_domain']       = $payload['site_domain'] ?? $this->site_domain();
+		if ( ! empty( $trace_context['correlation_id'] ) ) {
+			$payload['correlation_id'] = $trace_context['correlation_id'];
+		}
+		if ( ! empty( $trace_context['run_id'] ) ) {
+			$payload['run_id'] = $trace_context['run_id'];
+		}
+		if ( ! empty( $trace_context['task_id'] ) ) {
+			$payload['task_id'] = $trace_context['task_id'];
+		}
 
 		// Ensure we have a site_token before any API call.
 		if ( ! $is_retry ) {
@@ -768,7 +865,7 @@ class PressArk_Token_Bank {
 			array(
 				'timeout'  => $timeout,
 				'blocking' => $blocking,
-				'headers'  => $this->auth_headers(),
+				'headers'  => $this->auth_headers( $trace_context ),
 				'body'     => wp_json_encode( $payload ),
 			)
 		);
@@ -784,7 +881,7 @@ class PressArk_Token_Bank {
 				delete_option( 'pressark_site_token' );
 				$hs = $this->handshake();
 				if ( ! empty( $hs['success'] ) ) {
-					return $this->post( $path, $payload, $timeout, $blocking, true );
+					return $this->post( $path, $payload, $timeout, $blocking, true, $trace_context );
 				}
 			}
 		}
@@ -799,8 +896,9 @@ class PressArk_Token_Bank {
 	 *
 	 * @since 5.0.0
 	 */
-	private function auth_headers(): array {
+	private function auth_headers( array $trace_context = array() ): array {
 		$headers = array( 'Content-Type' => 'application/json' );
+		$trace_context = $this->merge_trace_context( $trace_context );
 
 		// Re-read in case handshake just stored a new token.
 		if ( ! $this->site_token ) {
@@ -810,8 +908,39 @@ class PressArk_Token_Bank {
 		if ( $this->site_token ) {
 			$headers['x-pressark-token'] = $this->site_token;
 		}
+		if ( ! empty( $trace_context['correlation_id'] ) ) {
+			$headers['x-pressark-correlation-id'] = $trace_context['correlation_id'];
+		}
 
 		return $headers;
+	}
+
+	/**
+	 * Merge explicit trace context with the current request context.
+	 *
+	 * @param array<string,mixed> $context Partial trace context.
+	 * @return array<string,string>
+	 */
+	private function merge_trace_context( array $context = array() ): array {
+		$current = class_exists( 'PressArk_Activity_Trace' )
+			? PressArk_Activity_Trace::current_context()
+			: array();
+		$merged  = array_merge( $current, $context );
+
+		$correlation_id = (string) ( $merged['correlation_id'] ?? '' );
+		if ( '' === $correlation_id && ! empty( $merged['reservation_id'] ) ) {
+			$correlation_id = 'corr_' . substr( md5( (string) $merged['reservation_id'] ), 0, 32 );
+		}
+
+		return array(
+			'correlation_id' => '' !== $correlation_id && class_exists( 'PressArk_Activity_Trace' )
+				? PressArk_Activity_Trace::normalize_correlation_id( $correlation_id )
+				: sanitize_text_field( $correlation_id ),
+			'run_id'         => sanitize_text_field( (string) ( $merged['run_id'] ?? '' ) ),
+			'task_id'        => sanitize_text_field( (string) ( $merged['task_id'] ?? '' ) ),
+			'reservation_id' => sanitize_text_field( (string) ( $merged['reservation_id'] ?? '' ) ),
+			'route'          => sanitize_key( (string) ( $merged['route'] ?? '' ) ),
+		);
 	}
 
 	private function is_byok(): bool {

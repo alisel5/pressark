@@ -164,18 +164,6 @@ class PressArk_Action_Engine {
 					break;
 			}
 
-			$tool_group      = PressArk_Operation_Registry::get_group( $type );
-			$tool_capability = PressArk_Operation_Registry::classify( $type, $params );
-
-			if ( ! empty( $tool_group ) ) {
-				$current_tier = ( new PressArk_License() )->get_tier();
-				$usage_check  = PressArk_Entitlements::check_group_usage( $current_tier, $tool_group, $tool_capability );
-				if ( ! $usage_check['allowed'] ) {
-					$usage_check['action_type'] = $type;
-					return $usage_check;
-				}
-			}
-
 			if ( empty( $params ) ) {
 				$params = $action;
 				unset( $params['type'], $params['description'] );
@@ -188,12 +176,35 @@ class PressArk_Action_Engine {
 				}
 			}
 
+			$tool_group      = PressArk_Operation_Registry::get_group( $type );
+			$tool_capability = PressArk_Operation_Registry::classify( $type, $params );
+			$exec_context    = $skip_log
+				? PressArk_Policy_Engine::CONTEXT_AGENT_READ
+				: PressArk_Policy_Engine::CONTEXT_INTERACTIVE;
+
+			if ( ! empty( $tool_group ) ) {
+				$current_tier = ( new PressArk_License() )->get_tier();
+				$usage_check  = PressArk_Entitlements::check_group_usage( $current_tier, $tool_group, $tool_capability );
+				if ( ! $usage_check['allowed'] ) {
+					$usage_check['action_type']         = $type;
+					$usage_check['permission_decision'] = PressArk_Permission_Service::build_entitlement_denial(
+						$type,
+						$exec_context,
+						array(
+							'tier' => $current_tier,
+						),
+						$tool_group,
+						$tool_capability,
+						( PressArk_Operation_Registry::resolve( $type )->risk ?? 'moderate' ),
+						$current_tier,
+						$usage_check
+					);
+					return $usage_check;
+				}
+			}
+
 			// v5.4.0: Policy engine evaluation — deny/ask before execution.
 			if ( class_exists( 'PressArk_Policy_Engine' ) ) {
-				$exec_context = $skip_log
-					? PressArk_Policy_Engine::CONTEXT_AGENT_READ
-					: PressArk_Policy_Engine::CONTEXT_INTERACTIVE;
-
 				$verdict = PressArk_Policy_Engine::evaluate( $type, $params, $exec_context );
 
 				if ( PressArk_Policy_Engine::is_denied( $verdict ) ) {
@@ -202,6 +213,7 @@ class PressArk_Action_Engine {
 						'message'        => implode( ' ', $verdict['reasons'] ?? array( 'Blocked by policy.' ) ),
 						'action_type'    => $type,
 						'policy_verdict' => $verdict,
+						'permission_decision' => $verdict,
 					);
 				}
 
@@ -215,6 +227,7 @@ class PressArk_Action_Engine {
 						'message'        => implode( ' ', $verdict['reasons'] ?? array( 'Requires human confirmation.' ) ),
 						'action_type'    => $type,
 						'policy_verdict' => $verdict,
+						'permission_decision' => $verdict,
 					);
 				}
 			}

@@ -186,6 +186,21 @@ class PressArk_Operation {
 	 */
 	public array $verification = array();
 
+	/**
+	 * Read invalidation contract for write operations.
+	 *
+	 * Keys:
+	 *   'scope'           => 'target_posts'|'site_content'|'resource'|'site'
+	 *   'resource_groups' => string[]
+	 *   'resource_uris'   => string[]
+	 *   'reason'          => short human-readable invalidation note
+	 *
+	 * Empty array means the registry-level fallback invalidation applies.
+	 *
+	 * @var array
+	 */
+	public array $read_invalidation = array();
+
 	// ── Contract application ───────────────────────────────────────
 
 	/**
@@ -203,7 +218,7 @@ class PressArk_Operation {
 		$allowed = array(
 			'search_hint', 'interrupt', 'cache_ttl', 'output_policy',
 			'resumable', 'defer', 'idempotent', 'validate',
-			'policy_hooks', 'tags', 'verification',
+			'policy_hooks', 'tags', 'verification', 'read_invalidation',
 		);
 
 		foreach ( $allowed as $field ) {
@@ -406,6 +421,7 @@ class PressArk_Operation {
 
 			// ── Verification ──
 			'verification'     => $this->verification,
+			'read_invalidation'=> $this->read_invalidation,
 		);
 	}
 }

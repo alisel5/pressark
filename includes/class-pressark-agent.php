@@ -71,6 +71,7 @@ class PressArk_Agent {
 	private ?PressArk_Token_Budget_Manager $budget_manager = null;
 	private array                  $budget_report = array();
 	private array                  $history_budget = array();
+	private array                  $activity_events = array();
 
 	// v2.3.1: Conversation-scoped tool loading state.
 	private array  $loaded_groups      = array();
@@ -134,6 +135,88 @@ class PressArk_Agent {
 	 */
 	public function set_automation_context( array $automation ): void {
 		$this->automation_context = $automation;
+	}
+
+	/**
+	 * Buffer a canonical activity event to be published at phase end.
+	 *
+	 * @param array<string,mixed> $payload Optional event payload.
+	 */
+	private function record_activity_event(
+		string $event_type,
+		string $reason,
+		string $status = 'info',
+		string $phase = 'agent',
+		string $summary = '',
+		array $payload = array()
+	): void {
+		$this->activity_events[] = array(
+			'event_type' => $event_type,
+			'reason'     => $reason,
+			'status'     => sanitize_key( $status ),
+			'phase'      => sanitize_key( $phase ),
+			'summary'    => $summary,
+			'payload'    => $payload,
+		);
+	}
+
+	/**
+	 * Map raw provider stop reasons into the shared vocabulary.
+	 */
+	private function canonical_stop_reason( string $stop_reason ): string {
+		return match ( sanitize_key( $stop_reason ) ) {
+			'tool_use', 'tool_calls' => 'stop_tool_use',
+			'end_turn', 'stop', 'finished', 'complete' => 'stop_end_turn',
+			'max_tokens', 'length' => 'stop_max_tokens',
+			default => 'state_change',
+		};
+	}
+
+	/**
+	 * Resolve the permission context used for tool exposure in this run.
+	 */
+	private function tool_permission_context(): string {
+		if ( $this->automation_context ) {
+			return class_exists( 'PressArk_Policy_Engine' )
+				? PressArk_Policy_Engine::CONTEXT_AUTOMATION
+				: 'automation';
+		}
+
+		return class_exists( 'PressArk_Policy_Engine' )
+			? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+			: 'interactive';
+	}
+
+	/**
+	 * Build permission metadata for tool exposure and discovery.
+	 */
+	private function tool_permission_meta(): array {
+		$meta = array(
+			'tier'    => $this->tier,
+			'run_id'  => $this->run_id,
+			'chat_id' => $this->chat_id,
+		);
+
+		if ( function_exists( 'get_current_user_id' ) ) {
+			$meta['user_id'] = (int) get_current_user_id();
+		}
+
+		if ( $this->automation_context ) {
+			$meta['policy'] = sanitize_key(
+				(string) (
+					$this->automation_context['approval_policy']
+					?? $this->automation_context['policy']
+					?? PressArk_Automation_Policy::POLICY_EDITORIAL
+				)
+			);
+		}
+
+		return array_filter(
+			$meta,
+			static function ( $value ) {
+				return ! ( is_string( $value ) && '' === $value );
+			}
+		);
 	}
 
 	/**
@@ -271,6 +354,7 @@ class PressArk_Agent {
 		$this->budget_manager      = null;
 		$this->budget_report       = array();
 		$this->history_budget      = array();
+		$this->activity_events     = array();
 		$this->loaded_groups       = $loaded_groups;
 		$this->discover_calls      = 0;
 		$this->discover_zero_hits  = 0;
@@ -364,6 +448,8 @@ class PressArk_Agent {
 			'candidate_groups'      => $preload_groups,
 			'budget_manager'        => $this->budget_manager,
 			'conversation_messages' => $messages,
+			'permission_context'    => $this->tool_permission_context(),
+			'permission_meta'       => $this->tool_permission_meta(),
 		) );
 
 		$tool_defs                = $tool_set['schemas'];
@@ -495,6 +581,22 @@ class PressArk_Agent {
 				$this->actual_model    = (string) ( $api_result['model'] ?? $this->ai->get_model() );
 			}
 
+			if ( ! empty( $api_result['fallback_used'] ) ) {
+				$this->record_activity_event(
+					'provider.fallback',
+					'fallback_model_policy',
+					'degraded',
+					'provider',
+					'Provider call fell back to an alternate model candidate.',
+					array(
+						'round'    => $round,
+						'provider' => $provider,
+						'model'    => (string) ( $api_result['model'] ?? $this->ai->get_model() ),
+						'attempts' => (int) ( $api_result['attempts'] ?? 0 ),
+					)
+				);
+			}
+
 			// Error handling.
 			if ( ! empty( $raw['error'] ) && ! isset( $raw['choices'] ) && ! isset( $raw['content'] ) ) {
 				$error_msg     = is_string( $raw['error'] ) ? $raw['error'] : ( $raw['error']['message'] ?? 'Unknown API error' );
@@ -545,6 +647,19 @@ class PressArk_Agent {
 			$assistant_tool_calls = 'tool_use' === $stop_reason
 				? $this->ai->extract_tool_calls( $raw, $provider )
 				: array();
+			$this->record_activity_event(
+				'provider.stop',
+				$this->canonical_stop_reason( $stop_reason ),
+				'observed',
+				'provider',
+				'Observed a provider stop reason for this round.',
+				array(
+					'round'      => $round,
+					'provider'   => $provider,
+					'stop_reason'=> sanitize_key( $stop_reason ),
+					'tool_calls' => count( $assistant_tool_calls ),
+				)
+			);
 
 			// RULE 1: Always append full assistant response BEFORE processing tool calls.
 			$messages[] = $this->ai->build_assistant_message( $raw, $provider );
@@ -866,6 +981,7 @@ class PressArk_Agent {
 			// Bundle-hit fast path (no step events needed).
 			$bundle_stub = $this->check_bundle_hit( $checkpoint, $tc['name'], $tc['arguments'] ?? array() );
 			if ( null !== $bundle_stub ) {
+				$this->update_checkpoint_from_result( $checkpoint, $tc, $bundle_stub, $round );
 				$slot_results[ $i ] = array(
 					'tool_use_id' => $tc['id'],
 					'tool_name'   => $tc['name'],
@@ -894,6 +1010,13 @@ class PressArk_Agent {
 			$exec_fn = function ( array $tc ) use ( $checkpoint, $round ): array {
 				$result = $this->engine->execute_read( $tc['name'], $tc['arguments'] );
 				$result = $this->enforce_tool_result_limit( $result, $tc['name'] );
+				if ( class_exists( 'PressArk_Read_Metadata' ) && ! empty( $result['success'] ) ) {
+					$result = PressArk_Read_Metadata::annotate_tool_result(
+						$tc['name'],
+						$tc['arguments'] ?? array(),
+						$result
+					);
+				}
 
 				// Checkpoint and bundle recording (safe within single-threaded PHP).
 				$this->update_checkpoint_from_result( $checkpoint, $tc, $result, $round );
@@ -984,7 +1107,14 @@ class PressArk_Agent {
 				);
 			}
 
-			$results = PressArk_Tool_Catalog::instance()->discover( $query, $loaded_names );
+			$results = PressArk_Tool_Catalog::instance()->discover(
+				$query,
+				$loaded_names,
+				array(
+					'permission_context' => $this->tool_permission_context(),
+					'permission_meta'    => $this->tool_permission_meta(),
+				)
+			);
 
 			if ( empty( $results ) ) {
 				$this->discover_zero_hits++;
@@ -1052,7 +1182,15 @@ class PressArk_Agent {
 			$msgs  = array();
 
 			if ( ! empty( $group ) ) {
-				$tool_set = $loader->expand( $tool_set, $group );
+				$tool_set = $loader->expand(
+					$tool_set,
+					$group,
+					array(
+						'permission_context' => $this->tool_permission_context(),
+						'permission_meta'    => $this->tool_permission_meta(),
+						'tier'               => $this->tier,
+					)
+				);
 				if ( ! in_array( $group, $this->loaded_groups, true ) ) {
 					$this->loaded_groups[] = $group;
 				}
@@ -1060,7 +1198,15 @@ class PressArk_Agent {
 			}
 
 			if ( ! empty( $tools ) && is_array( $tools ) ) {
-				$tool_set = $loader->expand_tools( $tool_set, $tools );
+				$tool_set = $loader->expand_tools(
+					$tool_set,
+					$tools,
+					array(
+						'permission_context' => $this->tool_permission_context(),
+						'permission_meta'    => $this->tool_permission_meta(),
+						'tier'               => $this->tier,
+					)
+				);
 				// Track any new groups.
 				foreach ( $tool_set['groups'] as $g ) {
 					if ( ! in_array( $g, $this->loaded_groups, true ) ) {
@@ -1091,7 +1237,15 @@ class PressArk_Agent {
 		// ── load_tool_group (legacy backward compat) ────────────────────
 		if ( 'load_tool_group' === $name ) {
 			$group    = $tc['arguments']['group'] ?? '';
-			$tool_set = $loader->expand( $tool_set, $group );
+			$tool_set = $loader->expand(
+				$tool_set,
+				$group,
+				array(
+					'permission_context' => $this->tool_permission_context(),
+					'permission_meta'    => $this->tool_permission_meta(),
+					'tier'               => $this->tier,
+				)
+			);
 			$tool_defs = $tool_set['schemas'];
 			if ( ! empty( $group ) && ! in_array( $group, $this->loaded_groups, true ) ) {
 				$this->loaded_groups[] = $group;
@@ -1165,6 +1319,11 @@ class PressArk_Agent {
 				'steps'        => $this->plan_steps,
 				'current_step' => $this->plan_step,
 			),
+			'effective_visible_tools' => array_values( array_unique(
+				(array) ( $tool_set['effective_visible_tools'] ?? $tool_set['tool_names'] ?? array() )
+			) ),
+			'permission_surface' => (array) ( $tool_set['permission_surface'] ?? array() ),
+			'activity_events'    => $this->activity_events,
 		) );
 
 		// v2.4.0: Include checkpoint for frontend round-trip.
@@ -1256,6 +1415,16 @@ class PressArk_Agent {
 
 		if ( ! $leaked_retry ) {
 			$leaked_retry = true;
+			$this->record_activity_event(
+				'run.retry_requested',
+				'retry_format_leak',
+				'retrying',
+				'agent',
+				'Retrying after a leaked plain-text tool call.',
+				array(
+					'round' => $round,
+				)
+			);
 
 			PressArk_Error_Tracker::debug(
 				'Agent',
@@ -1683,6 +1852,8 @@ class PressArk_Agent {
 		if ( ! isset( $result['data'] ) || ! is_array( $result['data'] ) ) {
 			$result['data'] = array();
 		}
+		$result['cached']              = true;
+		$result['stored_at']           = sanitize_text_field( (string) ( $bundle['stored_at'] ?? '' ) );
 		$result['data']['bundle_hit'] = true;
 		$result['data']['bundle_id']  = $bundle_id;
 		if ( empty( $result['message'] ) ) {
@@ -1690,6 +1861,19 @@ class PressArk_Agent {
 				'Loaded cached %s result for "%s".',
 				$tool_name,
 				$post->post_title
+			);
+		}
+		if ( class_exists( 'PressArk_Read_Metadata' ) ) {
+			$result = PressArk_Read_Metadata::annotate_tool_result(
+				$tool_name,
+				$args,
+				$result,
+				array(
+					'freshness'   => 'cached',
+					'provider'    => 'bundle_cache',
+					'captured_at' => sanitize_text_field( (string) ( $bundle['stored_at'] ?? gmdate( 'c' ) ) ),
+					'stored_at'   => sanitize_text_field( (string) ( $bundle['stored_at'] ?? '' ) ),
+				)
 			);
 		}
 
@@ -1907,13 +2091,38 @@ class PressArk_Agent {
 				'volatile' => array(),
 			),
 		);
+		$site_notes   = $this->resolve_site_notes( $message );
+		$verification = PressArk_Execution_Ledger::verification_summary( $checkpoint->get_execution() );
+		$read_strata  = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::build_prompt_strata( $checkpoint->get_read_state(), $verification, $site_notes )
+			: array();
+		$trusted_reads = trim( (string) preg_replace( '/^##\s+Trusted System Facts\s*/i', '', (string) ( $read_strata['trusted_system'] ?? '' ) ) );
+		$trusted_parts = array_filter( array(
+			trim( $context->build( $screen, $post_id ) ),
+			$trusted_reads,
+		) );
+		$trusted_system_block = empty( $trusted_parts )
+			? ''
+			: "## Trusted System Facts\n" . PressArk_AI_Connector::join_prompt_sections( $trusted_parts );
 
 		$this->append_round_prompt_section(
 			$sections['volatile'],
 			$sections['labels']['volatile'],
-			'current_context',
-			$context->build( $screen, $post_id )
+			'trusted_system_facts',
+			$trusted_system_block
 		);
+		foreach ( array(
+			'verified_evidence' => 'verified_evidence',
+			'derived_summaries' => 'derived_summaries',
+			'untrusted_content' => 'untrusted_site_content',
+		) as $stratum_key => $label ) {
+			$this->append_round_prompt_section(
+				$sections['volatile'],
+				$sections['labels']['volatile'],
+				$label,
+				(string) ( $read_strata[ $stratum_key ] ?? '' )
+			);
+		}
 
 		if ( $this->automation_context ) {
 			$this->append_round_prompt_section(
@@ -2010,13 +2219,6 @@ class PressArk_Agent {
 				"ENVIRONMENT NOTE: This is a {$env_type} environment. You can be less cautious about experimental changes â€” they won't affect the live site. Still use the preview/confirm flow, but don't over-warn about risks."
 			);
 		}
-
-		$this->append_round_prompt_section(
-			$sections['volatile'],
-			$sections['labels']['volatile'],
-			'site_memory',
-			$this->resolve_site_notes( $message )
-		);
 
 		return $sections;
 	}
@@ -2509,10 +2711,12 @@ class PressArk_Agent {
 				$count = ' (' . count( $result['data'] ) . ' items)';
 			}
 			$summary = mb_substr( $msg, 0, 100 );
-			return array(
+			return $this->attach_compacted_read_meta( array(
+				'success'    => array_key_exists( 'success', $result ) ? (bool) $result['success'] : true,
 				'message'    => "[Prior round: {$tool}{$status}{$count}] {$summary}",
 				'_compacted' => 'age',
-			);
+				'_tool_name' => $tool,
+			), $result, 'summary', 'age_compaction' );
 		}
 
 		$est_tokens = $this->estimate_value_tokens( $result );
@@ -2527,6 +2731,8 @@ class PressArk_Agent {
 			// Non-structured result: truncate the message.
 			if ( ! empty( $result['message'] ) && mb_strlen( $result['message'] ) > 1200 ) {
 				$result['message'] = mb_substr( $result['message'], 0, 1200 ) . '... [truncated]';
+				$result['_compacted'] = true;
+				$result = $this->attach_compacted_read_meta( $result, $result, 'summary', 'message_truncation' );
 			}
 			return $result;
 		}
@@ -2538,7 +2744,7 @@ class PressArk_Agent {
 			$result['data']['_compacted']      = true;
 			$result['data']['_content_length'] = $content_len;
 			$result['message'] = ( $result['message'] ?? '' ) . ' [Content compacted; full result sent to user.]';
-			return $result;
+			return $this->attach_compacted_read_meta( $result, $result, 'preview', 'content_preview' );
 		}
 
 		// Security scan: extract key findings only.
@@ -2548,7 +2754,7 @@ class PressArk_Agent {
 			foreach ( array_slice( $data['issues'], 0, 5 ) as $issue ) {
 				$summaries[] = $issue['title'] ?? $issue['id'] ?? 'issue';
 			}
-			return array(
+			return $this->attach_compacted_read_meta( array(
 				'message'    => sprintf(
 					'Security scan: %d issues found (%s).%s',
 					$issue_count,
@@ -2557,7 +2763,7 @@ class PressArk_Agent {
 				),
 				'data'       => array( 'issue_count' => $issue_count, '_compacted' => true ),
 				'_compacted' => true,
-			);
+			), $result, 'summary', 'issue_summary' );
 		}
 
 		// Search results array: keep first 5 items, truncate content.
@@ -2575,13 +2781,29 @@ class PressArk_Agent {
 			}
 			unset( $item );
 			$result['_compacted'] = true;
-			return $result;
+			return $this->attach_compacted_read_meta( $result, $result, 'preview', 'list_preview' );
 		}
 
 		// Generic: slice the data to first 8 keys.
 		$result['data']       = array_slice( $data, 0, 8, true );
 		$result['_compacted'] = true;
-		return $result;
+		return $this->attach_compacted_read_meta( $result, $result, 'preview', 'generic_preview' );
+	}
+
+	private function attach_compacted_read_meta( array $compacted, array $source_result, string $completeness, string $reason ): array {
+		if ( ! class_exists( 'PressArk_Read_Metadata' ) || empty( $source_result['read_meta'] ) ) {
+			return $compacted;
+		}
+
+		$compacted['read_meta'] = PressArk_Read_Metadata::preview_meta(
+			(array) $source_result['read_meta'],
+			array(
+				'completeness' => $completeness,
+				'provider'     => 'live_compaction',
+				'reason'       => $reason,
+			)
+		);
+		return $compacted;
 	}
 
 	/**
@@ -2651,6 +2873,17 @@ class PressArk_Agent {
 		$messages = $fallback_messages;
 		if ( self::is_continuation_message( $message ) && class_exists( 'PressArk_Replay_Integrity' ) ) {
 			$replay_messages = $checkpoint->get_replay_messages();
+			$this->record_activity_event(
+				'run.resumed',
+				'resume_after_checkpoint',
+				'resumed',
+				'resume',
+				'Execution resumed from a checkpoint boundary.',
+				array(
+					'used_checkpoint_replay' => ! empty( $replay_messages ),
+					'history_messages'       => count( $history ),
+				)
+			);
 			$resume_event    = array(
 				'type'                   => 'resume',
 				'phase'                  => 'resume_boundary',
@@ -3391,6 +3624,19 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 		if ( ! $checkpoint ) {
 			return;
 		}
+
+		$this->record_activity_event(
+			'run.degraded',
+			'request_headroom_pause' === $reason ? 'degraded_request_headroom' : 'degraded_token_budget',
+			'degraded',
+			'pause',
+			'Execution paused after compaction or budget pressure.',
+			array(
+				'round'            => $round,
+				'remaining_tokens' => max( 0, (int) ( $request_budget['remaining_tokens'] ?? 0 ) ),
+				'context_pressure' => sanitize_key( (string) ( $request_budget['context_pressure'] ?? '' ) ),
+			)
+		);
 
 		$marker = $this->build_compaction_marker( $checkpoint, $round );
 		$this->record_compaction_event(

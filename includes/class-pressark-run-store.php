@@ -41,6 +41,7 @@ class PressArk_Run_Store {
 		return "CREATE TABLE {$table} (
 			id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			run_id VARCHAR(64) NOT NULL,
+			correlation_id VARCHAR(64) NOT NULL DEFAULT '',
 			user_id BIGINT(20) UNSIGNED NOT NULL,
 			chat_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
 			task_id VARCHAR(64) DEFAULT NULL,
@@ -60,6 +61,7 @@ class PressArk_Run_Store {
 			settled_at DATETIME DEFAULT NULL,
 			PRIMARY KEY (id),
 			UNIQUE KEY idx_run_id (run_id),
+			KEY idx_correlation_id (correlation_id),
 			KEY idx_user_status (user_id, status),
 			KEY idx_chat_id (chat_id),
 			KEY idx_task_id (task_id),
@@ -79,12 +81,16 @@ class PressArk_Run_Store {
 	public function create( array $data ): string {
 		global $wpdb;
 
-		$run_id = $data['run_id'] ?? wp_generate_uuid4();
+		$run_id         = $data['run_id'] ?? wp_generate_uuid4();
+		$correlation_id = ! empty( $data['correlation_id'] )
+			? PressArk_Activity_Trace::normalize_correlation_id( (string) $data['correlation_id'] )
+			: PressArk_Activity_Trace::new_correlation_id();
 
 		$wpdb->insert(
 			self::table_name(),
 			array(
 				'run_id'         => $run_id,
+				'correlation_id' => $correlation_id,
 				'user_id'        => absint( $data['user_id'] ?? get_current_user_id() ),
 				'chat_id'        => absint( $data['chat_id'] ?? 0 ),
 				'route'          => sanitize_key( $data['route'] ?? 'agent' ),
@@ -93,7 +99,30 @@ class PressArk_Run_Store {
 				'reservation_id' => sanitize_text_field( $data['reservation_id'] ?? '' ),
 				'tier'           => sanitize_key( $data['tier'] ?? 'free' ),
 			),
-			array( '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s' )
+		);
+
+		PressArk_Activity_Trace::publish(
+			array(
+				'event_type' => 'run.started',
+				'phase'      => 'run',
+				'status'     => 'started',
+				'reason'     => 'request_started',
+				'summary'    => 'Durable run created.',
+				'payload'    => array(
+					'route'   => sanitize_key( (string) ( $data['route'] ?? 'agent' ) ),
+					'chat_id' => absint( $data['chat_id'] ?? 0 ),
+					'tier'    => sanitize_key( (string) ( $data['tier'] ?? 'free' ) ),
+				),
+			),
+			array(
+				'correlation_id' => $correlation_id,
+				'run_id'         => $run_id,
+				'reservation_id' => sanitize_text_field( (string) ( $data['reservation_id'] ?? '' ) ),
+				'chat_id'        => absint( $data['chat_id'] ?? 0 ),
+				'user_id'        => absint( $data['user_id'] ?? get_current_user_id() ),
+				'route'          => sanitize_key( (string) ( $data['route'] ?? 'agent' ) ),
+			)
 		);
 
 		return $run_id;
@@ -285,6 +314,16 @@ class PressArk_Run_Store {
 			) ) );
 		}
 
+		if ( empty( $state['effective_visible_tools'] ) && ! empty( $result['effective_visible_tools'] ) && is_array( $result['effective_visible_tools'] ) ) {
+			$state['effective_visible_tools'] = array_values( array_unique( array_filter(
+				array_map( 'sanitize_text_field', $result['effective_visible_tools'] )
+			) ) );
+		}
+
+		if ( empty( $state['permission_surface'] ) && ! empty( $result['permission_surface'] ) && is_array( $result['permission_surface'] ) ) {
+			$state['permission_surface'] = $result['permission_surface'];
+		}
+
 		return $state;
 	}
 
@@ -334,7 +373,23 @@ class PressArk_Run_Store {
 			array( '%s', '%s' )
 		);
 
-		return $rows >= 1;
+		if ( $rows >= 1 ) {
+			$this->publish_transition_event(
+				$run_id,
+				'run.transition',
+				'approval',
+				'waiting',
+				'approval_wait_preview',
+				array(
+					'status'             => 'awaiting_preview',
+					'preview_session_id' => sanitize_text_field( $preview_session_id ),
+				),
+				'Run paused for preview.'
+			);
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -382,7 +437,23 @@ class PressArk_Run_Store {
 			array( '%s', '%s' )
 		);
 
-		return $rows >= 1;
+		if ( $rows >= 1 ) {
+			$this->publish_transition_event(
+				$run_id,
+				'run.transition',
+				'approval',
+				'waiting',
+				'approval_wait_confirm',
+				array(
+					'status'               => 'awaiting_confirm',
+					'pending_action_count' => count( $pending_actions ),
+				),
+				'Run paused for confirmation.'
+			);
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -411,7 +482,23 @@ class PressArk_Run_Store {
 			array( '%s' )
 		);
 
-		return (bool) $rows;
+		if ( $rows ) {
+			$this->publish_transition_event(
+				$run_id,
+				'run.transition',
+				'approval',
+				'in_progress',
+				'approval_partial_progress',
+				array(
+					'status'               => sanitize_key( $status ),
+					'pending_action_count' => count( $pending ),
+				),
+				'Run pending actions updated.'
+			);
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -455,7 +542,32 @@ class PressArk_Run_Store {
 			) );
 		}
 
-		return (int) $rows >= 1;
+		if ( (int) $rows >= 1 ) {
+			$reason = 'completed';
+			if ( is_array( $result ) ) {
+				if ( ! empty( $result['cancelled'] ) ) {
+					$reason = 'user_cancelled';
+				} elseif ( ! empty( $result['discarded'] ) ) {
+					$reason = 'approval_wait_preview';
+				}
+			}
+
+			$this->publish_transition_event(
+				$run_id,
+				'run.completed',
+				'run',
+				'succeeded',
+				$reason,
+				array(
+					'status'      => 'settled',
+					'result_type' => is_array( $result ) ? (string) ( $result['type'] ?? 'final_response' ) : '',
+				),
+				'Run settled.'
+			);
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -486,7 +598,23 @@ class PressArk_Run_Store {
 			$run_id
 		) );
 
-		return (int) $rows >= 1;
+		if ( (int) $rows >= 1 ) {
+			$this->publish_transition_event(
+				$run_id,
+				'run.completed',
+				'run',
+				'failed',
+				PressArk_Activity_Trace::infer_failure_reason( $reason ),
+				array(
+					'status'        => 'failed',
+					'error_summary' => $summary,
+				),
+				'Run failed.'
+			);
+			return true;
+		}
+
+		return false;
 	}
 
 	// ── Linkage ─────────────────────────────────────────────────────
@@ -697,9 +825,56 @@ class PressArk_Run_Store {
 		$row['workflow_state']  = json_decode( $row['workflow_state'] ?? 'null', true );
 		$row['pending_actions'] = json_decode( $row['pending_actions'] ?? 'null', true );
 		$row['result']          = json_decode( $row['result'] ?? 'null', true );
+		$row['correlation_id']  = (string) ( $row['correlation_id'] ?? '' );
 		$row['user_id']         = (int) $row['user_id'];
 		$row['chat_id']         = (int) $row['chat_id'];
 
 		return $row;
+	}
+
+	/**
+	 * Publish a sanitized transition event for a stored run.
+	 *
+	 * @param string              $run_id     Run ID.
+	 * @param string              $event_type Canonical event type.
+	 * @param string              $phase      Canonical phase.
+	 * @param string              $status     Canonical status.
+	 * @param string              $reason     Canonical reason.
+	 * @param array<string,mixed> $payload    Safe payload.
+	 * @param string              $summary    Summary text.
+	 */
+	private function publish_transition_event(
+		string $run_id,
+		string $event_type,
+		string $phase,
+		string $status,
+		string $reason,
+		array $payload,
+		string $summary
+	): void {
+		$run = $this->get( $run_id );
+		if ( ! $run ) {
+			return;
+		}
+
+		PressArk_Activity_Trace::publish(
+			array(
+				'event_type' => $event_type,
+				'phase'      => $phase,
+				'status'     => $status,
+				'reason'     => $reason,
+				'summary'    => $summary,
+				'payload'    => $payload,
+			),
+			array(
+				'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
+				'run_id'         => (string) ( $run['run_id'] ?? '' ),
+				'reservation_id' => (string) ( $run['reservation_id'] ?? '' ),
+				'task_id'        => (string) ( $run['task_id'] ?? '' ),
+				'chat_id'        => (int) ( $run['chat_id'] ?? 0 ),
+				'user_id'        => (int) ( $run['user_id'] ?? 0 ),
+				'route'          => (string) ( $run['route'] ?? '' ),
+			)
+		);
 	}
 }

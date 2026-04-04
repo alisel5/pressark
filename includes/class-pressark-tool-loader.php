@@ -73,7 +73,8 @@ class PressArk_Tool_Loader {
 		array $loaded_groups = array(),
 		array $options = array()
 	): array {
-		unset( $message, $conversation, $tier );
+		unset( $message, $conversation );
+		$options['tier'] = $tier;
 
 		$required_groups = $this->normalize_groups(
 			array_merge( self::BASE_GROUPS, $loaded_groups )
@@ -83,7 +84,7 @@ class PressArk_Tool_Loader {
 			$required_groups
 		) );
 
-		$tool_set = $this->build_tool_set( $required_groups, 'filtered' );
+		$tool_set = $this->build_tool_set( $required_groups, 'filtered', $options );
 
 		$budget_manager = $options['budget_manager'] ?? null;
 		if ( $budget_manager instanceof PressArk_Token_Budget_Manager && ! empty( $candidate_groups ) ) {
@@ -92,7 +93,8 @@ class PressArk_Tool_Loader {
 				$group_costs[ $group ] = $this->estimate_group_schema_cost(
 					$group,
 					$tool_set['tool_names'],
-					$budget_manager
+					$budget_manager,
+					$options
 				);
 			}
 
@@ -111,7 +113,8 @@ class PressArk_Tool_Loader {
 			);
 			$tool_set   = $this->build_tool_set(
 				array_merge( $required_groups, (array) ( $hydration['selected_groups'] ?? array() ) ),
-				'filtered'
+				'filtered',
+				$options
 			);
 			$tool_set['group_costs']     = $group_costs;
 			$tool_set['hydration_plan']  = $hydration;
@@ -131,43 +134,67 @@ class PressArk_Tool_Loader {
 	 * @param string $tier User's tier.
 	 * @return array Same shape as resolve().
 	 */
-	public function resolve_native_search( string $tier ): array {
-		unset( $tier );
+	public function resolve_native_search( string $tier, array $options = array() ): array {
+		$options['tier'] = $tier;
 
 		$has_woo       = class_exists( 'WooCommerce' );
 		$has_elementor = class_exists( '\\Elementor\\Plugin' );
 		$all_tools     = PressArk_Tools::get_all( $has_woo, $has_elementor );
 
-		$schemas = array();
-		foreach ( $all_tools as $tool ) {
-			$schemas[] = PressArk_Tools::tool_to_schema( $tool );
+		$tool_names = array_values( array_filter( array_map(
+			static fn( array $tool ): string => sanitize_key( (string) ( $tool['name'] ?? '' ) ),
+			$all_tools
+		) ) );
+		$visibility = null;
+		if ( class_exists( 'PressArk_Permission_Service' ) ) {
+			$visibility = PressArk_Permission_Service::evaluate_tool_set(
+				$tool_names,
+				$this->permission_context( $options ),
+				$this->permission_meta( $options )
+			);
+			$tool_names = $visibility['visible_tool_names'];
 		}
+
+		$schemas = $this->catalog->get_schemas( $tool_names );
 
 		usort( $schemas, function ( $a, $b ) {
 			return strcmp( $a['function']['name'] ?? '', $b['function']['name'] ?? '' );
 		} );
 
-		$tool_names = array();
-		foreach ( $schemas as $schema ) {
-			$tool_names[] = $schema['function']['name'] ?? '';
-		}
-
-		$groups = PressArk_Operation_Registry::group_names();
+		$tool_names = array_values( array_filter( array_map(
+			static fn( array $schema ): string => sanitize_key( (string) ( $schema['function']['name'] ?? '' ) ),
+			$schemas
+		) ) );
+		$groups     = $this->visible_groups_from_tool_names( PressArk_Operation_Registry::group_names(), $tool_names );
 
 		return array(
 			'schemas'               => $schemas,
 			'descriptors'           => '',
-			'capability_map'        => PressArk_Capability_Bridge::get_context_resources( $groups, 'full' ),
+			'capability_map'        => $this->catalog->get_capability_map( $groups, 'full', $tool_names ),
 			'capability_maps'       => array(
-				'full'    => PressArk_Capability_Bridge::get_context_resources( $groups, 'full' ),
-				'compact' => PressArk_Capability_Bridge::get_context_resources( $groups, 'compact' ),
-				'minimal' => PressArk_Capability_Bridge::get_context_resources( $groups, 'minimal' ),
+				'full'    => $this->catalog->get_capability_map( $groups, 'full', $tool_names ),
+				'compact' => $this->catalog->get_compact_capability_map( $groups, $tool_names ),
+				'minimal' => $this->catalog->get_minimal_capability_map( $groups, $tool_names ),
 			),
 			'capability_map_variant' => 'full',
 			'groups'                => $groups,
 			'strategy'              => 'native_search',
 			'tool_count'            => count( $schemas ),
 			'tool_names'            => $tool_names,
+			'effective_visible_tools' => $tool_names,
+			'permission_surface'    => class_exists( 'PressArk_Permission_Service' )
+				? PressArk_Permission_Service::build_surface_snapshot(
+					$visibility ?? array(
+						'context'            => $this->permission_context( $options ),
+						'visible_tool_names' => $tool_names,
+						'hidden_tool_names'  => array(),
+						'visible_groups'     => $groups,
+						'decisions'          => array(),
+						'hidden_summary'     => array(),
+					),
+					$groups
+				)
+				: array(),
 			'deferred_groups'       => array(),
 			'hydration_plan'        => array(),
 			'budget'                => array(),
@@ -183,7 +210,7 @@ class PressArk_Tool_Loader {
 	 * @param string $group   Group name to add.
 	 * @return array Updated result.
 	 */
-	public function expand( array $current, string $group ): array {
+	public function expand( array $current, string $group, array $options = array() ): array {
 		$groups = $this->normalize_groups( (array) ( $current['groups'] ?? array() ) );
 
 		if ( in_array( $group, $groups, true ) || ! PressArk_Operation_Registry::is_valid_group( $group ) ) {
@@ -191,7 +218,7 @@ class PressArk_Tool_Loader {
 		}
 
 		$groups[]  = $group;
-		$tool_set  = $this->build_tool_set( $groups, 'filtered' );
+		$tool_set  = $this->build_tool_set( $groups, 'filtered', $options );
 		$deferred  = array_values( array_filter(
 			(array) ( $current['deferred_groups'] ?? array() ),
 			static function ( $candidate ) use ( $group ): bool {
@@ -213,7 +240,7 @@ class PressArk_Tool_Loader {
 	 * @param string[] $tool_names Specific tool names to add.
 	 * @return array Updated result.
 	 */
-	public function expand_tools( array $current, array $tool_names ): array {
+	public function expand_tools( array $current, array $tool_names, array $options = array() ): array {
 		$groups          = $this->normalize_groups( (array) ( $current['groups'] ?? array() ) );
 		$has_woo         = class_exists( 'WooCommerce' );
 		$has_elementor   = class_exists( '\\Elementor\\Plugin' );
@@ -238,7 +265,7 @@ class PressArk_Tool_Loader {
 			return $current;
 		}
 
-		$tool_set = $this->build_tool_set( $groups, 'filtered' );
+		$tool_set = $this->build_tool_set( $groups, 'filtered', $options );
 		$tool_set['deferred_groups'] = array_values( array_filter(
 			(array) ( $current['deferred_groups'] ?? array() ),
 			static function ( $candidate ) use ( $groups ): bool {
@@ -280,6 +307,8 @@ class PressArk_Tool_Loader {
 			'strategy'               => 'full',
 			'tool_count'             => count( $schemas ),
 			'tool_names'             => $tool_names,
+			'effective_visible_tools' => $tool_names,
+			'permission_surface'     => array(),
 			'deferred_groups'        => array(),
 			'hydration_plan'         => array(),
 			'budget'                 => array(),
@@ -293,14 +322,28 @@ class PressArk_Tool_Loader {
 	 * @param string   $strategy Strategy label.
 	 * @return array
 	 */
-	private function build_tool_set( array $groups, string $strategy ): array {
-		$groups     = $this->normalize_groups( $groups );
-		$tool_names = array_values( array_unique( array_merge(
+	private function build_tool_set( array $groups, string $strategy, array $options = array() ): array {
+		$groups               = $this->normalize_groups( $groups );
+		$candidate_tool_names = array_values( array_unique( array_merge(
 			$this->catalog->get_tool_names_for_groups( $groups ),
 			$this->get_always_load_tool_names()
 		) ) );
-		$schemas    = $this->catalog->get_schemas( $tool_names );
-		$maps       = $this->catalog->get_capability_maps( $groups );
+		$effective_groups     = $groups;
+		$permission_surface   = array();
+
+		if ( class_exists( 'PressArk_Permission_Service' ) ) {
+			$visibility           = PressArk_Permission_Service::evaluate_tool_set(
+				$candidate_tool_names,
+				$this->permission_context( $options ),
+				$this->permission_meta( $options )
+			);
+			$candidate_tool_names = $visibility['visible_tool_names'];
+			$effective_groups     = $this->visible_groups_from_tool_names( $groups, $candidate_tool_names );
+			$permission_surface   = PressArk_Permission_Service::build_surface_snapshot( $visibility, $groups );
+		}
+
+		$schemas = $this->catalog->get_schemas( $candidate_tool_names );
+		$maps    = $this->catalog->get_capability_maps( $effective_groups, $candidate_tool_names );
 
 		return array(
 			'schemas'                => $schemas,
@@ -308,10 +351,13 @@ class PressArk_Tool_Loader {
 			'capability_map'         => $maps['full'] ?? '',
 			'capability_maps'        => $maps,
 			'capability_map_variant' => 'full',
-			'groups'                 => $groups,
+			'groups'                 => $effective_groups,
+			'requested_groups'       => $groups,
 			'strategy'               => $strategy,
 			'tool_count'             => count( $schemas ),
-			'tool_names'             => $tool_names,
+			'tool_names'             => $candidate_tool_names,
+			'effective_visible_tools' => $candidate_tool_names,
+			'permission_surface'     => $permission_surface,
 			'deferred_groups'        => array(),
 			'hydration_plan'         => array(),
 			'budget'                 => array(),
@@ -372,12 +418,25 @@ class PressArk_Tool_Loader {
 	private function estimate_group_schema_cost(
 		string $group,
 		array $current_tool_names,
-		PressArk_Token_Budget_Manager $budget_manager
+		PressArk_Token_Budget_Manager $budget_manager,
+		array $options = array()
 	): int {
 		$group_tool_names = array_values( array_diff(
 			$this->catalog->get_tool_names_for_groups( array( $group ) ),
 			$current_tool_names
 		) );
+
+		if ( class_exists( 'PressArk_Permission_Service' ) && ! empty( $group_tool_names ) ) {
+			$visibility       = PressArk_Permission_Service::evaluate_tool_set(
+				$group_tool_names,
+				$this->permission_context( $options ),
+				$this->permission_meta( $options )
+			);
+			$group_tool_names = array_values( array_diff(
+				$visibility['visible_tool_names'],
+				$current_tool_names
+			) );
+		}
 
 		if ( empty( $group_tool_names ) ) {
 			return 0;
@@ -432,5 +491,53 @@ class PressArk_Tool_Loader {
 		}
 
 		return array_values( array_unique( $normalized ) );
+	}
+
+	/**
+	 * Resolve the current permission context for tool exposure.
+	 *
+	 * @param array $options Loader options.
+	 * @return string
+	 */
+	private function permission_context( array $options ): string {
+		return (string) (
+			$options['permission_context']
+			?? ( class_exists( 'PressArk_Policy_Engine' )
+				? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+				: 'interactive' )
+		);
+	}
+
+	/**
+	 * Build permission-evaluation metadata for tool exposure.
+	 *
+	 * @param array $options Loader options.
+	 * @return array
+	 */
+	private function permission_meta( array $options ): array {
+		$meta = (array) ( $options['permission_meta'] ?? array() );
+		if ( ! isset( $meta['tier'] ) && isset( $options['tier'] ) ) {
+			$meta['tier'] = $options['tier'];
+		}
+		return $meta;
+	}
+
+	/**
+	 * Keep only groups that still expose at least one visible tool.
+	 *
+	 * @param string[] $groups     Candidate groups.
+	 * @param string[] $tool_names Visible tool names.
+	 * @return string[]
+	 */
+	private function visible_groups_from_tool_names( array $groups, array $tool_names ): array {
+		$visible_groups = array();
+		foreach ( $groups as $group ) {
+			$group_tools = $this->catalog->get_tool_names_for_groups( array( $group ) );
+			if ( ! empty( array_intersect( $group_tools, $tool_names ) ) ) {
+				$visible_groups[] = $group;
+			}
+		}
+
+		return array_values( array_unique( $visible_groups ) );
 	}
 }

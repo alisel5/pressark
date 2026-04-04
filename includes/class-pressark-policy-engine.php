@@ -86,14 +86,7 @@ class PressArk_Policy_Engine {
 	 * @param array  $params         Operation arguments.
 	 * @param string $context        Execution context (CONTEXT_* constant).
 	 * @param array  $meta           Additional context (user_id, run_id, etc.).
-	 * @return array{
-	 *     behavior: string,
-	 *     reasons: array,
-	 *     source: string,
-	 *     operation: string,
-	 *     context: string,
-	 *     meta: array
-	 * }
+	 * @return array Canonical permission decision with legacy behavior/source keys.
 	 */
 	public static function evaluate(
 		string $operation_name,
@@ -104,7 +97,10 @@ class PressArk_Policy_Engine {
 		// Guard against recursive policy evaluation (e.g., a filter
 		// callback that triggers another operation).
 		if ( self::$evaluating ) {
-			return self::verdict( self::ALLOW, 'Recursive policy evaluation — passthrough.', 'recursion_guard' );
+			return PressArk_Permission_Decision::with_visibility(
+				self::verdict( self::ALLOW, 'Recursive policy evaluation — passthrough.', 'recursion_guard' ),
+				true
+			);
 		}
 
 		self::$evaluating = true;
@@ -529,13 +525,19 @@ class PressArk_Policy_Engine {
 			);
 
 			if ( $check['allowed'] ) {
-				return self::verdict( self::ALLOW, 'Allowed by automation policy.', 'automation_policy' );
+				return PressArk_Permission_Decision::normalize(
+					$check['permission_decision']
+						?? self::verdict( self::ALLOW, 'Allowed by automation policy.', 'automation_policy' )
+				);
 			}
 
-			return self::verdict(
-				self::DENY,
-				$check['reason'] ?? sprintf( 'Blocked by "%s" automation policy.', $policy ),
-				'automation_policy'
+			return PressArk_Permission_Decision::normalize(
+				$check['permission_decision']
+					?? self::verdict(
+						self::DENY,
+						$check['reason'] ?? sprintf( 'Blocked by "%s" automation policy.', $policy ),
+						'automation_policy'
+					)
 			);
 		}
 
@@ -561,9 +563,26 @@ class PressArk_Policy_Engine {
 	 * Run the verdict through the final filter and fire denial action.
 	 */
 	private static function finalize_verdict( array $verdict, array $op_context ): array {
-		$verdict['operation'] = $op_context['operation'];
-		$verdict['context']   = $op_context['context'];
-		$verdict['meta']      = $op_context['meta'];
+		$verdict = PressArk_Permission_Decision::normalize(
+			array_merge(
+				$verdict,
+				array(
+					'operation' => $op_context['operation'],
+					'context'   => $op_context['context'],
+					'meta'      => $op_context['meta'],
+					'debug'     => array_merge(
+						(array) ( $verdict['debug'] ?? array() ),
+						array(
+							'registered' => ! empty( $op_context['registered'] ),
+							'capability' => (string) ( $op_context['capability'] ?? '' ),
+							'group'      => (string) ( $op_context['group'] ?? '' ),
+							'risk'       => (string) ( $op_context['risk'] ?? '' ),
+						)
+					),
+				)
+			)
+		);
+		$verdict = self::attach_approval_semantics( $verdict, $op_context );
 
 		/**
 		 * Filter the policy verdict before it takes effect.
@@ -579,17 +598,29 @@ class PressArk_Policy_Engine {
 		 * @param array $op_context Full operation context.
 		 */
 		$verdict = apply_filters( 'pressark_policy_verdict', $verdict, $op_context );
+		$verdict = is_array( $verdict )
+			? PressArk_Permission_Decision::normalize( $verdict )
+			: $verdict;
 
 		// Ensure the verdict is still valid after filtering.
-		if ( ! is_array( $verdict ) || ! isset( $verdict['behavior'] ) ) {
-			$verdict = self::verdict( self::DENY, 'Invalid verdict from pressark_policy_verdict filter — fail closed.', 'safety' );
-			$verdict['operation'] = $op_context['operation'];
-			$verdict['context']   = $op_context['context'];
-			$verdict['meta']      = $op_context['meta'];
+		if ( ! is_array( $verdict ) || ! isset( $verdict['verdict'] ) ) {
+			$verdict = PressArk_Permission_Decision::normalize(
+				array_merge(
+					self::verdict( self::DENY, 'Invalid verdict from pressark_policy_verdict filter — fail closed.', 'safety' ),
+					array(
+						'operation' => $op_context['operation'],
+						'context'   => $op_context['context'],
+						'meta'      => $op_context['meta'],
+					)
+				)
+			);
+			$verdict = self::attach_approval_semantics( $verdict, $op_context );
 		}
 
+		$verdict = self::attach_visibility_defaults( $verdict, $op_context );
+
 		// Fire denial action for observability.
-		if ( self::DENY === $verdict['behavior'] ) {
+		if ( self::DENY === ( $verdict['verdict'] ?? '' ) ) {
 			/**
 			 * Fires when an operation is denied by policy.
 			 *
@@ -614,11 +645,70 @@ class PressArk_Policy_Engine {
 	 * Build a structured verdict array.
 	 */
 	private static function verdict( string $behavior, string $reason, string $source ): array {
-		return array(
-			'behavior' => $behavior,
-			'reasons'  => array( $reason ),
-			'source'   => $source,
+		return PressArk_Permission_Decision::create(
+			$behavior,
+			$reason,
+			$source,
+			array(
+				'provenance' => array(
+					'authority' => 'policy_engine',
+					'source'    => $source,
+					'kind'      => 'policy',
+				),
+			)
 		);
+	}
+
+	/**
+	 * Attach approval semantics without changing existing verdict logic.
+	 *
+	 * @param array $verdict    Canonical permission decision.
+	 * @param array $op_context Operation context.
+	 * @return array
+	 */
+	private static function attach_approval_semantics( array $verdict, array $op_context ): array {
+		$mode      = PressArk_Permission_Decision::APPROVAL_NONE;
+		$required  = PressArk_Permission_Decision::is_ask( $verdict );
+		$available = true;
+
+		if ( $required ) {
+			if ( self::CONTEXT_INTERACTIVE === $op_context['context'] ) {
+				if ( 'preview' === ( $op_context['capability'] ?? '' ) ) {
+					$mode = PressArk_Permission_Decision::APPROVAL_PREVIEW;
+				} elseif ( 'confirm' === ( $op_context['capability'] ?? '' ) ) {
+					$mode = PressArk_Permission_Decision::APPROVAL_CONFIRM;
+				} else {
+					$mode = PressArk_Permission_Decision::APPROVAL_HUMAN;
+				}
+			} else {
+				$mode      = PressArk_Permission_Decision::APPROVAL_UNAVAILABLE;
+				$available = false;
+			}
+		}
+
+		return PressArk_Permission_Decision::with_approval( $verdict, $required, $mode, $available );
+	}
+
+	/**
+	 * Attach default model visibility without leaking policy details.
+	 *
+	 * @param array $verdict    Canonical permission decision.
+	 * @param array $op_context Operation context.
+	 * @return array
+	 */
+	private static function attach_visibility_defaults( array $verdict, array $op_context ): array {
+		$reason_codes = array();
+		$visible      = true;
+
+		if ( PressArk_Permission_Decision::is_denied( $verdict ) ) {
+			$visible      = false;
+			$reason_codes = array( 'denied' );
+		} elseif ( PressArk_Permission_Decision::is_ask( $verdict ) && empty( $verdict['approval']['available'] ) ) {
+			$visible      = false;
+			$reason_codes = array( 'approval_blocked' );
+		}
+
+		return PressArk_Permission_Decision::with_visibility( $verdict, $visible, $reason_codes );
 	}
 
 	/**
@@ -630,7 +720,7 @@ class PressArk_Policy_Engine {
 	 * @return bool
 	 */
 	public static function is_allowed( array $verdict ): bool {
-		return self::ALLOW === ( $verdict['behavior'] ?? '' );
+		return PressArk_Permission_Decision::is_allowed( $verdict );
 	}
 
 	/**
@@ -640,7 +730,7 @@ class PressArk_Policy_Engine {
 	 * @return bool
 	 */
 	public static function is_ask( array $verdict ): bool {
-		return self::ASK === ( $verdict['behavior'] ?? '' );
+		return PressArk_Permission_Decision::is_ask( $verdict );
 	}
 
 	/**
@@ -650,7 +740,7 @@ class PressArk_Policy_Engine {
 	 * @return bool
 	 */
 	public static function is_denied( array $verdict ): bool {
-		return self::DENY === ( $verdict['behavior'] ?? '' );
+		return PressArk_Permission_Decision::is_denied( $verdict );
 	}
 
 	/**
@@ -660,9 +750,10 @@ class PressArk_Policy_Engine {
 	 * @return string
 	 */
 	public static function verdict_summary( array $verdict ): string {
-		$behavior  = strtoupper( $verdict['behavior'] ?? 'UNKNOWN' );
-		$operation = $verdict['operation'] ?? 'unknown';
-		$reasons   = implode( '; ', $verdict['reasons'] ?? array() );
+		$normalized = PressArk_Permission_Decision::normalize( $verdict );
+		$behavior  = strtoupper( $normalized['verdict'] ?? 'UNKNOWN' );
+		$operation = $normalized['operation'] ?? 'unknown';
+		$reasons   = implode( '; ', $normalized['reasons'] ?? array() );
 
 		return sprintf( '[%s] %s — %s', $behavior, $operation, $reasons );
 	}

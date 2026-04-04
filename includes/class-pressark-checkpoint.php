@@ -42,6 +42,8 @@ class PressArk_Checkpoint {
 	private array  $loaded_tool_groups = array(); // [ 'seo', 'content', ... ]
 	private array  $bundle_ids         = array(); // [ 'rb_abc123', ... ] deterministic read-bundle hashes
 	private array  $replay_state       = array(); // durable replay transcript + sidecars
+	private array  $read_state         = array(); // typed reusable read snapshots
+	private array  $read_invalidation_log = array(); // write-triggered snapshot invalidations
 
 	// v5.3.0: Run-scoped planning state — separates exploration from execution.
 	private array  $plan_state         = array(); // [ 'phase' => '', 'plan_text' => '', 'entered_at' => '', 'approved_at' => '' ]
@@ -79,6 +81,12 @@ class PressArk_Checkpoint {
 		$cp->replay_state       = class_exists( 'PressArk_Replay_Integrity' )
 			? PressArk_Replay_Integrity::sanitize_state( $data['replay_state'] ?? array() )
 			: array();
+		$cp->read_state        = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_snapshot_collection( $data['read_state'] ?? array() )
+			: array();
+		$cp->read_invalidation_log = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_invalidation_log( $data['read_invalidation_log'] ?? array() )
+			: array();
 
 		// v5.3.0: Plan state.
 		$cp->plan_state         = self::sanitize_plan_state( $data['plan_state'] ?? array() );
@@ -109,6 +117,8 @@ class PressArk_Checkpoint {
 			'loaded_tool_groups' => $this->loaded_tool_groups,
 			'bundle_ids'         => $this->bundle_ids,
 			'replay_state'       => $this->replay_state,
+			'read_state'         => $this->read_state,
+			'read_invalidation_log' => $this->read_invalidation_log,
 			'plan_state'         => $this->plan_state,
 		);
 	}
@@ -313,6 +323,12 @@ class PressArk_Checkpoint {
 		foreach ( $execution_lines as $line ) {
 			$parts[] = $line;
 		}
+		if ( class_exists( 'PressArk_Read_Metadata' ) ) {
+			$verification = PressArk_Execution_Ledger::verification_summary( $this->execution );
+			foreach ( PressArk_Read_Metadata::build_checkpoint_lines( $this->read_state, $verification ) as $line ) {
+				$parts[] = $line;
+			}
+		}
 
 		if ( empty( $parts ) ) {
 			return '';
@@ -351,6 +367,8 @@ class PressArk_Checkpoint {
 			&& empty( $this->loaded_tool_groups )
 			&& empty( $this->bundle_ids )
 			&& empty( $this->replay_state )
+			&& empty( $this->read_state )
+			&& empty( $this->read_invalidation_log )
 			&& self::plan_state_is_empty( $this->plan_state );
 	}
 
@@ -470,6 +488,9 @@ class PressArk_Checkpoint {
 	 */
 	public function record_execution_read( string $tool_name, array $args, array $result ): void {
 		$this->execution = PressArk_Execution_Ledger::record_read( $this->execution, $tool_name, $args, $result );
+		if ( class_exists( 'PressArk_Read_Metadata' ) && ! empty( $result['success'] ) ) {
+			$this->record_read_snapshot( PressArk_Read_Metadata::snapshot_from_tool_result( $tool_name, $args, $result ) );
+		}
 	}
 
 	/**
@@ -477,6 +498,9 @@ class PressArk_Checkpoint {
 	 */
 	public function record_execution_write( string $tool_name, array $args, array $result ): void {
 		$this->execution = PressArk_Execution_Ledger::record_write( $this->execution, $tool_name, $args, $result );
+		if ( ! empty( $result['success'] ) ) {
+			$this->apply_write_invalidation( $tool_name, $args, $result );
+		}
 	}
 
 	/**
@@ -503,6 +527,63 @@ class PressArk_Checkpoint {
 	 */
 	public function record_execution_preview( array $tool_calls, array $result ): void {
 		$this->execution = PressArk_Execution_Ledger::record_preview_result( $this->execution, $tool_calls, $result );
+		if ( empty( $result['success'] ) ) {
+			return;
+		}
+		foreach ( $tool_calls as $tool_call ) {
+			if ( ! is_array( $tool_call ) ) {
+				continue;
+			}
+			$name = sanitize_key( (string) ( $tool_call['name'] ?? $tool_call['type'] ?? '' ) );
+			$args = is_array( $tool_call['arguments'] ?? null ) ? $tool_call['arguments'] : (array) ( $tool_call['params'] ?? array() );
+			if ( '' !== $name ) {
+				$this->apply_write_invalidation( $name, $args, $result );
+			}
+		}
+	}
+
+	public function get_read_state(): array {
+		return $this->read_state;
+	}
+
+	public function get_read_invalidation_log(): array {
+		return $this->read_invalidation_log;
+	}
+
+	public function record_read_snapshot( array $snapshot ): void {
+		if ( ! class_exists( 'PressArk_Read_Metadata' ) ) {
+			return;
+		}
+		$clean = PressArk_Read_Metadata::sanitize_snapshot( $snapshot );
+		if ( empty( $clean['handle'] ) ) {
+			return;
+		}
+		$items = PressArk_Read_Metadata::sanitize_snapshot_collection( array_merge( $this->read_state, array( $clean ) ) );
+		$this->read_state = $items;
+	}
+
+	public function set_read_state( array $read_state ): void {
+		$this->read_state = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_snapshot_collection( $read_state )
+			: array();
+	}
+
+	public function apply_write_invalidation( string $tool_name, array $args, array $result ): void {
+		if ( ! class_exists( 'PressArk_Read_Metadata' ) ) {
+			return;
+		}
+		$descriptor = PressArk_Read_Metadata::build_invalidation_from_write( $tool_name, $args, $result );
+		if ( empty( $descriptor['id'] ) ) {
+			return;
+		}
+		$applied                     = PressArk_Read_Metadata::apply_invalidation( $this->read_state, $descriptor );
+		$this->read_state            = $applied['snapshots'] ?? array();
+		$this->read_invalidation_log = PressArk_Read_Metadata::sanitize_invalidation_log(
+			array_merge( $this->read_invalidation_log, array( $applied['invalidation'] ?? array() ) )
+		);
+		if ( class_exists( 'PressArk_Resource_Registry' ) ) {
+			PressArk_Resource_Registry::apply_invalidation( $applied['invalidation'] ?? array() );
+		}
 	}
 
 	/**
@@ -1096,6 +1177,14 @@ class PressArk_Checkpoint {
 		$merged->replay_state = class_exists( 'PressArk_Replay_Integrity' )
 			? PressArk_Replay_Integrity::merge_state( $server->replay_state, $client->replay_state )
 			: ( ! empty( $server->replay_state ) ? $server->replay_state : $client->replay_state );
+		if ( class_exists( 'PressArk_Read_Metadata' ) ) {
+			$merged->read_state = PressArk_Read_Metadata::sanitize_snapshot_collection(
+				array_merge( $server->read_state, $client->read_state )
+			);
+			$merged->read_invalidation_log = PressArk_Read_Metadata::sanitize_invalidation_log(
+				array_merge( $server->read_invalidation_log, $client->read_invalidation_log )
+			);
+		}
 
 		// v5.3.0: Plan state — server wins (server-owned truth).
 		if ( self::plan_state_is_empty( $server->plan_state ) && ! self::plan_state_is_empty( $client->plan_state ) ) {
@@ -1153,6 +1242,8 @@ class PressArk_Checkpoint {
 		$this->loaded_tool_groups = $other->loaded_tool_groups;
 		$this->bundle_ids         = $other->bundle_ids;
 		$this->replay_state       = $other->replay_state;
+		$this->read_state         = $other->read_state;
+		$this->read_invalidation_log = $other->read_invalidation_log;
 		$this->plan_state         = $other->plan_state;
 	}
 
@@ -1173,6 +1264,8 @@ class PressArk_Checkpoint {
 			'updated_at',
 			'context_capsule',
 			'replay_state',
+			'read_state',
+			'read_invalidation_log',
 			'plan_state',
 		) as $key ) {
 			if ( array_key_exists( $key, $snapshot ) ) {
@@ -1539,6 +1632,9 @@ class PressArk_Checkpoint {
 		}
 		if ( isset( $result['has_more'] ) ) {
 			$clean['has_more'] = (bool) $result['has_more'];
+		}
+		if ( class_exists( 'PressArk_Read_Metadata' ) && ! empty( $result['read_meta'] ) ) {
+			$clean['read_meta'] = PressArk_Read_Metadata::sanitize_snapshot( $result['read_meta'] );
 		}
 		return $clean;
 	}

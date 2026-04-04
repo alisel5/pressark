@@ -195,10 +195,20 @@ class PressArk_Pipeline {
 				'type'   => $tool_call['name'] ?? $tool_call['type'] ?? '',
 				'params' => $tool_call['arguments'] ?? $tool_call['params'] ?? array(),
 			);
+			$permission_decision = class_exists( 'PressArk_Permission_Service' )
+				? PressArk_Permission_Service::evaluate(
+					(string) ( $action_data['type'] ?? '' ),
+					(array) ( $action_data['params'] ?? array() ),
+					class_exists( 'PressArk_Policy_Engine' )
+						? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+						: 'interactive'
+				)
+				: array();
 			$pending[] = array(
-				'action'  => $action_data,
-				'preview' => call_user_func( $preview_fn, $action_data ),
-				'status'  => 'pending_confirmation',
+				'action'              => $action_data,
+				'preview'             => call_user_func( $preview_fn, $action_data ),
+				'status'              => 'pending_confirmation',
+				'permission_decision' => $permission_decision,
 			);
 		}
 
@@ -233,6 +243,9 @@ class PressArk_Pipeline {
 		// v3.1.0: Run ID for durable execution tracking.
 		if ( ! empty( $result['run_id'] ) ) {
 			$data['run_id'] = $result['run_id'];
+		}
+		if ( ! empty( $result['correlation_id'] ) ) {
+			$data['correlation_id'] = $result['correlation_id'];
 		}
 
 		foreach ( array(
@@ -355,8 +368,21 @@ class PressArk_Pipeline {
 			return $result;
 		}
 
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
+				'run_id'         => (string) ( $run['run_id'] ?? '' ),
+				'reservation_id' => (string) ( $run['reservation_id'] ?? '' ),
+				'task_id'        => (string) ( $run['task_id'] ?? '' ),
+				'chat_id'        => (int) ( $run['chat_id'] ?? 0 ),
+				'user_id'        => (int) ( $run['user_id'] ?? 0 ),
+				'route'          => (string) ( $run['route'] ?? '' ),
+			)
+		);
+
 		$run_store->settle( $run['run_id'], $result );
 		$result['run_id'] = $run['run_id'];
+		$result['correlation_id'] = (string) ( $run['correlation_id'] ?? '' );
 
 		return $result;
 	}
@@ -369,6 +395,20 @@ class PressArk_Pipeline {
 	 */
 	public static function fail_run( string $run_id, string $reason = '' ): void {
 		$run_store = new PressArk_Run_Store();
+		$run       = $run_store->get( $run_id );
+		if ( $run ) {
+			PressArk_Activity_Trace::set_current_context(
+				array(
+					'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
+					'run_id'         => (string) ( $run['run_id'] ?? '' ),
+					'reservation_id' => (string) ( $run['reservation_id'] ?? '' ),
+					'task_id'        => (string) ( $run['task_id'] ?? '' ),
+					'chat_id'        => (int) ( $run['chat_id'] ?? 0 ),
+					'user_id'        => (int) ( $run['user_id'] ?? 0 ),
+					'route'          => (string) ( $run['route'] ?? '' ),
+				)
+			);
+		}
 		$run_store->fail( $run_id, $reason );
 	}
 
@@ -385,6 +425,15 @@ class PressArk_Pipeline {
 	 * @return array{token_status: array, response: WP_REST_Response}
 	 */
 	public function finalize( array $result, string $route ): array {
+		PressArk_Activity_Trace::set_current_context(
+			array(
+				'correlation_id' => (string) ( $result['correlation_id'] ?? '' ),
+				'run_id'         => (string) ( $result['run_id'] ?? '' ),
+				'reservation_id' => (string) ( $result['reservation_id'] ?? $this->reservation_id ?? '' ),
+				'route'          => $route,
+			)
+		);
+
 		// [9] Settle reservation.
 		$token_status = $this->settle( $result, $route );
 
@@ -401,6 +450,9 @@ class PressArk_Pipeline {
 
 		// [11] Opportunistic reconcile (1% chance).
 		$this->maybe_reconcile();
+
+		// [11b] Canonical phase-end publishing.
+		PressArk_Activity_Trace::publish_result_events( $result, $route, is_array( $token_status ) ? $token_status : array() );
 
 		// [12] Build response.
 		return array(

@@ -354,6 +354,10 @@ class PressArk_Token_Budget_Manager {
 			'deferred_tokens'             => $deferred_tokens,
 			'reserved'                    => $reserves,
 			'billing_authority'           => (string) ( $this->financial_snapshot['billing_authority'] ?? '' ),
+			'billing_state'               => (array) ( $this->financial_snapshot['billing_state'] ?? array() ),
+			'billing_service_state'       => (string) ( $this->financial_snapshot['billing_service_state'] ?? '' ),
+			'billing_handshake_state'     => (string) ( $this->financial_snapshot['billing_handshake_state'] ?? '' ),
+			'billing_spend_source'        => (string) ( $this->financial_snapshot['billing_spend_source'] ?? '' ),
 			'billing_tier'                => (string) ( $this->financial_snapshot['billing_tier'] ?? '' ),
 			'verified_handshake'          => ! empty( $this->financial_snapshot['verified_handshake'] ),
 			'provisional_handshake'       => ! empty( $this->financial_snapshot['provisional_handshake'] ),
@@ -608,6 +612,7 @@ class PressArk_Token_Budget_Manager {
 			? PHP_INT_MAX
 			: max( 0, (int) ( $snapshot['total_remaining'] ?? $snapshot['spendable_credits_remaining'] ?? ( $monthly_remaining + $purchased_remaining + $legacy_bonus ) ) );
 		$billing_authority    = sanitize_key( (string) ( $snapshot['billing_authority'] ?? ( $is_byok ? 'byok' : 'token_bank_provisional' ) ) );
+		$billing_state        = is_array( $snapshot['billing_state'] ?? null ) ? (array) $snapshot['billing_state'] : array();
 		$billing_tier         = sanitize_key( (string) ( $snapshot['billing_tier'] ?? $snapshot['tier'] ?? '' ) );
 		$budget_pressure      = sanitize_key( (string) ( $snapshot['budget_pressure_state'] ?? '' ) );
 		$using_purchased      = ! empty( $snapshot['using_purchased_credits'] ) || ( ! $is_byok && $monthly_remaining <= 0 && $purchased_remaining > 0 );
@@ -616,6 +621,9 @@ class PressArk_Token_Budget_Manager {
 		$provisional_handshake = array_key_exists( 'provisional_handshake', $snapshot )
 			? ! empty( $snapshot['provisional_handshake'] )
 			: ( $verified_handshake ? false : ! $is_byok );
+		$billing_service_state = sanitize_key( (string) ( $snapshot['billing_service_state'] ?? $billing_state['service_state'] ?? ( ! empty( $snapshot['offline'] ) ? 'offline_assisted' : 'normal' ) ) );
+		$billing_handshake_state = sanitize_key( (string) ( $snapshot['billing_handshake_state'] ?? $billing_state['handshake_state'] ?? ( $is_byok ? 'byok' : ( $verified_handshake ? 'verified' : 'provisional' ) ) ) );
+		$billing_spend_source = sanitize_key( (string) ( $snapshot['billing_spend_source'] ?? $billing_state['spend_source'] ?? ( $is_byok ? 'byok' : ( $using_purchased ? 'purchased_credits' : ( $using_legacy_bonus ? 'legacy_bonus' : ( $total_remaining > 0 ? 'monthly_included' : 'depleted' ) ) ) ) ) );
 
 		if ( ! in_array( $budget_pressure, array( 'normal', 'conserve', 'critical' ), true ) ) {
 			$budget_pressure = $this->calculate_financial_pressure_state(
@@ -626,8 +634,26 @@ class PressArk_Token_Budget_Manager {
 			);
 		}
 
+		if ( empty( $billing_state ) ) {
+			$billing_state = array(
+				'version'          => 1,
+				'authority_mode'   => $is_byok ? 'byok' : ( $verified_handshake ? 'bank_verified' : 'bank_provisional' ),
+				'handshake_state'  => $billing_handshake_state,
+				'service_state'    => $billing_service_state,
+				'spend_source'     => $billing_spend_source,
+				'estimate_mode'    => $is_byok ? 'provider_usage' : 'plugin_local_advisory',
+				'authority_label'  => $is_byok ? 'BYOK' : ( $verified_handshake ? 'Bank verified' : 'Bank provisional' ),
+				'service_label'    => 'offline_assisted' === $billing_service_state ? 'Offline assisted' : ( 'degraded' === $billing_service_state ? 'Degraded' : 'Normal' ),
+				'spend_label'      => 'purchased_credits' === $billing_spend_source ? 'Purchased credits' : ( 'legacy_bonus' === $billing_spend_source ? 'Legacy bonus' : ( 'mixed' === $billing_spend_source ? 'Mixed sources' : ( 'depleted' === $billing_spend_source ? 'Depleted' : ( 'byok' === $billing_spend_source ? 'BYOK' : 'Monthly included' ) ) ) ),
+			);
+		}
+
 		return array(
 			'billing_authority'          => $billing_authority,
+			'billing_state'              => $billing_state,
+			'billing_service_state'      => $billing_service_state,
+			'billing_handshake_state'    => $billing_handshake_state,
+			'billing_spend_source'       => $billing_spend_source,
 			'billing_tier'               => $billing_tier,
 			'verified_handshake'         => $verified_handshake,
 			'provisional_handshake'      => $provisional_handshake,

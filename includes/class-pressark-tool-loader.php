@@ -166,6 +166,30 @@ class PressArk_Tool_Loader {
 			$schemas
 		) ) );
 		$groups     = $this->visible_groups_from_tool_names( PressArk_Operation_Registry::group_names(), $tool_names );
+		$permission_surface = class_exists( 'PressArk_Permission_Service' )
+			? PressArk_Permission_Service::build_surface_snapshot(
+				$visibility ?? array(
+					'context'            => $this->permission_context( $options ),
+					'visible_tool_names' => $tool_names,
+					'hidden_tool_names'  => array(),
+					'visible_groups'     => $groups,
+					'decisions'          => array(),
+					'hidden_summary'     => array(),
+				),
+				$groups
+			)
+			: array();
+		if ( ! empty( $permission_surface ) && class_exists( 'PressArk_Policy_Diagnostics' ) ) {
+			PressArk_Policy_Diagnostics::record_tool_surface(
+				$permission_surface,
+				array_merge(
+					$this->permission_meta( $options ),
+					array(
+						'strategy' => 'native_search',
+					)
+				)
+			);
+		}
 
 		return array(
 			'schemas'               => $schemas,
@@ -182,19 +206,7 @@ class PressArk_Tool_Loader {
 			'tool_count'            => count( $schemas ),
 			'tool_names'            => $tool_names,
 			'effective_visible_tools' => $tool_names,
-			'permission_surface'    => class_exists( 'PressArk_Permission_Service' )
-				? PressArk_Permission_Service::build_surface_snapshot(
-					$visibility ?? array(
-						'context'            => $this->permission_context( $options ),
-						'visible_tool_names' => $tool_names,
-						'hidden_tool_names'  => array(),
-						'visible_groups'     => $groups,
-						'decisions'          => array(),
-						'hidden_summary'     => array(),
-					),
-					$groups
-				)
-				: array(),
+			'permission_surface'    => $permission_surface,
 			'deferred_groups'       => array(),
 			'hydration_plan'        => array(),
 			'budget'                => array(),
@@ -340,6 +352,17 @@ class PressArk_Tool_Loader {
 			$candidate_tool_names = $visibility['visible_tool_names'];
 			$effective_groups     = $this->visible_groups_from_tool_names( $groups, $candidate_tool_names );
 			$permission_surface   = PressArk_Permission_Service::build_surface_snapshot( $visibility, $groups );
+			if ( class_exists( 'PressArk_Policy_Diagnostics' ) ) {
+				PressArk_Policy_Diagnostics::record_tool_surface(
+					$permission_surface,
+					array_merge(
+						$this->permission_meta( $options ),
+						array(
+							'strategy' => $strategy,
+						)
+					)
+				);
+			}
 		}
 
 		$schemas = $this->catalog->get_schemas( $candidate_tool_names );
@@ -518,6 +541,9 @@ class PressArk_Tool_Loader {
 		$meta = (array) ( $options['permission_meta'] ?? array() );
 		if ( ! isset( $meta['tier'] ) && isset( $options['tier'] ) ) {
 			$meta['tier'] = $options['tier'];
+		}
+		if ( ! isset( $meta['decision_purpose'] ) ) {
+			$meta['decision_purpose'] = 'tool_surface';
 		}
 		return $meta;
 	}

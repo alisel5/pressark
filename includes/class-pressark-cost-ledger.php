@@ -172,6 +172,21 @@ class PressArk_Cost_Ledger {
 		) );
 	}
 
+	public function get_by_reservation( string $reservation_id ): array {
+		global $wpdb;
+		$table = self::table_name();
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE reservation_id = %s LIMIT 1",
+				$reservation_id
+			),
+			ARRAY_A
+		);
+
+		return is_array( $row ) ? $row : array();
+	}
+
 	public function get_user_stats( int $user_id, string $since = '' ): array {
 		global $wpdb;
 		$table = self::table_name();

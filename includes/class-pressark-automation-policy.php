@@ -30,6 +30,19 @@ class PressArk_Automation_Policy {
 	public const POLICY_FULL           = 'full';
 
 	/**
+	 * Return all supported automation policy identifiers.
+	 *
+	 * @return string[]
+	 */
+	public static function all_policies(): array {
+		return array(
+			self::POLICY_EDITORIAL,
+			self::POLICY_MERCHANDISING,
+			self::POLICY_FULL,
+		);
+	}
+
+	/**
 	 * Groups that are ALWAYS safe for unattended auto-approval.
 	 * These are read-only or produce content that can be reviewed.
 	 */

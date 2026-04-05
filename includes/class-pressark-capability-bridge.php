@@ -112,22 +112,14 @@ class PressArk_Capability_Bridge {
 	 * @return array[] Combined results: tools have type=tool, resources have type=resource.
 	 */
 	public static function search( string $query, array $loaded_names = array() ): array {
-		$results = array();
+		$results = PressArk_Tool_Catalog::instance()->discover( $query, $loaded_names );
 
-		// Search tools via catalog.
-		$catalog      = PressArk_Tool_Catalog::instance();
-		$tool_matches = $catalog->discover( $query, $loaded_names );
-		foreach ( $tool_matches as $match ) {
-			$match['type'] = 'tool';
-			$results[]     = $match;
+		foreach ( $results as &$match ) {
+			if ( empty( $match['type'] ) ) {
+				$match['type'] = 'tool';
+			}
 		}
-
-		// Search resources.
-		$resource_matches = PressArk_Resource_Registry::search( $query );
-		foreach ( $resource_matches as $match ) {
-			unset( $match['score'] );
-			$results[] = $match;
-		}
+		unset( $match );
 
 		return array_slice( $results, 0, 25 );
 	}

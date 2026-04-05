@@ -74,13 +74,14 @@ class PressArk_Onboarding {
 
 		// v5.2.0: Always succeed — provisional tokens are fine for free tier.
 		return new WP_REST_Response( array(
-			'success'  => true,
-			'tier'     => $tier,
-			'verified' => $verified,
-			'message'  => $verified
+			'success'            => true,
+			'tier'               => $tier,
+			'verified'           => $verified,
+			'message'            => $verified
 				? 'Credits claimed! You\'re all set.'
 				: 'Free credits activated! Connect your Freemius account later to unlock paid plans.',
-			'bank'     => $result,
+			'bank'               => $result,
+			'harness_readiness'  => PressArk_Harness_Readiness::get_snapshot(),
 		), 200 );
 	}
 
@@ -114,6 +115,7 @@ class PressArk_Onboarding {
 			'success'            => true,
 			'validation_status'  => $validation['status'],  // 'valid', 'invalid', 'rate_limited', 'network_error'
 			'validation_message' => $validation['message'],
+			'harness_readiness'  => PressArk_Harness_Readiness::get_snapshot(),
 		), 200 );
 	}
 

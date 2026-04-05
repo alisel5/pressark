@@ -1,0 +1,37 @@
+{
+  "kind": "artifact_reuse",
+  "name": "artifact replacement stays frozen across resume",
+  "input": {
+    "run_id": "run_replay_fixture",
+    "site_id": 77,
+    "user_id": 1,
+    "first_round": 1,
+    "second_round": 2,
+    "tool_use_id": "toolu_artifact",
+    "tool_name": "site_health",
+    "result": {
+      "success": true,
+      "message": "Large site health report ready.",
+      "report_line": "Replay integrity report line. ",
+      "report_repeat": 600
+    },
+    "resume": {
+      "type": "resume",
+      "phase": "resume_boundary",
+      "source": "checkpoint_replay",
+      "used_checkpoint_replay": true,
+      "repaired": true,
+      "at": "2026-04-04T00:00:00Z"
+    }
+  },
+  "expect": {
+    "paths": {
+      "first_artifactized": true,
+      "second_matches_first": true,
+      "reuse_event.mode": "reused",
+      "sidecar.last_resume.source": "checkpoint_replay",
+      "sidecar.replacement_count": 1,
+      "sidecar.last_event.mode": "reused"
+    }
+  }
+}

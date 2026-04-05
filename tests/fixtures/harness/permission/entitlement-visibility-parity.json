@@ -1,0 +1,44 @@
+{
+  "kind": "visibility_parity",
+  "name": "entitlement-hidden tools preserve the same denied decision",
+  "input": {
+    "license_tier": "free",
+    "limit_exhausted": true,
+    "loader": {
+      "message": "Fix the SEO metadata",
+      "tier": "free",
+      "groups": [
+        "seo"
+      ],
+      "options": {
+        "permission_context": "interactive",
+        "permission_meta": {
+          "tier": "free"
+        }
+      }
+    },
+    "decision": {
+      "operation": "fix_seo",
+      "context": "interactive",
+      "meta": {
+        "tier": "free"
+      }
+    }
+  },
+  "expect": {
+    "paths": {
+      "decision.verdict": "deny",
+      "decision.visibility.visible_to_model": false
+    },
+    "contains": {
+      "permission_surface.hidden_tools": [
+        "fix_seo"
+      ]
+    },
+    "excludes": {
+      "tool_names": [
+        "fix_seo"
+      ]
+    }
+  }
+}

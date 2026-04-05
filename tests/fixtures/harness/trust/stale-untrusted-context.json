@@ -1,0 +1,72 @@
+{
+  "kind": "trust_read_state",
+  "name": "partial untrusted reads become stale after a write",
+  "input": {
+    "reads": [
+      {
+        "tool_name": "read_content",
+        "args": {
+          "post_id": 42,
+          "mode": "structured"
+        },
+        "result": {
+          "success": true,
+          "message": "Alpha page content loaded",
+          "data": {
+            "id": 42,
+            "title": "Alpha",
+            "content": "Full body",
+            "mode": "structured"
+          }
+        }
+      },
+      {
+        "tool_name": "search_knowledge",
+        "args": {
+          "query": "Alpha"
+        },
+        "result": {
+          "success": true,
+          "message": "Knowledge summary for Alpha",
+          "data": [
+            {
+              "post_id": 42,
+              "title": "Alpha",
+              "type": "page",
+              "content_preview": "Alpha excerpt",
+              "is_stale": false
+            }
+          ]
+        }
+      }
+    ],
+    "write": {
+      "tool_name": "edit_content",
+      "args": {
+        "post_id": 42
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "id": 42
+        }
+      }
+    }
+  },
+  "expect": {
+    "paths": {
+      "before.read_content.completeness": "partial",
+      "before.read_content.trust_class": "untrusted_content",
+      "before.search_knowledge.trust_class": "derived_summary",
+      "after.read_content.freshness": "stale",
+      "after.search_knowledge.freshness": "stale",
+      "invalidations_count": 1
+    },
+    "contains": {
+      "header": [
+        "READ STATE:",
+        "STALE READS:"
+      ]
+    }
+  }
+}

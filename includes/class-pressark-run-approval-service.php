@@ -100,6 +100,7 @@ class PressArk_Run_Approval_Service {
 			self::persist_run_checkpoint( $run, $checkpoint );
 			$result['checkpoint'] = $checkpoint->to_array();
 			$result = self::attach_continuation_context( $result, $run, $checkpoint );
+			self::persist_run_detail_snapshot( $run, $result, $checkpoint );
 		}
 
 		return $result;
@@ -248,6 +249,7 @@ class PressArk_Run_Approval_Service {
 			self::persist_run_checkpoint( $run, $checkpoint );
 			$merged['checkpoint'] = $checkpoint->to_array();
 			$merged = self::attach_continuation_context( $merged, $run, $checkpoint );
+			self::persist_run_detail_snapshot( $run, $merged, $checkpoint );
 		}
 
 		return array(
@@ -368,6 +370,7 @@ class PressArk_Run_Approval_Service {
 			self::persist_run_checkpoint( $run, $checkpoint );
 			$result['checkpoint'] = $checkpoint->to_array();
 			$result = self::attach_continuation_context( $result, $run, $checkpoint );
+			self::persist_run_detail_snapshot( $run, $result, $checkpoint );
 		}
 
 		return $result;
@@ -412,6 +415,23 @@ class PressArk_Run_Approval_Service {
 		if ( $chat_id > 0 ) {
 			$checkpoint->save( $chat_id, $user_id );
 		}
+
+		if ( ! empty( $run['run_id'] ) ) {
+			$run_store = new PressArk_Run_Store();
+			$run_store->persist_detail_snapshot( (string) $run['run_id'], $checkpoint->to_array(), null );
+		}
+	}
+
+	/**
+	 * Persist the latest result plus checkpoint snapshot back onto the run row.
+	 */
+	private static function persist_run_detail_snapshot( array $run, array $result, PressArk_Checkpoint $checkpoint ): void {
+		if ( empty( $run['run_id'] ) ) {
+			return;
+		}
+
+		$run_store = new PressArk_Run_Store();
+		$run_store->persist_detail_snapshot( (string) $run['run_id'], $checkpoint->to_array(), $result );
 	}
 
 	/**
@@ -468,11 +488,27 @@ class PressArk_Run_Approval_Service {
 			$readback_result = $engine->execute_read( $readback_call['name'], $readback_call['arguments'] );
 		} catch ( \Throwable $e ) {
 			// Read-back failed — degrade gracefully.
+			$readback_error = 'Read-back failed: ' . sanitize_text_field( $e->getMessage() );
+			$checkpoint->record_verification(
+				$tool_name,
+				array(
+					'success' => false,
+					'message' => $readback_error,
+				),
+				false,
+				$readback_error,
+				array(
+					'policy'          => $policy,
+					'readback'        => array( 'tool' => $readback_call['name'] ?? '' ),
+					'readback_failed' => true,
+				)
+			);
 			$nudge = PressArk_Verification::build_nudge( $tool_name, $result );
 			return array(
 				'nudge'  => $nudge,
 				'status' => 'readback_failed',
 				'error'  => $e->getMessage(),
+				'evidence'=> $readback_error,
 			);
 		}
 
@@ -484,7 +520,12 @@ class PressArk_Run_Approval_Service {
 			$tool_name,
 			$readback_result,
 			$eval['passed'],
-			$eval['evidence']
+			$eval['evidence'],
+			array(
+				'policy'     => $policy,
+				'readback'   => array( 'tool' => $readback_call['name'] ?? '' ),
+				'mismatches' => $eval['mismatches'] ?? array(),
+			)
 		);
 
 		// Build nudge for model consumption.
@@ -533,12 +574,23 @@ class PressArk_Run_Approval_Service {
 
 			// v5.4.0: Attach verification summary to continuation context.
 			$v_summary = PressArk_Execution_Ledger::verification_summary( $execution );
-			if ( $v_summary['verified'] > 0 || $v_summary['uncertain'] > 0 ) {
+			if ( $v_summary['verified'] > 0 || $v_summary['uncertain'] > 0 || $v_summary['unverified'] > 0 ) {
 				$result['continuation']['verification_summary'] = $v_summary;
 			}
 			if ( $v_summary['uncertain'] > 0 ) {
 				$result['continuation']['verification_warning'] = $v_summary['uncertain']
 					. ' action(s) have uncertain verification. Confirm with a read tool before reporting completion.';
+			}
+			$evidence_receipts = PressArk_Execution_Ledger::evidence_receipts( $execution );
+			if ( ! empty( $evidence_receipts ) ) {
+				$result['continuation']['evidence_receipts'] = $evidence_receipts;
+			}
+			if ( class_exists( 'PressArk_Run_Trust_Surface' ) ) {
+				$result['trust_surface'] = PressArk_Run_Trust_Surface::build(
+					array_merge( $run, array( 'result' => $result ) ),
+					array(),
+					$execution
+				);
 			}
 		}
 

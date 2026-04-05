@@ -15,6 +15,8 @@ class PressArk_AI_Connector {
 	private string $tier;
 	private ?PressArk_Usage_Tracker $tracker = null;
 	private array $active_request_options = array();
+	private array $last_routing_decision = array();
+	private array $last_request_snapshot = array();
 
 	/**
 	 * Whether the current Gemini model is a "thinking" model.
@@ -218,6 +220,13 @@ PROMPT;
 	public function resolve_for_task( string $task_type, bool $deep_mode = false ): string {
 		if ( empty( $task_type ) || 'auto' === $task_type ) {
 			$this->model = $this->resolve_model( $deep_mode );
+			$this->last_routing_decision = $this->build_routing_decision(
+				'default',
+				array(
+					'task_type' => $task_type,
+					'deep_mode' => $deep_mode,
+				)
+			);
 			return $this->model;
 		}
 
@@ -226,10 +235,24 @@ PROMPT;
 		$configured = get_option( 'pressark_model', 'auto' );
 		if ( 'auto' !== $configured ) {
 			$this->model = PressArk_Model_Policy::resolve( $this->tier, $deep_mode );
+			$this->last_routing_decision = $this->build_routing_decision(
+				'task',
+				array(
+					'task_type' => $task_type,
+					'deep_mode' => $deep_mode,
+				)
+			);
 			return $this->model;
 		}
 
 		$this->model = PressArk_Model_Policy::for_task( $task_type, $this->tier, $deep_mode );
+		$this->last_routing_decision = $this->build_routing_decision(
+			'task',
+			array(
+				'task_type' => $task_type,
+				'deep_mode' => $deep_mode,
+			)
+		);
 		return $this->model;
 	}
 
@@ -246,6 +269,7 @@ PROMPT;
 		$back_agent_phases = array( 'summarize', 'classification', 'memory_selection' );
 		if ( in_array( $phase, $back_agent_phases, true ) ) {
 			$this->model = PressArk_Model_Policy::for_phase( $phase, $this->tier, $context );
+			$this->last_routing_decision = $this->build_routing_decision( 'phase', $context + array( 'phase' => $phase ) );
 			return $this->model;
 		}
 
@@ -254,10 +278,12 @@ PROMPT;
 
 		if ( 'auto' !== $configured ) {
 			$this->model = PressArk_Model_Policy::resolve( $this->tier, $deep_mode );
+			$this->last_routing_decision = $this->build_routing_decision( 'phase', $context + array( 'phase' => $phase ) );
 			return $this->model;
 		}
 
 		$this->model = PressArk_Model_Policy::for_phase( $phase, $this->tier, $context );
+		$this->last_routing_decision = $this->build_routing_decision( 'phase', $context + array( 'phase' => $phase ) );
 		return $this->model;
 	}
 
@@ -268,6 +294,132 @@ PROMPT;
 	 */
 	public function get_model(): string {
 		return $this->model;
+	}
+
+	/**
+	 * Return the most recent routing sidecar.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function get_last_routing_decision(): array {
+		return $this->last_routing_decision;
+	}
+
+	/**
+	 * Return the most recent provider-facing request snapshot.
+	 */
+	public function get_last_request_snapshot(): array {
+		return $this->last_request_snapshot;
+	}
+
+	/**
+	 * Build the compact RoutingDecision sidecar for the current selection.
+	 *
+	 * @param string $basis   Selection basis: default|task|phase.
+	 * @param array  $context Routing context hints.
+	 * @return array<string,mixed>
+	 */
+	private function build_routing_decision( string $basis, array $context = array() ): array {
+		$tracker            = $this->get_tracker();
+		$is_byok            = $tracker->is_byok();
+		$provider           = $is_byok ? $tracker->get_byok_provider() : $this->provider;
+		$model              = $is_byok ? (string) get_option( 'pressark_byok_model', $this->model ) : $this->model;
+		$configured_model   = (string) get_option( 'pressark_model', 'auto' );
+		$model_pinned       = 'auto' !== $configured_model || ! empty( $context['model_pinned'] );
+		$data_policy_locked = $is_byok || ! empty( $context['data_policy_locked'] ) || $model_pinned;
+		$requires_tools     = array_key_exists( 'requires_tools', $context )
+			? ! empty( $context['requires_tools'] )
+			: $this->infer_routing_requires_tools( $basis, $context );
+		$same_vendor_only   = ! empty( $context['same_vendor_only'] ) || ( 'openrouter' !== $provider );
+		$fallback_constraints = array(
+			'transport_provider' => $provider,
+			'requires_tools'     => $requires_tools,
+			'same_vendor_only'   => $same_vendor_only,
+			'model_pinned'       => $model_pinned,
+			'data_policy_locked' => $data_policy_locked,
+		);
+
+		return array(
+			'contract' => 'RoutingDecision',
+			'version'  => 1,
+			'provider' => $provider,
+			'model'    => $model,
+			'selection' => array(
+				'basis'               => sanitize_key( $basis ),
+				'task_type'           => sanitize_key( (string) ( $context['task_type'] ?? '' ) ),
+				'phase'               => sanitize_key( (string) ( $context['phase'] ?? '' ) ),
+				'tier'                => sanitize_key( $this->tier ),
+				'deep_mode'           => ! empty( $context['deep_mode'] ),
+				'mode'                => $is_byok ? 'byok' : ( 'auto' === $configured_model ? 'auto' : 'pinned' ),
+				'configured_model'    => $configured_model,
+				'configured_provider' => (string) get_option( 'pressark_api_provider', 'openrouter' ),
+			),
+			'capability_assumptions' => array(
+				'requires_tools'       => $requires_tools,
+				'supports_native_tools'=> $is_byok
+					? PressArk_Model_Policy::supports_tools_byok( $provider, $model )
+					: PressArk_Model_Policy::supports_tools_bundled( $model, $provider ),
+				'supports_tool_search' => 'openai' === $provider && PressArk_Model_Policy::has_native_tool_search( $model ),
+				'same_vendor_only'     => $same_vendor_only,
+				'data_policy_locked'   => $data_policy_locked,
+			),
+			'fallback' => array(
+				'eligible'        => PressArk_Model_Policy::can_use_fallback( $provider, $is_byok, $fallback_constraints ),
+				'considered'      => PressArk_Model_Policy::fallback_candidates( $model, $fallback_constraints ),
+				'used'            => false,
+				'attempts'        => 0,
+				'failure_class'   => '',
+				'blocked_reasons' => PressArk_Model_Policy::fallback_blockers( $provider, $is_byok, $fallback_constraints ),
+				'trace'           => array(),
+			),
+		);
+	}
+
+	/**
+	 * Infer whether the routed selection assumes native tool access.
+	 *
+	 * @param string $basis   Selection basis.
+	 * @param array  $context Routing context hints.
+	 * @return bool
+	 */
+	private function infer_routing_requires_tools( string $basis, array $context ): bool {
+		if ( 'phase' === $basis ) {
+			$phase = sanitize_key( (string) ( $context['phase'] ?? '' ) );
+			return '' !== $phase && PressArk_Model_Policy::phase_needs_tools( $phase );
+		}
+		if ( 'task' === $basis ) {
+			$task_type = sanitize_key( (string) ( $context['task_type'] ?? '' ) );
+			return '' !== $task_type && PressArk_Model_Policy::task_needs_tools( $task_type );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Merge runtime outcome details into the current routing sidecar.
+	 *
+	 * @param array<string,mixed> $patch Partial decision payload.
+	 * @return array<string,mixed>
+	 */
+	private function merge_routing_decision( array $patch ): array {
+		if ( empty( $this->last_routing_decision ) ) {
+			$this->last_routing_decision = $this->build_routing_decision( 'default', $this->active_request_options );
+		}
+
+		$this->last_routing_decision = array_replace_recursive( $this->last_routing_decision, $patch );
+		return $this->last_routing_decision;
+	}
+
+	/**
+	 * Attach the current routing sidecar to a response payload.
+	 *
+	 * @param array<string,mixed> $payload Response payload.
+	 * @param array<string,mixed> $patch   Optional decision overrides.
+	 * @return array<string,mixed>
+	 */
+	private function attach_routing_decision( array $payload, array $patch = array() ): array {
+		$payload['routing_decision'] = $this->merge_routing_decision( $patch );
+		return $payload;
 	}
 
 	/**
@@ -335,11 +487,11 @@ PROMPT;
 		}
 
 		if ( empty( $this->api_key ) && ! self::is_proxy_mode() ) {
-			return array(
+			return $this->attach_routing_decision( array(
 				'message' => '',
 				'actions' => null,
 				'error'   => __( 'API key not configured. Go to PressArk settings to add your key.', 'pressark' ),
-			);
+			) );
 		}
 
 		// Resolve model based on deep mode.
@@ -353,10 +505,22 @@ PROMPT;
 		// Conversation history is pre-compressed by PressArk_History_Manager — no slicing here.
 
 		if ( 'anthropic' === $this->provider ) {
-			return $this->send_anthropic( $user_message, $system_content, $conversation );
+			return $this->attach_routing_decision(
+				$this->send_anthropic( $user_message, $system_content, $conversation ),
+				array(
+					'provider' => $this->provider,
+					'model'    => $this->model,
+				)
+			);
 		}
 
-		return $this->send_openai_compatible( $user_message, $system_content, $conversation );
+		return $this->attach_routing_decision(
+			$this->send_openai_compatible( $user_message, $system_content, $conversation ),
+			array(
+				'provider' => $this->provider,
+				'model'    => $this->model,
+			)
+		);
 	}
 
 	/**
@@ -402,7 +566,7 @@ PROMPT;
 	private function send_byok( string $user_message, string $context, array $conversation ): array {
 		$system_content = self::SYSTEM_PROMPT_BASE . "\n\n" . $context;
 
-		return $this->with_byok_context( function () use ( $user_message, $system_content, $conversation ) {
+		$result = $this->with_byok_context( function () use ( $user_message, $system_content, $conversation ) {
 			if ( 'anthropic' === $this->provider ) {
 				return $this->send_anthropic( $user_message, $system_content, $conversation );
 			}
@@ -412,6 +576,8 @@ PROMPT;
 			'actions' => null,
 			'error'   => __( 'BYOK enabled but no API key configured. Go to PressArk settings to add your key.', 'pressark' ),
 		);
+
+		return $this->attach_routing_decision( $result );
 	}
 
 	/**
@@ -423,7 +589,7 @@ PROMPT;
 	public function send_lightweight_chat( string $user_message, array $conversation = array(), bool $deep_mode = false ): array {
 		$canned = $this->canned_lightweight_chat_response( $user_message );
 		if ( null !== $canned ) {
-			return $canned;
+			return $this->attach_routing_decision( $canned );
 		}
 
 		$this->resolve_for_task( 'chat', $deep_mode );
@@ -441,7 +607,7 @@ PROMPT;
 
 		$system_content = self::SYSTEM_PROMPT_LIGHTWEIGHT_CHAT;
 
-		return $this->with_byok_context( function () use ( $user_message, $system_content, $minimal_history ) {
+		$result = $this->with_byok_context( function () use ( $user_message, $system_content, $minimal_history ) {
 			if ( empty( $this->api_key ) && ! self::is_proxy_mode() ) {
 				return array(
 					'message' => '',
@@ -457,6 +623,16 @@ PROMPT;
 			'message' => '',
 			'actions' => null,
 			'error'   => __( 'BYOK enabled but no API key configured.', 'pressark' ),
+		);
+
+		return $this->attach_routing_decision(
+			$result,
+			$this->get_tracker()->is_byok()
+				? array()
+				: array(
+					'provider' => $this->provider,
+					'model'    => $this->model,
+				)
 		);
 	}
 
@@ -1166,6 +1342,211 @@ FSEPROMPT;
 	}
 
 	/**
+	 * Operator-facing inventory of the stable prompt blocks.
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function get_cached_prompt_block_inventory(): array {
+		$blocks = array(
+			array(
+				'id'      => 'base_agent_contract',
+				'label'   => 'Base Agent Contract',
+				'content' => self::SYSTEM_PROMPT_BASE . self::SYSTEM_PROMPT_AGENT_CORE,
+			),
+			array(
+				'id'      => 'skills_core',
+				'label'   => 'Core WordPress Knowledge',
+				'content' => PressArk_Skills::core(),
+			),
+		);
+
+		if ( class_exists( 'WooCommerce' ) ) {
+			$blocks[] = array(
+				'id'      => 'skills_woocommerce',
+				'label'   => 'WooCommerce Knowledge',
+				'content' => PressArk_Skills::woocommerce(),
+			);
+		}
+
+		if ( defined( 'ELEMENTOR_VERSION' ) ) {
+			$blocks[] = array(
+				'id'      => 'skills_elementor',
+				'label'   => 'Elementor Knowledge',
+				'content' => PressArk_Skills::elementor(),
+			);
+		}
+
+		$blocks[] = array(
+			'id'      => 'skills_reference',
+			'label'   => 'Reference Knowledge',
+			'content' => PressArk_Skills::reference(),
+		);
+
+		$inventory = array();
+		foreach ( $blocks as $block ) {
+			$content = (string) ( $block['content'] ?? '' );
+			if ( '' === trim( $content ) ) {
+				continue;
+			}
+
+			$inventory[] = array(
+				'id'     => sanitize_key( (string) ( $block['id'] ?? '' ) ),
+				'label'  => sanitize_text_field( (string) ( $block['label'] ?? '' ) ),
+				'tokens' => $this->estimate_text_tokens( $content ),
+				'chars'  => mb_strlen( $content ),
+			);
+		}
+
+		return $inventory;
+	}
+
+	/**
+	 * Estimate prompt tokens with the same conservative chars/token heuristic
+	 * used by the budget planner.
+	 */
+	private function estimate_text_tokens( string $text ): int {
+		$text = trim( $text );
+		if ( '' === $text ) {
+			return 0;
+		}
+
+		return (int) ceil( mb_strlen( $text ) / 4 );
+	}
+
+	/**
+	 * Extract the addendum appended by augment_system_prompt().
+	 */
+	private function extract_prompt_addendum( string $original, string $augmented ): string {
+		$original  = trim( $original );
+		$augmented = trim( $augmented );
+
+		if ( '' === $augmented || $original === $augmented ) {
+			return '';
+		}
+
+		if ( '' === $original ) {
+			return $augmented;
+		}
+
+		$prefix = $original . "\n\n";
+		if ( 0 === strpos( $augmented, $prefix ) ) {
+			return trim( substr( $augmented, strlen( $prefix ) ) );
+		}
+
+		if ( 0 === strpos( $augmented, $original ) ) {
+			return trim( substr( $augmented, strlen( $original ) ) );
+		}
+
+		return '';
+	}
+
+	/**
+	 * Summarize role counts after provider-specific request shaping.
+	 */
+	private function summarize_request_roles( array $body, string $provider ): array {
+		$counts = array();
+
+		if ( 'anthropic' === $provider ) {
+			foreach ( (array) ( $body['system'] ?? array() ) as $block ) {
+				if ( is_array( $block ) ) {
+					$counts['system'] = (int) ( $counts['system'] ?? 0 ) + 1;
+				}
+			}
+			foreach ( (array) ( $body['messages'] ?? array() ) as $message ) {
+				if ( ! is_array( $message ) ) {
+					continue;
+				}
+				$role = sanitize_key( (string) ( $message['role'] ?? 'unknown' ) );
+				if ( '' === $role ) {
+					$role = 'unknown';
+				}
+				$counts[ $role ] = (int) ( $counts[ $role ] ?? 0 ) + 1;
+			}
+		} else {
+			foreach ( (array) ( $body['messages'] ?? array() ) as $message ) {
+				if ( ! is_array( $message ) ) {
+					continue;
+				}
+				$role = sanitize_key( (string) ( $message['role'] ?? 'unknown' ) );
+				if ( '' === $role ) {
+					$role = 'unknown';
+				}
+				$counts[ $role ] = (int) ( $counts[ $role ] ?? 0 ) + 1;
+			}
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Capture the provider-facing request composition for operator inspection.
+	 */
+	private function record_request_snapshot(
+		array $messages,
+		array $tools,
+		string $original_system_prompt,
+		string $augmented_system_prompt,
+		array $options,
+		string $provider,
+		string $model
+	): void {
+		$request = 'anthropic' === $provider
+			? $this->build_anthropic_request( $messages, $tools, $augmented_system_prompt )
+			: $this->build_openai_request( $messages, $tools, $augmented_system_prompt );
+		$body    = is_array( $request['body'] ?? null ) ? $request['body'] : array();
+		$addendum = $this->extract_prompt_addendum( $original_system_prompt, $augmented_system_prompt );
+		$tool_names = array_values( array_filter( array_map(
+			static function ( array $tool ): string {
+				return sanitize_key( (string) ( $tool['function']['name'] ?? $tool['name'] ?? '' ) );
+			},
+			$tools
+		) ) );
+
+		$this->last_request_snapshot = array(
+			'transport_provider' => sanitize_key( $provider ),
+			'provider_format'    => 'anthropic' === $provider ? 'anthropic_messages' : 'openai_chat_completions',
+			'model'              => sanitize_text_field( $model ),
+			'cached_blocks'      => $this->get_cached_prompt_block_inventory(),
+			'dynamic_prompt'     => array_filter( array(
+				'chars'            => mb_strlen( trim( $original_system_prompt ) ),
+				'tokens'           => $this->estimate_text_tokens( $original_system_prompt ),
+				'augmented_chars'  => mb_strlen( trim( $augmented_system_prompt ) ),
+				'augmented_tokens' => $this->estimate_text_tokens( $augmented_system_prompt ),
+				'has_addendum'     => '' !== $addendum,
+			), static function ( $value ) {
+				return ! ( is_int( $value ) ? 0 === $value : false === $value || '' === (string) $value );
+			} ),
+			'phase_addendum'     => array_filter( array(
+				'phase'           => sanitize_key( (string) ( $options['phase'] ?? '' ) ),
+				'effort_budget'   => sanitize_key( (string) ( $options['effort_budget'] ?? '' ) ),
+				'tool_choice'     => sanitize_key( (string) ( $options['tool_choice'] ?? '' ) ),
+				'schema_mode'     => sanitize_key( (string) ( $options['schema_mode'] ?? '' ) ),
+				'stop_conditions' => array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['stop_conditions'] ?? array() ) ) ) ),
+				'tool_heuristics' => array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['tool_heuristics'] ?? array() ) ) ) ),
+				'chars'           => mb_strlen( $addendum ),
+				'tokens'          => $this->estimate_text_tokens( $addendum ),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value || 0 === $value );
+			} ),
+			'request_shape'      => array_filter( array(
+				'system_block_count'  => 'anthropic' === $provider
+					? count( (array) ( $body['system'] ?? array() ) )
+					: count( array_filter(
+						(array) ( $body['messages'] ?? array() ),
+						static fn( $message ): bool => is_array( $message ) && 'system' === ( $message['role'] ?? '' )
+					) ),
+				'message_count'       => count( (array) ( $body['messages'] ?? array() ) ),
+				'tool_schema_count'   => count( (array) ( $body['tools'] ?? array() ) ),
+				'parallel_tool_calls' => ! empty( $body['parallel_tool_calls'] ),
+				'message_roles'       => $this->summarize_request_roles( $body, $provider ),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : false === $value || 0 === $value || '' === (string) $value );
+			} ),
+			'allowed_tools'       => array_slice( $tool_names, 0, 24 ),
+		);
+	}
+
+	/**
 	 * Build the static cacheable system prompt block.
 	 *
 	 * v3.6.0: Conditional injection based on site configuration.
@@ -1303,6 +1684,7 @@ AUTOMATION;
 		$proxy_route                   = sanitize_key( (string) ( $options['proxy_route'] ?? ( 'summarize' === $phase && ! $is_byok ? 'summarize' : 'chat' ) ) );
 		$options['proxy_route']        = ! $is_byok && in_array( $proxy_route, array( 'chat', 'summarize' ), true ) ? $proxy_route : 'chat';
 		$options['estimated_icus']     = $is_byok ? 0 : max( 0, (int) ( $options['estimated_icus'] ?? 0 ) );
+		$options['estimated_raw_tokens'] = $is_byok ? 0 : max( 0, (int) ( $options['estimated_raw_tokens'] ?? 0 ) );
 
 		return $options;
 	}
@@ -1551,11 +1933,13 @@ AUTOMATION;
 		array  $options      = array()
 	): array {
 		$model_pinned = 'auto' !== get_option( 'pressark_model', 'auto' );
+		$this->last_request_snapshot = array();
 
 		$do_work = function () use ( $messages, $tools, $system_prompt, $deep_mode, $options, $model_pinned ) {
 			$is_byok = $this->get_tracker()->is_byok();
 			$options = $this->normalize_request_options( $tools, $options, $deep_mode, $model_pinned, $is_byok );
 			$this->active_request_options = $options;
+			$original_system_prompt = $system_prompt;
 
 			if ( ! $is_byok && ! empty( $options['phase'] ) ) {
 				$this->resolve_for_phase( (string) $options['phase'], $options );
@@ -1568,11 +1952,20 @@ AUTOMATION;
 			$effective_model    = $this->model;
 			$fallback_used      = false;
 			$attempts           = 0;
+			$attempt_trace      = array();
+			$fallback_constraints = array(
+				'transport_provider' => $effective_provider,
+				'requires_tools'     => ! empty( $options['requires_tools'] ),
+				'same_vendor_only'   => ! empty( $options['same_vendor_only'] ),
+				'model_pinned'       => $model_pinned,
+				'data_policy_locked' => ! empty( $options['data_policy_locked'] ),
+			);
+			$fallback_candidates = PressArk_Model_Policy::fallback_candidates( $effective_model, $fallback_constraints );
 
 			$system_prompt = $this->augment_system_prompt( $system_prompt, $tools, $options );
 
 			if ( empty( $this->api_key ) && ! self::is_proxy_mode() ) {
-				return array(
+				return $this->attach_routing_decision( array(
 					'raw'           => array( 'error' => __( 'API key not configured.', 'pressark' ) ),
 					'provider'      => $effective_provider,
 					'model'         => $effective_model,
@@ -1581,23 +1974,35 @@ AUTOMATION;
 					'failure_class' => self::FAILURE_PROVIDER_ERROR,
 					'fallback_used' => false,
 					'attempts'      => 0,
-				);
+				), array(
+					'provider' => $effective_provider,
+					'model'    => $effective_model,
+					'fallback' => array(
+						'eligible'      => PressArk_Model_Policy::can_use_fallback( $effective_provider, $is_byok, $fallback_constraints ),
+						'considered'    => $fallback_candidates,
+						'failure_class' => self::FAILURE_PROVIDER_ERROR,
+					),
+				) );
 			}
 
 			$raw = $this->call_provider( $messages, $tools, $system_prompt );
 			$attempts++;
 			$failure_class = $this->classify_failure( $raw, $effective_provider, $options );
+			$attempt_trace[] = array(
+				'model'         => $effective_model,
+				'failure_class' => $failure_class,
+			);
 
 			if ( $this->should_attempt_fallback( $raw, $effective_provider, $effective_model, $options, $is_byok, $model_pinned ) ) {
-				foreach ( PressArk_Model_Policy::fallback_candidates( $effective_model, array(
-					'transport_provider' => $effective_provider,
-					'requires_tools'     => ! empty( $options['requires_tools'] ),
-					'same_vendor_only'   => ! empty( $options['same_vendor_only'] ),
-				) ) as $candidate_model ) {
+				foreach ( $fallback_candidates as $candidate_model ) {
 					$this->model = $candidate_model;
 					$candidate_raw = $this->call_provider( $messages, $tools, $system_prompt );
 					$attempts++;
 					$candidate_failure = $this->classify_failure( $candidate_raw, $effective_provider, $options );
+					$attempt_trace[] = array(
+						'model'         => $candidate_model,
+						'failure_class' => $candidate_failure,
+					);
 
 					if ( '' === $candidate_failure ) {
 						$raw           = $candidate_raw;
@@ -1610,8 +2015,17 @@ AUTOMATION;
 			}
 
 			$this->model = $effective_model;
+			$this->record_request_snapshot(
+				$messages,
+				$tools,
+				$original_system_prompt,
+				$system_prompt,
+				$options,
+				$effective_provider,
+				$effective_model
+			);
 
-			return array(
+			return $this->attach_routing_decision( array(
 				'raw'           => $raw,
 				'provider'      => $effective_provider,
 				'model'         => $effective_model,
@@ -1620,10 +2034,30 @@ AUTOMATION;
 				'failure_class' => $failure_class,
 				'fallback_used' => $fallback_used,
 				'attempts'      => $attempts,
-			);
+			), array(
+				'provider' => $effective_provider,
+				'model'    => $effective_model,
+				'capability_assumptions' => array(
+					'requires_tools'       => ! empty( $options['requires_tools'] ),
+					'same_vendor_only'     => ! empty( $options['same_vendor_only'] ),
+					'data_policy_locked'   => ! empty( $options['data_policy_locked'] ) || $is_byok || $model_pinned,
+					'supports_native_tools'=> $is_byok
+						? PressArk_Model_Policy::supports_tools_byok( $effective_provider, $effective_model )
+						: PressArk_Model_Policy::supports_tools_bundled( $effective_model, $effective_provider ),
+					'supports_tool_search' => 'openai' === $effective_provider && PressArk_Model_Policy::has_native_tool_search( $effective_model ),
+				),
+				'fallback' => array(
+					'eligible'      => PressArk_Model_Policy::can_use_fallback( $effective_provider, $is_byok, $fallback_constraints ),
+					'considered'    => $fallback_candidates,
+					'used'          => $fallback_used,
+					'attempts'      => $attempts,
+					'failure_class' => $failure_class,
+					'trace'         => $attempt_trace,
+				),
+			) );
 		};
 
-		return $this->with_byok_context( $do_work ) ?? array(
+		return $this->with_byok_context( $do_work ) ?? $this->attach_routing_decision( array(
 			'raw'           => array( 'error' => __( 'BYOK enabled but no API key configured.', 'pressark' ) ),
 			'provider'      => $this->provider,
 			'model'         => $this->model,
@@ -1632,7 +2066,11 @@ AUTOMATION;
 			'failure_class' => self::FAILURE_PROVIDER_ERROR,
 			'fallback_used' => false,
 			'attempts'      => 0,
-		);
+		), array(
+			'fallback' => array(
+				'failure_class' => self::FAILURE_PROVIDER_ERROR,
+			),
+		) );
 	}
 
 	// ─── Provider-Aware Extraction Methods ──────────────────────────────────
@@ -1912,8 +2350,9 @@ AUTOMATION;
 
 		$route          = (string) ( $this->active_request_options['proxy_route'] ?? 'chat' );
 		$estimated_icus = (int) ( $this->active_request_options['estimated_icus'] ?? 0 );
+		$estimated_raw_tokens = (int) ( $this->active_request_options['estimated_raw_tokens'] ?? 0 );
 
-		return $this->send_to_bank_proxy( $request['body'], $route, $estimated_icus );
+		return $this->send_to_bank_proxy( $request['body'], $route, $estimated_icus, $estimated_raw_tokens );
 	}
 
 	/**
@@ -1926,7 +2365,7 @@ AUTOMATION;
 	 * @param array $request_body The provider-format request body (messages, model, tools, etc.).
 	 * @return array Raw decoded JSON response from the provider (via bank).
 	 */
-	private function send_to_bank_proxy( array $request_body, string $route = 'chat', int $estimated_icus = 0 ): array {
+	private function send_to_bank_proxy( array $request_body, string $route = 'chat', int $estimated_icus = 0, int $estimated_raw_tokens = 0 ): array {
 		$route          = in_array( $route, array( 'chat', 'summarize' ), true ) ? $route : 'chat';
 		$estimated_icus = $estimated_icus > 0 ? $estimated_icus : $this->estimate_proxy_icus( $route );
 
@@ -1946,6 +2385,7 @@ AUTOMATION;
 			$this->model,
 			$this->provider,
 			$estimated_icus,
+			$estimated_raw_tokens,
 			$this->get_timeout( true )
 		);
 
@@ -1973,7 +2413,7 @@ AUTOMATION;
 			$auto_healed = true;
 			$bank = new PressArk_Token_Bank();
 			$bank->handshake();
-			return $this->send_to_bank_proxy( $request_body, $route, $estimated_icus );
+			return $this->send_to_bank_proxy( $request_body, $route, $estimated_icus, $estimated_raw_tokens );
 		}
 
 		if ( 200 !== $code ) {

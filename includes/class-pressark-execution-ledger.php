@@ -43,7 +43,7 @@ class PressArk_Execution_Ledger {
 
 			$status = sanitize_key( $task['status'] ?? 'pending' );
 
-			// v5.3.0: Backward compat — normalize legacy `done` to `completed`.
+			// v5.3.0: Backward compat â€” normalize legacy `done` to `completed`.
 			if ( 'done' === $status ) {
 				$status = 'completed';
 			}
@@ -104,6 +104,28 @@ class PressArk_Execution_Ledger {
 					'evidence'   => sanitize_text_field( $v['evidence'] ?? '' ),
 					'checked_at' => sanitize_text_field( $v['checked_at'] ?? '' ),
 				);
+			}
+
+			if ( class_exists( 'PressArk_Evidence_Receipt' ) ) {
+				if ( is_array( $receipt['evidence_receipt'] ?? null ) ) {
+					$entry['evidence_receipt'] = PressArk_Evidence_Receipt::sanitize( $receipt['evidence_receipt'] );
+				} elseif ( ! empty( $entry['verification'] ) ) {
+					$entry['evidence_receipt'] = PressArk_Evidence_Receipt::from_legacy_verification(
+						$entry['tool'],
+						$entry['verification'],
+						$entry['summary']
+					);
+				} else {
+					$op = class_exists( 'PressArk_Operation_Registry' )
+						? PressArk_Operation_Registry::resolve( $entry['tool'] )
+						: null;
+					if ( $op && $op->is_write() ) {
+						$entry['evidence_receipt'] = PressArk_Evidence_Receipt::for_unchecked_write(
+							$entry['tool'],
+							$entry['summary']
+						);
+					}
+				}
 			}
 
 			$receipts[] = $entry;
@@ -185,7 +207,7 @@ class PressArk_Execution_Ledger {
 				continue;
 			}
 
-			// v5.3.0: Status priority — completed wins over any other state.
+			// v5.3.0: Status priority â€” completed wins over any other state.
 			if ( 'completed' === $task['status'] ) {
 				$task_map[ $task['key'] ]['status'] = 'completed';
 				if ( ! empty( $task['evidence'] ) ) {
@@ -457,7 +479,7 @@ class PressArk_Execution_Ledger {
 			$lines[] = 'BLOCKED TASKS: ' . implode( '; ', $blocked );
 		}
 		if ( ! empty( $uncertain ) ) {
-			$lines[] = 'UNCERTAIN TASKS: ' . implode( '; ', $uncertain ) . ' — verify with a read tool before reporting completion.';
+			$lines[] = 'UNCERTAIN TASKS: ' . implode( '; ', $uncertain ) . ' â€” verify with a read tool before reporting completion.';
 		}
 		if ( self::should_scope_seo_to_current_target( $ledger ) ) {
 			$lines[] = 'SEO SCOPE: Optimize only the current target unless the user explicitly requested site-wide SEO.';
@@ -563,7 +585,7 @@ class PressArk_Execution_Ledger {
 					$next_task = $task;
 				}
 			} else {
-				// pending — candidate for next.
+				// pending â€” candidate for next.
 				if ( null === $next_task ) {
 					$next_task = $task;
 				}
@@ -603,14 +625,14 @@ class PressArk_Execution_Ledger {
 		return (int) ( $progress['remaining_count'] ?? 0 ) > 0;
 	}
 
-	// ── Task Graph: Dependency Resolution (v5.3.0) ──────────────────
+	// â”€â”€ Task Graph: Dependency Resolution (v5.3.0) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 	/**
 	 * Resolve blocked status from dependency edges.
 	 *
 	 * A task is `blocked` when any key in its `depends_on` array references a
 	 * task that is not yet `completed`. Blocked tasks that become unblocked are
-	 * returned to `pending`. This is a pure function — it returns a new ledger.
+	 * returned to `pending`. This is a pure function â€” it returns a new ledger.
 	 *
 	 * @since 5.3.0
 	 */
@@ -636,7 +658,7 @@ class PressArk_Execution_Ledger {
 
 			$deps = $task['depends_on'] ?? array();
 			if ( empty( $deps ) ) {
-				// No deps — should be pending, not blocked.
+				// No deps â€” should be pending, not blocked.
 				if ( 'blocked' === $task['status'] ) {
 					$task['status'] = 'pending';
 				}
@@ -725,7 +747,7 @@ class PressArk_Execution_Ledger {
 	}
 
 	/**
-	 * Get the next actionable task — first `in_progress`, then first `pending`.
+	 * Get the next actionable task â€” first `in_progress`, then first `pending`.
 	 *
 	 * @since 5.3.0
 	 * @return array|null Task array or null if none actionable.
@@ -874,7 +896,7 @@ class PressArk_Execution_Ledger {
 		);
 	}
 
-	// ── Verification (v5.4.0) ──────────────────────────────────────────
+	// â”€â”€ Verification (v5.4.0) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 	/**
 	 * Record a verification result for a write tool.
@@ -891,11 +913,22 @@ class PressArk_Execution_Ledger {
 	 * @param string $evidence        Compact human-readable evidence string.
 	 * @return array Updated ledger.
 	 */
-	public static function record_verification( array $ledger, string $tool_name, array $readback_result, bool $passed, string $evidence = '' ): array {
+	public static function record_verification(
+		array $ledger,
+		string $tool_name,
+		array $readback_result,
+		bool $passed,
+		string $evidence = '',
+		array $meta = array()
+	): array {
 		$ledger    = self::sanitize( $ledger );
 		$tool_name = sanitize_key( $tool_name );
 		$evidence  = sanitize_text_field( $evidence );
 		$new_status = $passed ? 'verified' : 'uncertain';
+		$checked_at = gmdate( 'c' );
+		$evidence_receipt = class_exists( 'PressArk_Evidence_Receipt' )
+			? PressArk_Evidence_Receipt::from_verification( $tool_name, $readback_result, $passed, $evidence, $meta )
+			: array();
 
 		// Attach evidence to the most recent matching receipt.
 		$found_receipt = false;
@@ -904,8 +937,11 @@ class PressArk_Execution_Ledger {
 				$ledger['receipts'][ $i ]['verification'] = array(
 					'status'   => $new_status,
 					'evidence' => $evidence,
-					'checked_at' => gmdate( 'c' ),
+					'checked_at' => $checked_at,
 				);
+				if ( ! empty( $evidence_receipt ) ) {
+					$ledger['receipts'][ $i ]['evidence_receipt'] = $evidence_receipt;
+				}
 				$found_receipt = true;
 				break;
 			}
@@ -922,9 +958,12 @@ class PressArk_Execution_Ledger {
 				'verification' => array(
 					'status'     => $new_status,
 					'evidence'   => $evidence,
-					'checked_at' => gmdate( 'c' ),
+					'checked_at' => $checked_at,
 				),
 			);
+			if ( ! empty( $evidence_receipt ) ) {
+				$ledger['receipts'][ count( $ledger['receipts'] ) - 1 ]['evidence_receipt'] = $evidence_receipt;
+			}
 			$ledger['receipts'] = array_slice( $ledger['receipts'], -self::MAX_RECEIPTS );
 		}
 
@@ -968,17 +1007,23 @@ class PressArk_Execution_Ledger {
 		$details    = array();
 
 		foreach ( $ledger['receipts'] as $receipt ) {
-			$v_status = $receipt['verification']['status'] ?? '';
+			$evidence_receipt = is_array( $receipt['evidence_receipt'] ?? null ) ? $receipt['evidence_receipt'] : array();
+			$v_status         = $evidence_receipt['status'] ?? ( $receipt['verification']['status'] ?? '' );
 			if ( 'verified' === $v_status ) {
 				$verified++;
-				$evidence = $receipt['verification']['evidence'] ?? '';
+				$evidence   = $evidence_receipt['evidence'] ?? ( $receipt['verification']['evidence'] ?? '' );
+				$confidence = $evidence_receipt['confidence_label'] ?? '';
 				if ( $evidence ) {
-					$details[] = $receipt['tool'] . ': VERIFIED — ' . $evidence;
+					$details[] = $receipt['tool'] . ': VERIFIED'
+						. ( $confidence ? ' (' . $confidence . ')' : '' )
+						. ' - ' . $evidence;
 				}
+				continue;
 			} elseif ( 'uncertain' === $v_status ) {
 				$uncertain++;
-				$evidence = $receipt['verification']['evidence'] ?? '';
-				$details[] = $receipt['tool'] . ': UNCERTAIN' . ( $evidence ? ' — ' . $evidence : '' );
+				$evidence = $evidence_receipt['evidence'] ?? ( $receipt['verification']['evidence'] ?? '' );
+				$details[] = $receipt['tool'] . ': UNCERTAIN' . ( $evidence ? ' - ' . $evidence : '' );
+				continue;
 			} else {
 				// Write receipt with no verification.
 				$op = PressArk_Operation_Registry::resolve( $receipt['tool'] ?? '' );
@@ -994,6 +1039,36 @@ class PressArk_Execution_Ledger {
 			'unverified' => $unverified,
 			'details'    => $details,
 		);
+	}
+
+	/**
+	 * Return normalized evidence receipts for persisted write operations.
+	 *
+	 * @param array<string,mixed> $ledger Current ledger.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function evidence_receipts( array $ledger ): array {
+		$ledger = self::sanitize( $ledger );
+		$rows   = array();
+
+		foreach ( $ledger['receipts'] as $receipt ) {
+			$op = PressArk_Operation_Registry::resolve( $receipt['tool'] ?? '' );
+			if ( ! $op || ! $op->is_write() ) {
+				continue;
+			}
+
+			$rows[] = array(
+				'tool'             => $receipt['tool'] ?? '',
+				'summary'          => $receipt['summary'] ?? '',
+				'post_id'          => (int) ( $receipt['post_id'] ?? 0 ),
+				'post_title'       => $receipt['post_title'] ?? '',
+				'url'              => $receipt['url'] ?? '',
+				'verification'     => is_array( $receipt['verification'] ?? null ) ? $receipt['verification'] : array(),
+				'evidence_receipt' => is_array( $receipt['evidence_receipt'] ?? null ) ? $receipt['evidence_receipt'] : array(),
+			);
+		}
+
+		return $rows;
 	}
 
 	/**
@@ -1265,6 +1340,13 @@ class PressArk_Execution_Ledger {
 			'post_title' => sanitize_text_field( $target['post_title'] ?? '' ),
 			'url'        => esc_url_raw( $target['url'] ?? '' ),
 		);
+		if ( class_exists( 'PressArk_Evidence_Receipt' ) ) {
+			$op = class_exists( 'PressArk_Operation_Registry' ) ? PressArk_Operation_Registry::resolve( $tool ) : null;
+			if ( $op && $op->is_write() ) {
+				$ledger['receipts'][ count( $ledger['receipts'] ) - 1 ]['evidence_receipt'] =
+					PressArk_Evidence_Receipt::for_unchecked_write( $tool, $summary );
+			}
+		}
 		$ledger['receipts'] = array_slice( $ledger['receipts'], -self::MAX_RECEIPTS );
 
 		return $ledger;

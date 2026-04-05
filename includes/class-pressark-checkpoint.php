@@ -513,9 +513,9 @@ class PressArk_Checkpoint {
 	 * @param bool   $passed          Whether verification passed.
 	 * @param string $evidence        Compact evidence string.
 	 */
-	public function record_verification( string $tool_name, array $readback_result, bool $passed, string $evidence = '' ): void {
+	public function record_verification( string $tool_name, array $readback_result, bool $passed, string $evidence = '', array $meta = array() ): void {
 		$this->execution = PressArk_Execution_Ledger::record_verification(
-			$this->execution, $tool_name, $readback_result, $passed, $evidence
+			$this->execution, $tool_name, $readback_result, $passed, $evidence, $meta
 		);
 		if ( $passed ) {
 			$this->set_workflow_stage( 'verify' );

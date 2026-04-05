@@ -781,63 +781,53 @@ class PressArk_Tool_Catalog {
 			return array();
 		}
 
-		$has_woo       = class_exists( 'WooCommerce' );
-		$has_elementor = class_exists( '\\Elementor\\Plugin' );
-		$all_tools     = PressArk_Tools::get_all( $has_woo, $has_elementor );
-		$loaded_set    = array_flip( $this->normalize_string_list( $loaded_names ) );
+		$has_woo        = class_exists( 'WooCommerce' );
+		$has_elementor  = class_exists( '\\Elementor\\Plugin' );
+		$all_tools      = PressArk_Tools::get_all( $has_woo, $has_elementor );
+		$loaded_set     = array_flip( $this->normalize_string_list( $loaded_names ) );
 		$tool_group_map = $this->build_tool_group_map();
 
 		// Tokenize query into words for multi-word matching.
-		$query_words = preg_split( '/\s+/', $query_lower );
+		$query_words = array_values( array_filter( preg_split( '/\s+/', $query_lower ) ) );
 
-		$scored = array();
+		$permission_context   = (string) (
+			$options['permission_context']
+			?? ( class_exists( 'PressArk_Policy_Engine' )
+				? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+				: 'interactive' )
+		);
+		$permission_meta      = (array) ( $options['permission_meta'] ?? array() );
+		if ( ! isset( $permission_meta['decision_purpose'] ) ) {
+			$permission_meta['decision_purpose'] = 'tool_discovery';
+		}
+		$enforce_visibility   = ! empty( $options ) && class_exists( 'PressArk_Permission_Service' );
+		$visibility_decisions = array();
+
+		if ( $enforce_visibility ) {
+			$visibility = PressArk_Permission_Service::evaluate_tool_set(
+				array_column( $all_tools, 'name' ),
+				$permission_context,
+				$permission_meta
+			);
+			$visibility_decisions = (array) ( $visibility['decisions'] ?? array() );
+		}
+
+		$ranked = array();
 		$seen   = array();
 
 		foreach ( $all_tools as $tool ) {
-			$name       = $tool['name'];
-			$desc       = strtolower( $tool['description'] ?? '' );
-			$name_lower = strtolower( str_replace( '_', ' ', $name ) );
-			$group      = $tool_group_map[ $name ] ?? '';
-
-			$score = 0;
-
-			// Exact substring match on name (highest priority).
-			if ( str_contains( $name_lower, $query_lower ) ) {
-				$score += 100;
-			}
-
-			// Word-level matching against name and description.
-			foreach ( $query_words as $word ) {
-				if ( strlen( $word ) < 2 ) {
-					continue;
-				}
-				if ( str_contains( $name_lower, $word ) ) {
-					$score += 20;
-				}
-				if ( str_contains( $desc, $word ) ) {
-					$score += 10;
-				}
-			}
-
-			// GROUP_KEYWORDS match for the tool's own group.
-			if ( $group && isset( self::GROUP_KEYWORDS[ $group ] ) ) {
-				foreach ( self::GROUP_KEYWORDS[ $group ] as $keyword ) {
-					if ( str_contains( $query_lower, $keyword ) ) {
-						$score += 30;
-						break;
-					}
-				}
-			}
-
-			if ( $score > 0 ) {
-				$seen[ $name ] = true;
-				$scored[]      = array(
-					'name'        => $name,
-					'description' => $tool['description'] ?? '',
-					'group'       => $group,
-					'loaded'      => isset( $loaded_set[ $name ] ),
-					'score'       => $score,
-				);
+			$candidate = $this->score_discovery_tool(
+				$tool,
+				(string) ( $tool_group_map[ $tool['name'] ] ?? '' ),
+				$query_lower,
+				$query_words,
+				$loaded_set,
+				$visibility_decisions,
+				false
+			);
+			if ( null !== $candidate ) {
+				$seen[ $candidate['name'] ] = true;
+				$ranked[]                   = $candidate;
 			}
 		}
 
@@ -862,7 +852,6 @@ class PressArk_Tool_Catalog {
 				continue;
 			}
 
-			// Add all tools from this group that weren't already scored.
 			$group_tools = PressArk_Operation_Registry::tool_names_for_group( $group );
 			foreach ( $group_tools as $tool_name ) {
 				if ( isset( $seen[ $tool_name ] ) ) {
@@ -870,7 +859,6 @@ class PressArk_Tool_Catalog {
 				}
 				$seen[ $tool_name ] = true;
 
-				// Find description from all_tools.
 				$desc = '';
 				foreach ( $all_tools as $t ) {
 					if ( $t['name'] === $tool_name ) {
@@ -879,51 +867,375 @@ class PressArk_Tool_Catalog {
 					}
 				}
 
-				$scored[] = array(
-					'name'        => $tool_name,
-					'description' => $desc,
-					'group'       => $group,
-					'loaded'      => isset( $loaded_set[ $tool_name ] ),
-					'score'       => 25,
+				$candidate = $this->score_discovery_tool(
+					array(
+						'name'        => $tool_name,
+						'description' => $desc,
+					),
+					$group,
+					$query_lower,
+					$query_words,
+					$loaded_set,
+					$visibility_decisions,
+					true
 				);
+				if ( null !== $candidate ) {
+					$ranked[] = $candidate;
+				}
 			}
 		}
 
-		// Sort by score descending.
-		usort( $scored, function ( $a, $b ) {
-			return $b['score'] - $a['score'];
-		} );
+		foreach ( PressArk_Resource_Registry::search( $query ) as $resource_match ) {
+			$ranked[] = $this->score_discovery_resource( $resource_match );
+		}
 
-		// Top 20, strip score from output.
+		usort( $ranked, array( $this, 'compare_discovery_candidates' ) );
+
 		$results = array();
-		foreach ( array_slice( $scored, 0, 20 ) as $item ) {
-			unset( $item['score'] );
+		foreach ( array_slice( $ranked, 0, 25 ) as $item ) {
+			unset(
+				$item['score'],
+				$item['_kind'],
+				$item['_loaded_bonus'],
+				$item['_utility_bonus']
+			);
 			$results[] = $item;
 		}
 
-		// v5.1.0: Also search resources and append matches.
-		$resource_matches = PressArk_Resource_Registry::search( $query );
-		foreach ( $resource_matches as $rm ) {
-			unset( $rm['score'] );
-			$results[] = $rm;
-		}
-
-		$results = array_slice( $results, 0, 25 );
-
-		if ( ! empty( $options ) && class_exists( 'PressArk_Permission_Service' ) ) {
+		if ( $enforce_visibility ) {
 			$results = PressArk_Permission_Service::filter_discovery_results(
 				$results,
-				(string) (
-					$options['permission_context']
-					?? ( class_exists( 'PressArk_Policy_Engine' )
-						? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
-						: 'interactive' )
-				),
-				(array) ( $options['permission_meta'] ?? array() )
+				$permission_context,
+				$permission_meta
 			);
 		}
 
 		return $results;
+	}
+
+	/**
+	 * Score one tool candidate for discover_tools ranking.
+	 *
+	 * @param array<string,mixed>        $tool                 Tool schema summary.
+	 * @param string                     $group                Group membership.
+	 * @param string                     $query_lower          Normalized query.
+	 * @param string[]                   $query_words          Query token list.
+	 * @param array<string,int>          $loaded_set           Loaded tool lookup.
+	 * @param array<string,array<mixed>> $visibility_decisions Permission decisions keyed by tool.
+	 * @param bool                       $group_fallback       Whether this came from a group-keyword fallback.
+	 * @return array<string,mixed>|null
+	 */
+	private function score_discovery_tool(
+		array $tool,
+		string $group,
+		string $query_lower,
+		array $query_words,
+		array $loaded_set,
+		array $visibility_decisions,
+		bool $group_fallback
+	): ?array {
+		$name       = sanitize_key( (string) ( $tool['name'] ?? '' ) );
+		$desc       = sanitize_text_field( (string) ( $tool['description'] ?? '' ) );
+		$name_lower = strtolower( str_replace( '_', ' ', $name ) );
+		$desc_lower = strtolower( $desc );
+
+		if ( '' === $name ) {
+			return null;
+		}
+
+		$decision = $visibility_decisions[ $name ] ?? array();
+		if ( ! empty( $decision ) && class_exists( 'PressArk_Permission_Decision' )
+			&& ! PressArk_Permission_Decision::is_visible_to_model( $decision )
+		) {
+			return null;
+		}
+
+		$score         = 0;
+		$group_matched = false;
+
+		if ( str_contains( $name_lower, $query_lower ) ) {
+			$score += 90;
+		}
+		if ( str_contains( $desc_lower, $query_lower ) ) {
+			$score += 28;
+		}
+
+		foreach ( $query_words as $word ) {
+			if ( strlen( $word ) < 2 ) {
+				continue;
+			}
+			if ( str_contains( $name_lower, $word ) ) {
+				$score += 20;
+			}
+			if ( str_contains( $desc_lower, $word ) ) {
+				$score += 9;
+			}
+		}
+
+		if ( '' !== $group && isset( self::GROUP_KEYWORDS[ $group ] ) ) {
+			foreach ( self::GROUP_KEYWORDS[ $group ] as $keyword ) {
+				if ( str_contains( $query_lower, $keyword ) ) {
+					$group_matched = true;
+					$score        += 24;
+					break;
+				}
+			}
+		}
+
+		$operation = PressArk_Operation_Registry::resolve( $name );
+		if ( $operation ) {
+			$score += $this->score_search_hint_match( $operation->search_hint, $query_words );
+			$score += $this->score_tag_match( $operation->tags, $query_words );
+			$score += $this->discovery_legality_bonus( $decision );
+			$score += $this->discovery_evidence_bonus( $operation );
+			$score += $this->discovery_utility_bonus( $operation, $query_lower );
+			$score += $this->discovery_freshness_bonus( $operation );
+
+			if ( isset( $loaded_set[ $name ] ) ) {
+				$score += 10;
+			}
+
+			if ( $operation->is_deferred() ) {
+				$score += 4;
+			}
+		}
+
+		if ( in_array( $name, array( 'discover_tools', 'load_tools', 'get_available_tools' ), true )
+			&& ! preg_match( '/\b(tool|tools|discover|load|available)\b/i', $query_lower )
+		) {
+			$score -= 40;
+		}
+
+		if ( $group_fallback ) {
+			$score += 12;
+		}
+
+		if ( $score <= 0 && ! $group_matched ) {
+			return null;
+		}
+
+		return array(
+			'name'           => $name,
+			'description'    => $desc,
+			'group'          => $group,
+			'loaded'         => isset( $loaded_set[ $name ] ),
+			'score'          => $score,
+			'_kind'          => 'tool',
+			'_loaded_bonus'  => isset( $loaded_set[ $name ] ) ? 1 : 0,
+			'_utility_bonus' => $this->tool_capability_sort_value( $operation ),
+		);
+	}
+
+	/**
+	 * Score one resource match so it can be ranked with tools.
+	 *
+	 * @param array<string,mixed> $resource_match Resource match row from the registry.
+	 * @return array<string,mixed>
+	 */
+	private function score_discovery_resource( array $resource_match ): array {
+		$group = sanitize_key( (string) ( $resource_match['group'] ?? '' ) );
+		$score = (int) ( $resource_match['score'] ?? 0 );
+
+		$score += 'tool-results' === $group ? 14 : 30;
+
+		$resource_match['type']           = 'resource';
+		$resource_match['score']          = $score;
+		$resource_match['_kind']          = 'resource';
+		$resource_match['_loaded_bonus']  = 0;
+		$resource_match['_utility_bonus'] = 3;
+
+		return $resource_match;
+	}
+
+	/**
+	 * Sort higher-scoring and more immediately useful discovery candidates first.
+	 *
+	 * @param array<string,mixed> $left  Candidate A.
+	 * @param array<string,mixed> $right Candidate B.
+	 * @return int
+	 */
+	private function compare_discovery_candidates( array $left, array $right ): int {
+		$score_cmp = (int) ( $right['score'] ?? 0 ) <=> (int) ( $left['score'] ?? 0 );
+		if ( 0 !== $score_cmp ) {
+			return $score_cmp;
+		}
+
+		$utility_cmp = (int) ( $right['_utility_bonus'] ?? 0 ) <=> (int) ( $left['_utility_bonus'] ?? 0 );
+		if ( 0 !== $utility_cmp ) {
+			return $utility_cmp;
+		}
+
+		$loaded_cmp = (int) ( $right['_loaded_bonus'] ?? 0 ) <=> (int) ( $left['_loaded_bonus'] ?? 0 );
+		if ( 0 !== $loaded_cmp ) {
+			return $loaded_cmp;
+		}
+
+		return strcmp( (string) ( $left['name'] ?? '' ), (string) ( $right['name'] ?? '' ) );
+	}
+
+	/**
+	 * Reward permission-safe candidates over preview/blocked ones.
+	 *
+	 * @param array<string,mixed> $decision Permission decision.
+	 * @return int
+	 */
+	private function discovery_legality_bonus( array $decision ): int {
+		if ( empty( $decision ) ) {
+			return 0;
+		}
+
+		$normalized = class_exists( 'PressArk_Permission_Decision' )
+			? PressArk_Permission_Decision::normalize( $decision )
+			: $decision;
+		$verdict    = (string) ( $normalized['verdict'] ?? '' );
+
+		return match ( $verdict ) {
+			'allow' => 20,
+			'ask'   => 8,
+			'deny'  => -100,
+			default => 0,
+		};
+	}
+
+	/**
+	 * Prefer tools that are more likely to produce direct evidence safely.
+	 *
+	 * @param PressArk_Operation|null $operation Operation contract when available.
+	 * @return int
+	 */
+	private function discovery_evidence_bonus( ?PressArk_Operation $operation ): int {
+		if ( ! $operation ) {
+			return 0;
+		}
+
+		$score = 0;
+
+		if ( $operation->is_read_only() ) {
+			$score += 24;
+			$score += match ( $operation->risk ) {
+				'safe'        => 12,
+				'moderate'    => 4,
+				'destructive' => -10,
+				default       => 0,
+			};
+
+			if ( 0 === strpos( $operation->name, 'get_' ) || 0 === strpos( $operation->name, 'read_' ) || 0 === strpos( $operation->name, 'view_' ) ) {
+				$score += 10;
+			} elseif ( 0 === strpos( $operation->name, 'list_' ) || 0 === strpos( $operation->name, 'search_' ) || 0 === strpos( $operation->name, 'analyze_' ) ) {
+				$score += 4;
+			}
+		} else {
+			$score += 'preview' === $operation->capability ? 3 : -6;
+		}
+
+		if ( 'compact' !== $operation->output_policy ) {
+			$score += 4;
+		}
+
+		return $score;
+	}
+
+	/**
+	 * Reward candidate families that fit the user's apparent intent.
+	 *
+	 * @param PressArk_Operation|null $operation   Operation contract when available.
+	 * @param string                  $query_lower Query string.
+	 * @return int
+	 */
+	private function discovery_utility_bonus( ?PressArk_Operation $operation, string $query_lower ): int {
+		if ( ! $operation ) {
+			return 0;
+		}
+
+		$read_intent  = (bool) preg_match( '/\b(show|read|find|inspect|analy[sz]e|report|status|why|what)\b/i', $query_lower );
+		$write_intent = (bool) preg_match( '/\b(edit|update|change|fix|delete|remove|create|set)\b/i', $query_lower );
+
+		if ( $operation->is_read_only() && $read_intent ) {
+			return 12;
+		}
+		if ( ! $operation->is_read_only() && $write_intent ) {
+			return 8;
+		}
+
+		return $operation->is_read_only() ? 6 : 0;
+	}
+
+	/**
+	 * Prefer reads likely to produce fresher evidence over cache-heavy summaries.
+	 *
+	 * @param PressArk_Operation|null $operation Operation contract when available.
+	 * @return int
+	 */
+	private function discovery_freshness_bonus( ?PressArk_Operation $operation ): int {
+		if ( ! $operation || ! $operation->is_read_only() ) {
+			return 0;
+		}
+
+		return $operation->is_cacheable() ? 2 : 10;
+	}
+
+	/**
+	 * Score search-hint overlap.
+	 *
+	 * @param string   $search_hint Search hint text.
+	 * @param string[] $query_words Query tokens.
+	 * @return int
+	 */
+	private function score_search_hint_match( string $search_hint, array $query_words ): int {
+		$hint = strtolower( trim( $search_hint ) );
+		if ( '' === $hint ) {
+			return 0;
+		}
+
+		$score = 0;
+		foreach ( $query_words as $word ) {
+			if ( strlen( $word ) >= 2 && str_contains( $hint, $word ) ) {
+				$score += 10;
+			}
+		}
+
+		return $score;
+	}
+
+	/**
+	 * Score tag overlap.
+	 *
+	 * @param string[] $tags        Tool tags.
+	 * @param string[] $query_words Query tokens.
+	 * @return int
+	 */
+	private function score_tag_match( array $tags, array $query_words ): int {
+		if ( empty( $tags ) || empty( $query_words ) ) {
+			return 0;
+		}
+
+		$score = 0;
+		foreach ( $tags as $tag ) {
+			$tag = sanitize_key( (string) $tag );
+			if ( '' !== $tag && in_array( $tag, $query_words, true ) ) {
+				$score += 8;
+			}
+		}
+
+		return $score;
+	}
+
+	/**
+	 * Stable tie-breaker based on immediate execution utility.
+	 *
+	 * @param PressArk_Operation|null $operation Operation contract when available.
+	 * @return int
+	 */
+	private function tool_capability_sort_value( ?PressArk_Operation $operation ): int {
+		if ( ! $operation ) {
+			return 0;
+		}
+
+		if ( $operation->is_read_only() ) {
+			return 3;
+		}
+
+		return 'preview' === $operation->capability ? 2 : 1;
 	}
 
 	/**

@@ -1894,6 +1894,44 @@
 			return html;
 		},
 
+		getBillingState: function (info) {
+			var state = (info && info.billing_state) || {};
+			var isByok = !!(info && info.is_byok);
+			var monthlyRemaining = info ? (info.monthly_included_remaining || info.monthly_remaining || 0) : 0;
+			var purchasedRemaining = info ? (info.purchased_credits_remaining || info.credits_remaining || 0) : 0;
+			var legacyRemaining = info ? (info.legacy_bonus_remaining || 0) : 0;
+			var totalRemaining = info ? (info.total_remaining || info.icus_remaining || info.tokens_remaining || 0) : 0;
+			var hasMonthly = monthlyRemaining > 0;
+			var hasPurchased = purchasedRemaining > 0;
+			var hasLegacy = legacyRemaining > 0;
+			var spendSource = state.spend_source;
+
+			if (!spendSource) {
+				if (isByok) spendSource = 'byok';
+				else if (hasMonthly && !hasPurchased && !hasLegacy) spendSource = 'monthly_included';
+				else if (!hasMonthly && hasPurchased && !hasLegacy) spendSource = 'purchased_credits';
+				else if (!hasMonthly && !hasPurchased && hasLegacy) spendSource = 'legacy_bonus';
+				else if ((hasMonthly && hasPurchased) || (hasMonthly && hasLegacy) || (hasPurchased && hasLegacy)) spendSource = 'mixed';
+				else spendSource = totalRemaining > 0 ? 'monthly_included' : 'depleted';
+			}
+
+			var authorityMode = state.authority_mode || (isByok ? 'byok' : ((info && info.verified_handshake) ? 'bank_verified' : 'bank_provisional'));
+			var serviceState = state.service_state || ((info && info.offline) ? 'offline_assisted' : 'normal');
+			var handshakeState = state.handshake_state || (isByok ? 'byok' : ((info && info.verified_handshake) ? 'verified' : 'provisional'));
+
+			return {
+				authority_mode: authorityMode,
+				handshake_state: handshakeState,
+				service_state: serviceState,
+				spend_source: spendSource,
+				authority_label: state.authority_label || (authorityMode === 'bank_verified' ? 'Bank verified' : (authorityMode === 'byok' ? 'BYOK' : 'Bank provisional')),
+				service_label: state.service_label || (serviceState === 'offline_assisted' ? 'Offline assisted' : (serviceState === 'degraded' ? 'Degraded' : 'Normal')),
+				spend_label: state.spend_label || (spendSource === 'purchased_credits' ? 'Purchased credits' : (spendSource === 'legacy_bonus' ? 'Legacy bonus' : (spendSource === 'mixed' ? 'Mixed sources' : (spendSource === 'depleted' ? 'Depleted' : (spendSource === 'byok' ? 'BYOK' : 'Monthly included'))))),
+				service_notice: state.service_notice || (serviceState === 'offline_assisted' ? 'Using the last bank snapshot locally until the bank is reachable again.' : (serviceState === 'degraded' ? 'Bank truth is still authoritative while a dependency is degraded.' : '')),
+				estimate_notice: state.estimate_notice || (isByok ? 'Provider usage is separate from bundled credits.' : 'Plugin-side token and ICU estimates are advisory until bank settlement.')
+			};
+		},
+
 		renderQuotaBar: function () {
 			if (!this.quotaBarEl) return;
 
@@ -1901,9 +1939,11 @@
 			if (!info) return;
 
 			var html = '';
+			var billingState = this.getBillingState(info);
+			var billingTag = billingState.authority_label + ' / ' + billingState.service_label + (billingState.spend_label ? ' / ' + billingState.spend_label : '');
 
 			if (info.is_byok) {
-				html = 'Using your own API key \u00B7 No limits';
+				html = 'Using your own API key \u00B7 Bundled credits bypassed';
 			} else if (info.tier === 'free') {
 				// Total actions used across all groups this week.
 				var gu = info.group_usage || {};
@@ -1915,6 +1955,7 @@
 
 				html = actionsUsed + '/' + actionsLimit + ' actions used this week';
 				html += ' \u00B7 ' + monthlyRemaining + '/' + monthlyBudget + ' credits remaining';
+				html += ' \u00B7 ' + this.escapeHtml(billingTag);
 				html += ' \u00B7 <a href="' + this.escapeHtml(info.upgrade_url || '#') + '">Upgrade to Pro \u2192</a>';
 
 				if (actionsUsed >= actionsLimit) {
@@ -1926,11 +1967,14 @@
 				// Paid tier.
 				var creditsUsed = this.formatCredits(info.icus_used || info.tokens_used || 0);
 				var monthlyBudgetPaid = this.formatCredits(info.icu_budget || info.token_budget || 0);
-				var purchasedRemaining = this.formatCredits(info.credits_remaining || 0);
+				var purchasedRemaining = this.formatCredits(info.purchased_credits_remaining || info.credits_remaining || 0);
+				var legacyRemaining = this.formatCredits(info.legacy_bonus_remaining || 0);
 				var totalRemaining = this.formatCredits(info.total_remaining || info.icus_remaining || info.tokens_remaining || 0);
 
-				if (info.monthly_exhausted && (info.credits_remaining || 0) > 0) {
+				if (info.monthly_exhausted && (info.purchased_credits_remaining || info.credits_remaining || 0) > 0) {
 					html = 'Billing-cycle credits used \u00B7 Using purchased credits (' + purchasedRemaining + ' remaining)';
+				} else if (info.monthly_exhausted && (info.legacy_bonus_remaining || 0) > 0) {
+					html = 'Billing-cycle credits used \u00B7 Using legacy bonus (' + legacyRemaining + ' remaining)';
 				} else {
 					html = creditsUsed + '/' + monthlyBudgetPaid + ' credits used \u00B7 ' + totalRemaining + ' total remaining';
 				}
@@ -1938,6 +1982,10 @@
 				var resetLabel = this.formatResetDate(info.next_reset_at || info.billing_period_end || '');
 				if (resetLabel) {
 					html += ' \u00B7 Billing cycle resets ' + resetLabel;
+				}
+				html += ' \u00B7 ' + this.escapeHtml(billingTag);
+				if (billingState.service_state !== 'normal') {
+					html += ' \u00B7 ' + this.escapeHtml(billingState.service_notice);
 				}
 
 				var settingsUrl = (window.pressarkData || {}).settings_url || '#';
@@ -1953,6 +2001,11 @@
 				} else {
 					this.quotaBarEl.classList.remove('pressark-quota-depleted');
 				}
+			}
+
+			if (info.is_byok) {
+				html += ' \u00B7 ' + this.escapeHtml(billingTag);
+				html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
 			}
 
 			this.quotaBarEl.innerHTML = html;
@@ -1971,17 +2024,29 @@
 					icus_used: status.icus_used,
 					icus_remaining: status.icus_remaining,
 					icu_budget: status.icu_budget || window.pressarkData.plan_info.icu_budget,
-					credits_remaining: status.credits_remaining,
+					credits_remaining: status.purchased_credits_remaining || status.credits_remaining,
+					purchased_credits_remaining: status.purchased_credits_remaining || status.credits_remaining,
+					legacy_bonus_remaining: status.legacy_bonus_remaining,
 					monthly_remaining: status.monthly_remaining,
+					monthly_included_remaining: status.monthly_included_remaining,
 					monthly_exhausted: status.monthly_exhausted,
 					using_purchased_credits: status.using_purchased_credits,
+					using_legacy_bonus: status.using_legacy_bonus,
 					total_available: status.total_available,
 					total_remaining: status.total_remaining,
 					raw_tokens_used: status.raw_tokens_used,
 					next_reset_at: status.next_reset_at,
 					billing_period_start: status.billing_period_start,
 					billing_period_end: status.billing_period_end,
-					uses_anniversary_reset: status.uses_anniversary_reset
+					uses_anniversary_reset: status.uses_anniversary_reset,
+					billing_authority: status.billing_authority,
+					billing_state: status.billing_state,
+					billing_service_state: status.billing_service_state,
+					billing_handshake_state: status.billing_handshake_state,
+					billing_spend_source: status.billing_spend_source,
+					verified_handshake: status.verified_handshake,
+					provisional_handshake: status.provisional_handshake,
+					offline: status.offline
 				});
 			}
 			this.renderQuotaBar();

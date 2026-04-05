@@ -95,7 +95,10 @@ class PressArk_Automation_Dispatcher {
 				'last_task_id' => '',
 			) );
 			$store->record_failure( $automation_id, '', 'Automation feature not available on ' . PressArk_Entitlements::tier_label( $tier ) . ' plan.' );
-			self::compute_and_persist_next( $automation, $store );
+			if ( ! $skip_claim ) {
+				self::compute_and_persist_next( $automation, $store );
+				$store->release_claim( $automation_id );
+			}
 			PressArk_Notification_Manager::notify_automation_failure( $automation, 'Your plan does not include scheduled automations. Upgrade to continue.' );
 			return;
 		}
@@ -107,7 +110,10 @@ class PressArk_Automation_Dispatcher {
 				'last_task_id' => '',
 			) );
 			$store->record_failure( $automation_id, '', 'Write quota exhausted.' );
-			self::compute_and_persist_next( $automation, $store );
+			if ( ! $skip_claim ) {
+				self::compute_and_persist_next( $automation, $store );
+				$store->release_claim( $automation_id );
+			}
 			return;
 		}
 
@@ -177,33 +183,20 @@ class PressArk_Automation_Dispatcher {
 					'last_task_id' => '',
 				) );
 				$store->record_failure( $automation_id, '', 'Token reservation failed: ' . ( $reserve_result['error'] ?? 'insufficient budget' ) );
-				self::compute_and_persist_next( $automation, $store );
+				if ( ! $skip_claim ) {
+					self::compute_and_persist_next( $automation, $store );
+					$store->release_claim( $automation_id );
+				}
 				PressArk_Notification_Manager::notify_automation_failure( $automation, 'Token reservation failed. Your token budget may be exhausted.' );
 				return;
 			}
 
-			$reservation_id = $reserve_result['reservation_id'];
-
-			$run_store = new PressArk_Run_Store();
-			$run_id    = $run_store->create( array(
-				'user_id'        => $user_id,
-				'chat_id'        => $chat_id,
-				'route'          => 'automation',
-				'message'        => $effective_prompt,
-				'reservation_id' => $reservation_id,
-				'correlation_id' => $correlation_id,
-				'tier'           => $tier,
-			) );
-
-			PressArk_Activity_Trace::set_current_context(
-				array(
-					'correlation_id' => $correlation_id,
-					'run_id'         => $run_id,
-					'reservation_id' => $reservation_id,
-					'user_id'        => $user_id,
-					'chat_id'        => $chat_id,
-					'route'          => 'automation',
-				)
+			$reservation_id  = $reserve_result['reservation_id'];
+			$resolved_context = array(
+				'screen'        => '',
+				'post_id'       => 0,
+				'chat_id'       => $chat_id,
+				'automation_id' => $automation_id,
 			);
 
 			// Build loaded groups from execution hints.
@@ -219,6 +212,42 @@ class PressArk_Automation_Dispatcher {
 				}
 			}
 
+			$handoff_capsule = PressArk_Task_Queue::build_handoff_capsule(
+				$effective_prompt,
+				$conversation,
+				$loaded_groups,
+				$checkpoint_data,
+				$resolved_context,
+				'automation_dispatch'
+			);
+			$run_store       = new PressArk_Run_Store();
+			$lineage         = $run_store->create_background_family(
+				'automation',
+				array(
+					'user_id'         => $user_id,
+					'chat_id'         => $chat_id,
+					'message'         => $effective_prompt,
+					'reservation_id'  => $reservation_id,
+					'correlation_id'  => $correlation_id,
+					'tier'            => $tier,
+					'handoff_capsule' => $handoff_capsule,
+				)
+			);
+			$parent_run_id   = (string) ( $lineage['parent_run_id'] ?? '' );
+			$run_id          = (string) ( $lineage['run_id'] ?? '' );
+			$root_run_id     = (string) ( $lineage['root_run_id'] ?? $parent_run_id );
+
+			PressArk_Activity_Trace::set_current_context(
+				array(
+					'correlation_id' => $correlation_id,
+					'user_id'        => $user_id,
+					'chat_id'        => $chat_id,
+					'route'          => 'automation',
+					'run_id'         => $run_id,
+					'reservation_id' => $reservation_id,
+				)
+			);
+
 			// Enqueue as async task — DO NOT run AI here in the cron callback.
 			$queue  = new PressArk_Task_Queue();
 			$queued = $queue->enqueue(
@@ -231,13 +260,13 @@ class PressArk_Automation_Dispatcher {
 				$loaded_groups,
 				$checkpoint_data,
 				$run_id,
+				$resolved_context,
+				$task_idempotency_key,
 				array(
-					'screen'        => '',
-					'post_id'       => 0,
-					'chat_id'       => $chat_id,
-					'automation_id' => $automation_id,
-				),
-				$task_idempotency_key
+					'parent_run_id'   => $parent_run_id,
+					'root_run_id'     => $root_run_id,
+					'handoff_capsule' => $handoff_capsule,
+				)
 			);
 
 			$task_id = $queued['task_id'] ?? '';
@@ -245,26 +274,78 @@ class PressArk_Automation_Dispatcher {
 			if ( 'error' === ( $queued['type'] ?? '' ) ) {
 				$error_message = $queued['message'] ?? 'Automation task queueing failed.';
 				$reservation->fail( $reservation_id, $error_message );
-				PressArk_Pipeline::fail_run( $run_id, $error_message );
+				if ( '' !== $parent_run_id ) {
+					PressArk_Pipeline::fail_run( $parent_run_id, $error_message );
+				}
+				if ( '' !== $run_id ) {
+					PressArk_Pipeline::fail_run( $run_id, $error_message );
+				}
 				$store->update( $automation_id, array(
 					'last_run_id'  => '',
 					'last_task_id' => '',
 				) );
-				$store->record_failure( $automation_id, '', $error_message );
-				self::compute_and_persist_next( $automation, $store );
+				$store->record_failure( $automation_id, $run_id, $error_message, $task_id );
+				if ( ! $skip_claim ) {
+					self::compute_and_persist_next( $automation, $store );
+					$store->release_claim( $automation_id );
+				}
 				PressArk_Notification_Manager::notify_automation_failure( $automation, $error_message );
 				return;
 			}
 
 			if ( ! empty( $queued['reused_existing'] ) ) {
 				$reservation->fail( $reservation_id, 'Duplicate automation dispatch reused the already active task.' );
-				PressArk_Pipeline::fail_run( $run_id, 'Duplicate automation dispatch reused the already active task.' );
-				$store->update( $automation_id, array( 'last_task_id' => $task_id ) );
-				self::compute_and_persist_next( $automation, $store );
-				$store->release_claim( $automation_id );
+				if ( ! empty( $queued['run_id'] ) && (string) $queued['run_id'] !== $run_id ) {
+					PressArk_Pipeline::fail_run( $run_id, 'Duplicate automation dispatch reused the already active task.' );
+					$run_id = (string) $queued['run_id'];
+				}
+
+				if ( '' !== $parent_run_id ) {
+					PressArk_Pipeline::settle_run(
+						$parent_run_id,
+						array(
+							'type'            => 'handoff',
+							'message'         => 'Automation handoff reused the already active queued task.',
+							'task_id'         => $task_id,
+							'child_run_id'    => $run_id,
+							'root_run_id'     => (string) ( $queued['root_run_id'] ?? $root_run_id ),
+							'handoff_capsule' => $handoff_capsule,
+						)
+					);
+				}
+
+				$store->update(
+					$automation_id,
+					array(
+						'last_run_id'  => $run_id,
+						'last_task_id' => $task_id,
+					)
+				);
+				if ( ! $skip_claim ) {
+					self::compute_and_persist_next( $automation, $store );
+					$store->release_claim( $automation_id );
+				}
 
 				PressArk_Error_Tracker::debug( 'AutomationDispatcher', 'Collapsed duplicate queue request', array( 'automation_id' => $automation_id, 'task_id' => $task_id ) );
 				return;
+			}
+
+			if ( ! empty( $queued['run_id'] ) ) {
+				$run_id = (string) $queued['run_id'];
+			}
+
+			if ( '' !== $parent_run_id ) {
+				PressArk_Pipeline::settle_run(
+					$parent_run_id,
+					array(
+						'type'            => 'handoff',
+						'message'         => 'Automation handoff accepted and linked to a worker run.',
+						'task_id'         => $task_id,
+						'child_run_id'    => $run_id,
+						'root_run_id'     => (string) ( $queued['root_run_id'] ?? $root_run_id ),
+						'handoff_capsule' => $handoff_capsule,
+					)
+				);
 			}
 
 			// Update automation with run/task linkage.

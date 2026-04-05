@@ -72,6 +72,8 @@ class PressArk_Agent {
 	private array                  $budget_report = array();
 	private array                  $history_budget = array();
 	private array                  $activity_events = array();
+	private array                  $routing_decision = array();
+	private array                  $context_inspector = array();
 
 	// v2.3.1: Conversation-scoped tool loading state.
 	private array  $loaded_groups      = array();
@@ -355,6 +357,8 @@ class PressArk_Agent {
 		$this->budget_report       = array();
 		$this->history_budget      = array();
 		$this->activity_events     = array();
+		$this->routing_decision    = array();
+		$this->context_inspector   = array();
 		$this->loaded_groups       = $loaded_groups;
 		$this->discover_calls      = 0;
 		$this->discover_zero_hits  = 0;
@@ -579,6 +583,28 @@ class PressArk_Agent {
 			if ( empty( $this->actual_provider ) ) {
 				$this->actual_provider = $provider;
 				$this->actual_model    = (string) ( $api_result['model'] ?? $this->ai->get_model() );
+			}
+
+			$this->context_inspector = $this->build_request_context_snapshot( $round, $tool_set, $messages );
+
+			if ( ! empty( $api_result['routing_decision'] ) && empty( $this->routing_decision ) ) {
+				$this->routing_decision = (array) $api_result['routing_decision'];
+				$this->record_activity_event(
+					'provider.routing',
+					'routing_decision_recorded',
+					'observed',
+					'provider',
+					'Recorded the provider and model route chosen for this run.',
+					array(
+						'round'               => $round,
+						'provider'            => (string) ( $this->routing_decision['provider'] ?? $provider ),
+						'model'               => (string) ( $this->routing_decision['model'] ?? $this->actual_model ),
+						'routing_basis'       => (string) ( $this->routing_decision['selection']['basis'] ?? '' ),
+						'requires_tools'      => ! empty( $this->routing_decision['capability_assumptions']['requires_tools'] ),
+						'supports_tool_search'=> ! empty( $this->routing_decision['capability_assumptions']['supports_tool_search'] ),
+						'fallback_candidates' => (array) ( $this->routing_decision['fallback']['considered'] ?? array() ),
+					)
+				);
 			}
 
 			if ( ! empty( $api_result['fallback_used'] ) ) {
@@ -1098,6 +1124,18 @@ class PressArk_Agent {
 			if ( $this->discover_calls > self::MAX_DISCOVER_CALLS ) {
 				$this->emit_step( 'reading', $name, $tc['arguments'] );
 				$this->emit_step( 'done', $name, $tc['arguments'] );
+				$this->record_activity_event(
+					'tool.discovery',
+					'discover_budget_reached',
+					'degraded',
+					'agent',
+					'Tool discovery hit the configured call budget.',
+					array(
+						'query'          => sanitize_text_field( (string) $query ),
+						'discover_calls' => $this->discover_calls,
+						'loaded_groups'  => array_values( array_unique( $this->loaded_groups ) ),
+					)
+				);
 				return array(
 					'tool_use_id' => $tc['id'],
 					'result'      => array(
@@ -1118,6 +1156,22 @@ class PressArk_Agent {
 
 			if ( empty( $results ) ) {
 				$this->discover_zero_hits++;
+				$this->record_activity_event(
+					'tool.discovery',
+					$this->discover_zero_hits >= 3 ? 'discover_repeated_misfire' : 'discover_no_hits',
+					$this->discover_zero_hits >= 3 ? 'degraded' : 'observed',
+					'agent',
+					$this->discover_zero_hits >= 3
+						? 'Repeated discovery attempts failed to find a visible tool family.'
+						: 'Discovery returned no visible candidates for this query.',
+					array(
+						'query'             => sanitize_text_field( (string) $query ),
+						'zero_hit_count'    => $this->discover_zero_hits,
+						'discover_calls'    => $this->discover_calls,
+						'loaded_groups'     => array_values( array_unique( $this->loaded_groups ) ),
+						'requested_families'=> PressArk_Tool_Catalog::instance()->match_groups( (string) $query ),
+					)
+				);
 			}
 
 			$this->emit_step( 'reading', $name, $tc['arguments'] );
@@ -1307,6 +1361,7 @@ class PressArk_Agent {
 				) ),
 				'deferred_groups' => $deferred_groups,
 				'discover_calls'  => $this->discover_calls,
+				'discover_zero_hits' => $this->discover_zero_hits,
 				'load_calls'      => $this->load_calls,
 				'initial_count'   => $this->initial_tool_count,
 				'final_count'     => $tool_set['tool_count'] ?? 0,
@@ -1323,8 +1378,13 @@ class PressArk_Agent {
 				(array) ( $tool_set['effective_visible_tools'] ?? $tool_set['tool_names'] ?? array() )
 			) ),
 			'permission_surface' => (array) ( $tool_set['permission_surface'] ?? array() ),
+			'routing_decision'   => $this->routing_decision,
 			'activity_events'    => $this->activity_events,
 		) );
+		$context_inspector = $this->build_context_inspector( $tool_set, $checkpoint );
+		if ( ! empty( $context_inspector ) ) {
+			$base['context_inspector'] = $context_inspector;
+		}
 
 		// v2.4.0: Include checkpoint for frontend round-trip.
 		if ( $checkpoint && ! $checkpoint->is_empty() ) {
@@ -1975,10 +2035,7 @@ class PressArk_Agent {
 			);
 		}
 
-		$tool_set['prompt_assembly'] = array(
-			'stable_sections'   => array_values( array_unique( (array) ( $prompt_sections['labels']['stable'] ?? array() ) ) ),
-			'volatile_sections' => array_values( array_unique( (array) ( $prompt_sections['labels']['volatile'] ?? array() ) ) ),
-		);
+		$tool_set['prompt_assembly'] = $this->describe_round_prompt_assembly( $prompt_sections );
 
 		return $this->compose_round_prompt_sections( $prompt_sections );
 
@@ -2090,6 +2147,7 @@ class PressArk_Agent {
 				'stable'   => array(),
 				'volatile' => array(),
 			),
+			'inspector' => array(),
 		);
 		$site_notes   = $this->resolve_site_notes( $message );
 		$verification = PressArk_Execution_Ledger::verification_summary( $checkpoint->get_execution() );
@@ -2220,7 +2278,480 @@ class PressArk_Agent {
 			);
 		}
 
+		$sections['inspector'] = array(
+			'site_notes_included'  => '' !== trim( $site_notes ),
+			'site_notes_preview'   => $this->preview_context_text( $site_notes, 220 ),
+			'dynamic_skill_names'  => $this->resolve_dynamic_skill_names( $task_type ),
+			'conditional_blocks'   => $this->resolve_conditional_prompt_blocks(
+				$task_type,
+				$screen,
+				(array) ( $this->loaded_groups ?: ( $tool_set['groups'] ?? array() ) )
+			),
+			'site_profile_snapshots' => $this->extract_site_profile_snapshot_summaries( $checkpoint->get_read_state() ),
+		);
+
 		return $sections;
+	}
+
+	private function describe_round_prompt_assembly( array $prompt_sections ): array {
+		return array(
+			'stable_sections'   => array_values( array_unique( (array) ( $prompt_sections['labels']['stable'] ?? array() ) ) ),
+			'volatile_sections' => array_values( array_unique( (array) ( $prompt_sections['labels']['volatile'] ?? array() ) ) ),
+			'stable_blocks'     => $this->describe_prompt_blocks(
+				(array) ( $prompt_sections['stable'] ?? array() ),
+				(array) ( $prompt_sections['labels']['stable'] ?? array() )
+			),
+			'volatile_blocks'   => $this->describe_prompt_blocks(
+				(array) ( $prompt_sections['volatile'] ?? array() ),
+				(array) ( $prompt_sections['labels']['volatile'] ?? array() )
+			),
+			'inspector'         => is_array( $prompt_sections['inspector'] ?? null ) ? $prompt_sections['inspector'] : array(),
+		);
+	}
+
+	private function describe_prompt_blocks( array $blocks, array $labels ): array {
+		$described = array();
+
+		foreach ( array_values( $blocks ) as $index => $content ) {
+			$content = is_string( $content ) ? trim( $content ) : '';
+			if ( '' === $content ) {
+				continue;
+			}
+
+			$label = sanitize_key( (string) ( $labels[ $index ] ?? 'prompt_block_' . $index ) );
+			$described[] = array(
+				'id'      => $label,
+				'label'   => $this->prompt_block_title( $label ),
+				'tokens'  => $this->estimate_inspector_tokens( $content ),
+				'chars'   => mb_strlen( $content ),
+				'lines'   => max( 1, substr_count( $content, "\n" ) + 1 ),
+				'preview' => $this->preview_context_text( $content, 220 ),
+			);
+		}
+
+		return $described;
+	}
+
+	private function prompt_block_title( string $label ): string {
+		return match ( $label ) {
+			'automation_context'    => 'Automation Context',
+			'conditional_blocks'    => 'Conditional Prompt Blocks',
+			'task_scoped_skills'    => 'Task-Scoped Skills',
+			'trusted_system_facts'  => 'Trusted System Facts',
+			'verified_evidence'     => 'Verified Evidence',
+			'derived_summaries'     => 'Derived Summaries',
+			'untrusted_site_content'=> 'Untrusted Site Content',
+			'execution_guard'       => 'Execution Guard',
+			'pending_confirmation'  => 'Pending Confirmation',
+			'execution_plan'        => 'Execution Plan',
+			'generation_order'      => 'Generation Ordering',
+			'environment_note'      => 'Environment Note',
+			'capability_map'        => 'Capability Map',
+			default                 => ucwords( str_replace( '_', ' ', $label ) ),
+		};
+	}
+
+	private function resolve_dynamic_skill_names( string $task_type ): array {
+		$skills = array_values( array_filter( array_map(
+			'sanitize_key',
+			PressArk_Skills::skills_for_task( $task_type )
+		) ) );
+
+		if ( ! defined( 'ELEMENTOR_VERSION' ) && in_array( $task_type, array( 'generate', 'edit' ), true ) ) {
+			$skills[] = 'block_editor';
+		}
+
+		return array_values( array_unique( array_filter( $skills ) ) );
+	}
+
+	private function resolve_conditional_prompt_blocks( string $task_type, string $screen, array $loaded_groups ): array {
+		$blocks = array();
+
+		if ( defined( 'ELEMENTOR_VERSION' ) && ( in_array( $task_type, array( 'edit', 'generate' ), true ) || str_contains( $screen, 'elementor' ) ) ) {
+			$blocks[] = 'elementor';
+		}
+
+		$needs_wc_block = in_array( 'woocommerce', $loaded_groups, true ) || str_contains( $screen, 'woocommerce' );
+		if ( class_exists( 'WooCommerce' ) && $needs_wc_block ) {
+			$blocks[] = 'woocommerce';
+		}
+
+		if ( function_exists( 'wp_is_block_theme' ) && wp_is_block_theme() && in_array( $task_type, array( 'edit', 'generate' ), true ) ) {
+			$blocks[] = 'fse';
+		}
+
+		return array_values( array_unique( $blocks ) );
+	}
+
+	private function extract_site_profile_snapshot_summaries( array $snapshots ): array {
+		$matches = array();
+		$snapshots = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_snapshot_collection( $snapshots )
+			: array();
+
+		foreach ( $snapshots as $snapshot ) {
+			$tool_name = sanitize_key( (string) ( $snapshot['tool_name'] ?? '' ) );
+			if ( ! in_array( $tool_name, array( 'view_site_profile', 'get_brand_profile' ), true ) ) {
+				continue;
+			}
+
+			$matches[] = array_filter( array(
+				'tool_name'     => $tool_name,
+				'summary'       => sanitize_text_field( (string) ( $snapshot['summary'] ?? '' ) ),
+				'freshness'     => sanitize_key( (string) ( $snapshot['freshness'] ?? '' ) ),
+				'completeness'  => sanitize_key( (string) ( $snapshot['completeness'] ?? '' ) ),
+				'captured_at'   => sanitize_text_field( (string) ( $snapshot['captured_at'] ?? '' ) ),
+			), static function ( $value ) {
+				return '' !== (string) $value;
+			} );
+		}
+
+		return $matches;
+	}
+
+	private function estimate_inspector_tokens( $value ): int {
+		if ( $this->budget_manager instanceof PressArk_Token_Budget_Manager ) {
+			return $this->budget_manager->estimate_value_tokens( $value );
+		}
+
+		$serialized = is_string( $value ) ? $value : wp_json_encode( $value );
+		if ( ! is_string( $serialized ) || '' === $serialized ) {
+			return 0;
+		}
+
+		return (int) ceil( mb_strlen( $serialized ) / 4 );
+	}
+
+	private function preview_context_text( string $text, int $max = 180 ): string {
+		$text = trim( preg_replace( '/\s+/u', ' ', $text ) );
+		if ( '' === $text ) {
+			return '';
+		}
+
+		return mb_strlen( $text ) > $max
+			? mb_substr( $text, 0, max( 0, $max - 3 ) ) . '...'
+			: $text;
+	}
+
+	private function summarize_context_messages( array $messages ): array {
+		$canonical = class_exists( 'PressArk_Replay_Integrity' )
+			? PressArk_Replay_Integrity::canonicalize_messages( $messages )
+			: $messages;
+		$canonical = is_array( $canonical ) ? $canonical : array();
+		$role_counts = array();
+		$items       = array();
+
+		foreach ( $canonical as $message ) {
+			if ( ! is_array( $message ) ) {
+				continue;
+			}
+
+			$role = sanitize_key( (string) ( $message['role'] ?? 'unknown' ) );
+			if ( '' === $role ) {
+				$role = 'unknown';
+			}
+			$role_counts[ $role ] = (int) ( $role_counts[ $role ] ?? 0 ) + 1;
+		}
+
+		foreach ( array_slice( $canonical, -24 ) as $message ) {
+			if ( ! is_array( $message ) ) {
+				continue;
+			}
+
+			$role    = sanitize_key( (string) ( $message['role'] ?? 'unknown' ) );
+			$content = $message['content'] ?? '';
+			$kind    = 'message';
+			$preview = '';
+			$details = array();
+
+			if ( 'assistant' === $role && ! empty( $message['tool_calls'] ) && is_array( $message['tool_calls'] ) ) {
+				$kind = 'assistant_tool_calls';
+				$tool_names = array_values( array_filter( array_map(
+					static function ( array $call ): string {
+						return sanitize_key( (string) ( $call['function']['name'] ?? '' ) );
+					},
+					(array) $message['tool_calls']
+				) ) );
+				$preview = ! empty( $tool_names ) ? implode( ', ', $tool_names ) : 'tool calls';
+				$details['tool_call_count'] = count( (array) $message['tool_calls'] );
+			} elseif ( 'tool' === $role ) {
+				$kind = 'tool_result';
+				$preview = is_scalar( $content ) ? (string) $content : (string) wp_json_encode( $content );
+				$details['tool_call_id'] = sanitize_text_field( (string) ( $message['tool_call_id'] ?? '' ) );
+			} else {
+				$preview = is_scalar( $content ) ? (string) $content : (string) wp_json_encode( $content );
+			}
+
+			$preview = $this->preview_context_text( $preview, 140 );
+			$items[] = array_filter( array(
+				'role'    => $role,
+				'kind'    => $kind,
+				'chars'   => is_string( $preview ) ? mb_strlen( $preview ) : 0,
+				'preview' => $preview,
+			) + $details, static function ( $value ) {
+				return ! ( is_int( $value ) ? 0 === $value : '' === (string) $value );
+			} );
+		}
+
+		return array(
+			'total_messages' => count( $canonical ),
+			'role_counts'    => $role_counts,
+			'items'          => $items,
+		);
+	}
+
+	private function simplify_hidden_decisions( array $hidden_decisions ): array {
+		$rows = array();
+
+		foreach ( $hidden_decisions as $tool_name => $decision ) {
+			if ( ! is_array( $decision ) ) {
+				continue;
+			}
+
+			$rows[] = array_filter( array(
+				'tool'              => sanitize_key( (string) $tool_name ),
+				'verdict'           => sanitize_key( (string) ( $decision['verdict'] ?? '' ) ),
+				'source'            => sanitize_key( (string) ( $decision['source'] ?? '' ) ),
+				'reasons'           => array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $decision['reasons'] ?? array() ) ) ) ),
+				'reason_codes'      => array_values( array_filter( array_map( 'sanitize_key', (array) ( $decision['visibility']['reason_codes'] ?? array() ) ) ) ),
+				'approval_mode'     => sanitize_key( (string) ( $decision['approval']['mode'] ?? '' ) ),
+				'entitlement_basis' => sanitize_key( (string) ( $decision['entitlement']['basis'] ?? '' ) ),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			} );
+		}
+
+		return $rows;
+	}
+
+	private function simplify_read_snapshots( array $snapshots ): array {
+		$items = class_exists( 'PressArk_Read_Metadata' )
+			? PressArk_Read_Metadata::sanitize_snapshot_collection( $snapshots )
+			: array();
+		$rows  = array();
+
+		foreach ( $items as $snapshot ) {
+			$rows[] = array_filter( array(
+				'handle'         => sanitize_text_field( (string) ( $snapshot['handle'] ?? '' ) ),
+				'tool_name'      => sanitize_key( (string) ( $snapshot['tool_name'] ?? '' ) ),
+				'resource_uri'   => sanitize_text_field( (string) ( $snapshot['resource_uri'] ?? '' ) ),
+				'summary'        => sanitize_text_field( (string) ( $snapshot['summary'] ?? '' ) ),
+				'freshness'      => sanitize_key( (string) ( $snapshot['freshness'] ?? '' ) ),
+				'completeness'   => sanitize_key( (string) ( $snapshot['completeness'] ?? '' ) ),
+				'trust_class'    => sanitize_key( (string) ( $snapshot['trust_class'] ?? '' ) ),
+				'provider'       => sanitize_key( (string) ( $snapshot['provider'] ?? '' ) ),
+				'captured_at'    => sanitize_text_field( (string) ( $snapshot['captured_at'] ?? '' ) ),
+				'stale_at'       => sanitize_text_field( (string) ( $snapshot['stale_at'] ?? '' ) ),
+				'stale_reason'   => sanitize_text_field( (string) ( $snapshot['stale_reason'] ?? '' ) ),
+				'provenance'     => is_array( $snapshot['provenance'] ?? null ) ? $snapshot['provenance'] : array(),
+				'target_post_ids'=> array_values( array_map( 'absint', (array) ( $snapshot['target_post_ids'] ?? array() ) ) ),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			} );
+		}
+
+		return $rows;
+	}
+
+	private function simplify_replay_events( array $events ): array {
+		$rows = array();
+
+		foreach ( array_slice( $events, -16 ) as $event ) {
+			if ( ! is_array( $event ) ) {
+				continue;
+			}
+
+			$rows[] = array_filter( array(
+				'type'                     => sanitize_key( (string) ( $event['type'] ?? '' ) ),
+				'phase'                    => sanitize_key( (string) ( $event['phase'] ?? '' ) ),
+				'reason'                   => sanitize_key( (string) ( $event['reason'] ?? '' ) ),
+				'round'                    => max( 0, (int) ( $event['round'] ?? 0 ) ),
+				'dropped_messages'         => max( 0, (int) ( $event['dropped_messages'] ?? 0 ) ),
+				'dropped_rounds'           => max( 0, (int) ( $event['dropped_rounds'] ?? 0 ) ),
+				'kept_rounds'              => max( 0, (int) ( $event['kept_rounds'] ?? 0 ) ),
+				'inserted_missing_results' => max( 0, (int) ( $event['inserted_missing_results'] ?? 0 ) ),
+				'dropped_orphan_results'   => max( 0, (int) ( $event['dropped_orphan_results'] ?? 0 ) ),
+				'dropped_duplicate_results'=> max( 0, (int) ( $event['dropped_duplicate_results'] ?? 0 ) ),
+				'tool_name'                => sanitize_key( (string) ( $event['tool_name'] ?? '' ) ),
+				'artifact_uri'             => sanitize_text_field( (string) ( $event['artifact_uri'] ?? '' ) ),
+				'at'                       => sanitize_text_field( (string) ( $event['at'] ?? '' ) ),
+			), static function ( $value ) {
+				return ! ( is_int( $value ) ? 0 === $value : '' === (string) $value );
+			} );
+		}
+
+		return $rows;
+	}
+
+	private function simplify_replacements( array $journal ): array {
+		$entries = class_exists( 'PressArk_Replay_Integrity' )
+			? PressArk_Replay_Integrity::sanitize_replacement_journal( $journal )
+			: array();
+		$rows    = array();
+
+		foreach ( $entries as $entry ) {
+			$replacement = $entry['replacement'] ?? array();
+			$preview     = '';
+			if ( is_array( $replacement ) ) {
+				$json = wp_json_encode( $replacement );
+				$preview = is_string( $json ) ? $json : '';
+			} elseif ( is_scalar( $replacement ) ) {
+				$preview = (string) $replacement;
+			}
+
+			$rows[] = array_filter( array(
+				'tool_use_id'    => sanitize_text_field( (string) ( $entry['tool_use_id'] ?? '' ) ),
+				'tool_name'      => sanitize_key( (string) ( $entry['tool_name'] ?? '' ) ),
+				'reason'         => sanitize_key( (string) ( $entry['reason'] ?? '' ) ),
+				'round'          => max( 0, (int) ( $entry['round'] ?? 0 ) ),
+				'inline_tokens'  => max( 0, (int) ( $entry['inline_tokens'] ?? 0 ) ),
+				'stored_at'      => sanitize_text_field( (string) ( $entry['stored_at'] ?? '' ) ),
+				'artifact_uri'   => sanitize_text_field( (string) ( $entry['artifact_uri'] ?? '' ) ),
+				'replacement_preview' => $this->preview_context_text( $preview, 140 ),
+			), static function ( $value ) {
+				return ! ( is_int( $value ) ? 0 === $value : '' === (string) $value );
+			} );
+		}
+
+		return $rows;
+	}
+
+	private function build_token_footprint_snapshot( array $tool_set, array $provider_request ): array {
+		$budget         = ! empty( $tool_set['budget'] ) ? (array) $tool_set['budget'] : (array) $this->budget_report;
+		$prompt_assembly = (array) ( $tool_set['prompt_assembly'] ?? array() );
+		$dynamic_blocks = array();
+
+		foreach ( (array) ( $prompt_assembly['stable_blocks'] ?? array() ) as $block ) {
+			if ( is_array( $block ) ) {
+				$block['bucket'] = 'stable';
+				$dynamic_blocks[] = $block;
+			}
+		}
+		foreach ( (array) ( $prompt_assembly['volatile_blocks'] ?? array() ) as $block ) {
+			if ( is_array( $block ) ) {
+				$block['bucket'] = 'volatile';
+				$dynamic_blocks[] = $block;
+			}
+		}
+
+		return array_filter( array(
+			'estimated_prompt_tokens' => (int) ( $budget['estimated_prompt_tokens'] ?? 0 ),
+			'estimated_output_tokens' => (int) ( $budget['estimated_output_tokens'] ?? 0 ),
+			'remaining_tokens'       => (int) ( $budget['remaining_tokens'] ?? 0 ),
+			'segments'               => (array) ( $budget['segments'] ?? array() ),
+			'prompt_sections'        => (array) ( $budget['prompt_sections'] ?? array() ),
+			'cached_blocks'          => (array) ( $provider_request['cached_blocks'] ?? array() ),
+			'dynamic_blocks'         => $dynamic_blocks,
+		), static function ( $value ) {
+			return ! ( is_array( $value ) ? empty( $value ) : 0 === $value );
+		} );
+	}
+
+	private function build_request_context_snapshot( int $round, array $tool_set, array $messages ): array {
+		$provider_request = $this->ai->get_last_request_snapshot();
+		$prompt_assembly  = (array) ( $tool_set['prompt_assembly'] ?? array() );
+		$inspector_meta   = is_array( $prompt_assembly['inspector'] ?? null ) ? $prompt_assembly['inspector'] : array();
+		$permission_surface = (array) ( $tool_set['permission_surface'] ?? array() );
+
+		return array(
+			'contract' => 'context_inspector',
+			'version'  => 1,
+			'round'    => $round,
+			'task_type'=> $this->task_type,
+			'provider_request' => $provider_request,
+			'prompt'   => array_filter( array(
+				'stable_blocks'        => (array) ( $prompt_assembly['stable_blocks'] ?? array() ),
+				'volatile_blocks'      => (array) ( $prompt_assembly['volatile_blocks'] ?? array() ),
+				'stable_section_ids'   => (array) ( $prompt_assembly['stable_sections'] ?? array() ),
+				'volatile_section_ids' => (array) ( $prompt_assembly['volatile_sections'] ?? array() ),
+				'capability_map_variant' => sanitize_key( (string) ( $tool_set['capability_map_variant'] ?? '' ) ),
+				'capability_map_included' => ! empty( $tool_set['capability_map'] ),
+				'dynamic_skill_names'  => array_values( array_filter( array_map( 'sanitize_key', (array) ( $inspector_meta['dynamic_skill_names'] ?? array() ) ) ) ),
+				'conditional_blocks'   => array_values( array_filter( array_map( 'sanitize_key', (array) ( $inspector_meta['conditional_blocks'] ?? array() ) ) ) ),
+				'site_notes'           => ! empty( $inspector_meta['site_notes_included'] )
+					? array(
+						'included' => true,
+						'preview'  => sanitize_text_field( (string) ( $inspector_meta['site_notes_preview'] ?? '' ) ),
+					)
+					: array(),
+				'site_profiles'        => (array) ( $inspector_meta['site_profile_snapshots'] ?? array() ),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : false === $value || '' === (string) $value );
+			} ),
+			'tool_surface' => array_filter( array(
+				'context'          => sanitize_key( (string) ( $permission_surface['context'] ?? '' ) ),
+				'visible_tools'    => array_values( array_filter( array_map( 'sanitize_key', (array) ( $permission_surface['visible_tools'] ?? array() ) ) ) ),
+				'hidden_tools'     => array_values( array_filter( array_map( 'sanitize_key', (array) ( $permission_surface['hidden_tools'] ?? array() ) ) ) ),
+				'hidden_summary'   => (array) ( $permission_surface['hidden_summary'] ?? array() ),
+				'hidden_decisions' => $this->simplify_hidden_decisions( (array) ( $permission_surface['hidden_decisions'] ?? array() ) ),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			} ),
+			'messages'        => $this->summarize_context_messages( $messages ),
+			'token_footprint' => $this->build_token_footprint_snapshot( $tool_set, $provider_request ),
+		);
+	}
+
+	private function build_context_inspector( array $tool_set, ?PressArk_Checkpoint $checkpoint = null ): array {
+		$inspector = is_array( $this->context_inspector ) ? $this->context_inspector : array();
+		if ( empty( $inspector ) ) {
+			$inspector = array(
+				'contract' => 'context_inspector',
+				'version'  => 1,
+				'prompt'   => array(
+					'capability_map_variant' => sanitize_key( (string) ( $tool_set['capability_map_variant'] ?? '' ) ),
+				),
+				'tool_surface' => array_filter( array(
+					'visible_tools'  => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_set['effective_visible_tools'] ?? array() ) ) ) ),
+					'hidden_summary' => (array) ( $tool_set['permission_surface']['hidden_summary'] ?? array() ),
+				), static function ( $value ) {
+					return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+				} ),
+				'token_footprint' => $this->build_token_footprint_snapshot( $tool_set, $this->ai->get_last_request_snapshot() ),
+			);
+		}
+
+		if ( $checkpoint ) {
+			$read_rows    = $this->simplify_read_snapshots( $checkpoint->get_read_state() );
+			$trust_counts = array(
+				'trusted_system'    => 0,
+				'derived_summary'   => 0,
+				'untrusted_content' => 0,
+				'stale'             => 0,
+			);
+			foreach ( $read_rows as $row ) {
+				$trust = sanitize_key( (string) ( $row['trust_class'] ?? '' ) );
+				if ( isset( $trust_counts[ $trust ] ) ) {
+					++$trust_counts[ $trust ];
+				}
+				if ( 'stale' === ( $row['freshness'] ?? '' ) ) {
+					++$trust_counts['stale'];
+				}
+			}
+
+			$replay_state = $checkpoint->get_replay_state();
+			$compaction   = (array) ( $checkpoint->get_context_capsule()['compaction'] ?? array() );
+
+			$inspector['prompt']['site_profiles'] = $this->extract_site_profile_snapshot_summaries( $checkpoint->get_read_state() );
+			$inspector['reads'] = array(
+				'summary'   => $trust_counts,
+				'snapshots' => $read_rows,
+			);
+			$inspector['replay'] = array_filter( array(
+				'compaction'  => $compaction,
+				'events'      => $this->simplify_replay_events( (array) ( $replay_state['events'] ?? array() ) ),
+				'last_resume' => is_array( $replay_state['last_resume'] ?? null ) ? $replay_state['last_resume'] : array(),
+			), static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			} );
+			$inspector['replacements'] = $this->simplify_replacements( $checkpoint->get_replay_replacements() );
+		}
+
+		if ( ! empty( $this->routing_decision ) ) {
+			$inspector['routing'] = $this->routing_decision;
+		}
+
+		return $inspector;
 	}
 
 	private function append_round_prompt_section( array &$bucket, array &$labels, string $label, string $content ): void {

@@ -73,7 +73,7 @@ class PressArk_Reservation {
 			);
 		}
 
-		$bank_result = $this->token_bank->reserve( $estimated_icus, $reservation_id, $tier, $model );
+		$bank_result = $this->token_bank->reserve( $estimated_icus, $reservation_id, $tier, $model, $estimated_tokens );
 
 		if ( empty( $bank_result['ok'] ) ) {
 			$this->ledger->fail( $reservation_id, 'Credit budget exhausted' );
@@ -92,6 +92,7 @@ class PressArk_Reservation {
 
 	public function settle( string $reservation_id, array $actual_usage, string $tier ): array {
 		$is_byok = PressArk_Entitlements::is_byok();
+		$ledger_entry = $this->ledger->get_by_reservation( $reservation_id );
 
 		$model = (string) ( $actual_usage['model'] ?? '' );
 		$resolved = $this->token_bank->resolve_icus( array(
@@ -128,12 +129,22 @@ class PressArk_Reservation {
 
 		$this->ledger->settle( $reservation_id, $settle_payload );
 
+		$raw_actual_tokens = (int) ( $bank_status['raw_actual_tokens'] ?? $settle_payload['actual_tokens'] ?? 0 );
+		$settlement_delta  = $this->build_settlement_delta(
+			(int) ( $ledger_entry['estimated_icus'] ?? 0 ),
+			(int) ( $bank_status['actual_icus'] ?? $settle_payload['actual_icus'] ?? 0 ),
+			(int) ( $ledger_entry['estimated_tokens'] ?? 0 ),
+			$raw_actual_tokens,
+			$is_byok ? 'provider_usage' : 'bank'
+		);
+
 		return array_merge(
 			is_array( $bank_status ) ? $bank_status : array(),
 			array(
 				'actual_icus'      => (int) ( $bank_status['actual_icus'] ?? $settle_payload['actual_icus'] ?? 0 ),
-				'raw_actual_tokens' => (int) ( $bank_status['raw_actual_tokens'] ?? $settle_payload['actual_tokens'] ?? 0 ),
+				'raw_actual_tokens' => $raw_actual_tokens,
 				'actual_tokens'    => (int) ( $bank_status['actual_tokens'] ?? $settle_payload['actual_tokens'] ?? 0 ),
+				'settlement_delta' => $settlement_delta,
 			)
 		);
 	}
@@ -191,6 +202,32 @@ class PressArk_Reservation {
 		return array(
 			'input_tokens'  => $input_tokens,
 			'output_tokens' => $output_tokens,
+		);
+	}
+
+	private function build_settlement_delta( int $estimated_icus, int $settled_icus, int $estimated_tokens, int $actual_raw_tokens, string $settlement_authority ): array {
+		$delta     = $settled_icus - $estimated_icus;
+		$direction = 0 === $delta ? 'none' : ( $delta > 0 ? 'up' : 'down' );
+
+		if ( 'none' === $direction ) {
+			$summary = 'The plugin estimate matched the later settled ICU charge.';
+		} elseif ( 'up' === $direction ) {
+			$summary = 'The bank settled more ICUs than the plugin estimated after provider usage was finalized.';
+		} else {
+			$summary = 'The bank settled fewer ICUs than the plugin estimated after provider usage was finalized.';
+		}
+
+		return array(
+			'version'              => 1,
+			'estimate_authority'   => 'plugin_local_advisory',
+			'settlement_authority' => $settlement_authority,
+			'estimated_icus'       => max( 0, $estimated_icus ),
+			'settled_icus'         => max( 0, $settled_icus ),
+			'delta_icus'           => $delta,
+			'delta_direction'      => $direction,
+			'estimated_raw_tokens' => max( 0, $estimated_tokens ),
+			'actual_raw_tokens'    => max( 0, $actual_raw_tokens ),
+			'summary'              => $summary,
 		);
 	}
 }

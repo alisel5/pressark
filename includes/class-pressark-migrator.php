@@ -17,7 +17,7 @@ class PressArk_Migrator {
 	/**
 	 * Highest schema version in the migration chain.
 	 */
-	const LATEST = 14;
+	const LATEST = 16;
 
 	/**
 	 * Option key where the current schema version is stored.
@@ -222,6 +222,55 @@ class PressArk_Migrator {
 				'version' => 13,
 				'message' => sprintf( 'Missing idx_event_trigger index on %s.', $automations_table ),
 			);
+		}
+
+		// v15: Queue-native lineage and handoff capsules for runs/tasks.
+		foreach ( array( 'parent_run_id', 'root_run_id', 'handoff_capsule' ) as $column ) {
+			if ( self::table_exists( $runs_table ) && ! self::table_has_column( $runs_table, $column ) ) {
+				$issues[] = array(
+					'version' => 15,
+					'message' => sprintf( 'Missing %1$s column on %2$s.', $column, $runs_table ),
+				);
+			}
+		}
+		if ( self::table_exists( $runs_table ) && ! self::table_has_index( $runs_table, 'idx_parent_run_created' ) ) {
+			$issues[] = array(
+				'version' => 15,
+				'message' => sprintf( 'Missing idx_parent_run_created index on %s.', $runs_table ),
+			);
+		}
+		if ( self::table_exists( $runs_table ) && ! self::table_has_index( $runs_table, 'idx_root_run_created' ) ) {
+			$issues[] = array(
+				'version' => 15,
+				'message' => sprintf( 'Missing idx_root_run_created index on %s.', $runs_table ),
+			);
+		}
+
+		foreach ( array( 'run_id', 'parent_run_id', 'root_run_id', 'handoff_capsule' ) as $column ) {
+			if ( self::table_exists( $tasks_table ) && ! self::table_has_column( $tasks_table, $column ) ) {
+				$issues[] = array(
+					'version' => 15,
+					'message' => sprintf( 'Missing %1$s column on %2$s.', $column, $tasks_table ),
+				);
+			}
+		}
+		foreach ( array( 'idx_run_created', 'idx_parent_run_created', 'idx_root_run_created' ) as $index_name ) {
+			if ( self::table_exists( $tasks_table ) && ! self::table_has_index( $tasks_table, $index_name ) ) {
+				$issues[] = array(
+					'version' => 15,
+					'message' => sprintf( 'Missing %1$s index on %2$s.', $index_name, $tasks_table ),
+				);
+			}
+		}
+
+		$events_table = $wpdb->prefix . 'pressark_activity_events';
+		foreach ( array( 'idx_event_type_created', 'idx_reason_created' ) as $index_name ) {
+			if ( self::table_exists( $events_table ) && ! self::table_has_index( $events_table, $index_name ) ) {
+				$issues[] = array(
+					'version' => 16,
+					'message' => sprintf( 'Missing %1$s index on %2$s.', $index_name, $events_table ),
+				);
+			}
 		}
 
 		usort( $issues, static function ( array $a, array $b ): int {
@@ -559,6 +608,42 @@ class PressArk_Migrator {
 	}
 
 	/**
+	 * v15: Queue-native lineage and handoff capsule columns on runs/tasks.
+	 */
+	private static function migrate_to_15(): bool {
+		global $wpdb;
+
+		dbDelta( PressArk_Run_Store::get_schema() );
+		dbDelta( PressArk_Task_Store::get_schema() );
+
+		$runs_table  = $wpdb->prefix . 'pressark_runs';
+		$tasks_table = $wpdb->prefix . 'pressark_tasks';
+
+		self::ensure_index( $runs_table, 'idx_parent_run_created', 'parent_run_id, created_at' );
+		self::ensure_index( $runs_table, 'idx_root_run_created', 'root_run_id, created_at' );
+		self::ensure_index( $tasks_table, 'idx_run_created', 'run_id, created_at' );
+		self::ensure_index( $tasks_table, 'idx_parent_run_created', 'parent_run_id, created_at' );
+		self::ensure_index( $tasks_table, 'idx_root_run_created', 'root_run_id, created_at' );
+
+		return true;
+	}
+
+	/**
+	 * v16: Activity-event indexes for policy diagnostics queries.
+	 */
+	private static function migrate_to_16(): bool {
+		global $wpdb;
+
+		dbDelta( PressArk_Activity_Event_Store::get_schema() );
+
+		$events_table = $wpdb->prefix . 'pressark_activity_events';
+		self::ensure_index( $events_table, 'idx_event_type_created', 'event_type, created_at' );
+		self::ensure_index( $events_table, 'idx_reason_created', 'reason, created_at' );
+
+		return true;
+	}
+
+	/**
 	 * Ensure a FULLTEXT index exists on a table.
 	 */
 	private static function ensure_fulltext_index( string $table, string $index_name, string $columns ): bool {
@@ -761,6 +846,16 @@ class PressArk_Migrator {
 				}
 				if ( ! self::table_has_index( $events_table, 'idx_correlation' ) ) {
 					return 'Activity events table is missing idx_correlation.';
+				}
+				return '';
+
+			case 16:
+				$events_table = $wpdb->prefix . 'pressark_activity_events';
+				if ( ! self::table_has_index( $events_table, 'idx_event_type_created' ) ) {
+					return 'Activity events table is missing idx_event_type_created.';
+				}
+				if ( ! self::table_has_index( $events_table, 'idx_reason_created' ) ) {
+					return 'Activity events table is missing idx_reason_created.';
 				}
 				return '';
 		}

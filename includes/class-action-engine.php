@@ -111,6 +111,22 @@ class PressArk_Action_Engine {
 
 			switch ( $preflight['action'] ?? PressArk_Preflight::ACTION_PROCEED ) {
 				case PressArk_Preflight::ACTION_BLOCK:
+					if ( class_exists( 'PressArk_Activity_Trace' ) ) {
+						PressArk_Activity_Trace::publish(
+							array(
+								'event_type' => 'tool.blocked',
+								'phase'      => 'preflight',
+								'status'     => 'blocked',
+								'reason'     => 'preflight_blocked',
+								'summary'    => 'Preflight blocked a tool call before execution.',
+								'payload'    => array(
+									'tool'  => $type,
+									'group' => PressArk_Operation_Registry::get_group( $type ),
+									'hint'  => (string) ( $preflight['hint'] ?? '' ),
+								),
+							)
+						);
+					}
 					return array(
 						'success'     => false,
 						'message'     => $preflight['reason'] ?? __( 'Blocked by preflight check.', 'pressark' ),
@@ -136,6 +152,27 @@ class PressArk_Action_Engine {
 						)
 					);
 
+					if ( class_exists( 'PressArk_Activity_Trace' ) ) {
+						PressArk_Activity_Trace::publish(
+							array(
+								'event_type' => 'tool.rerouted',
+								'phase'      => 'preflight',
+								'status'     => 'rerouted',
+								'reason'     => 'preflight_reroute',
+								'summary'    => 'Preflight rerouted a tool call to the canonical family.',
+								'payload'    => array(
+									'from'         => $type,
+									'to'           => (string) ( $preflight['tool'] ?? '' ),
+									'from_group'   => PressArk_Operation_Registry::get_group( $type ),
+									'to_group'     => PressArk_Operation_Registry::get_group( (string) ( $preflight['tool'] ?? '' ) ),
+									'reason'       => (string) ( $preflight['reason'] ?? '' ),
+									'hint'         => (string) ( $preflight['hint'] ?? '' ),
+									'input_family' => sanitize_key( (string) ( $preflight['family'] ?? '' ) ),
+								),
+							)
+						);
+					}
+
 					$rerouted_result = $this->execute_single( $rerouted_action, $skip_log );
 
 					// Annotate the result so the model knows a reroute happened.
@@ -156,6 +193,22 @@ class PressArk_Action_Engine {
 						'Rewrote tool params',
 						array( 'tool' => $type, 'reason' => $preflight['reason'] ?? '' )
 					);
+					if ( class_exists( 'PressArk_Activity_Trace' ) ) {
+						PressArk_Activity_Trace::publish(
+							array(
+								'event_type' => 'tool.rewritten',
+								'phase'      => 'preflight',
+								'status'     => 'adjusted',
+								'reason'     => 'preflight_rewrite',
+								'summary'    => 'Preflight rewrote tool parameters before execution.',
+								'payload'    => array(
+									'tool'   => $type,
+									'group'  => PressArk_Operation_Registry::get_group( $type ),
+									'reason' => (string) ( $preflight['reason'] ?? '' ),
+								),
+							)
+						);
+					}
 					break;
 
 				case PressArk_Preflight::ACTION_PROCEED:
@@ -199,6 +252,20 @@ class PressArk_Action_Engine {
 						$current_tier,
 						$usage_check
 					);
+					if ( class_exists( 'PressArk_Policy_Diagnostics' ) ) {
+						PressArk_Policy_Diagnostics::record_execution_denial(
+							(array) $usage_check['permission_decision'],
+							array(
+								'operation'  => $type,
+								'context'    => $exec_context,
+								'group'      => $tool_group,
+								'capability' => $tool_capability,
+								'meta'       => array(
+									'tier' => $current_tier,
+								),
+							)
+						);
+					}
 					return $usage_check;
 				}
 			}

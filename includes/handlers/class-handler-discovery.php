@@ -400,7 +400,8 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 					? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
 					: 'interactive',
 				array(
-					'tier' => class_exists( 'PressArk_License' ) ? ( new PressArk_License() )->get_tier() : 'free',
+					'tier'             => class_exists( 'PressArk_License' ) ? ( new PressArk_License() )->get_tier() : 'free',
+					'decision_purpose' => 'tool_visibility',
 				)
 			);
 			$visible_set = array_flip( $visible['visible_tool_names'] );

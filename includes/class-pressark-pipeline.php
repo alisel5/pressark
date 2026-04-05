@@ -256,6 +256,7 @@ class PressArk_Pipeline {
 			'cache_write_tokens',
 			'provider',
 			'model',
+			'routing_decision',
 			'agent_rounds',
 			'icu_spent',
 			'task_type',
@@ -321,6 +322,10 @@ class PressArk_Pipeline {
 
 		foreach ( array(
 			'billing_authority',
+			'billing_state',
+			'billing_service_state',
+			'billing_handshake_state',
+			'billing_spend_source',
 			'billing_tier',
 			'budget_pressure_state',
 			'monthly_icu_budget',
@@ -340,6 +345,9 @@ class PressArk_Pipeline {
 			if ( array_key_exists( $field, $token_status ) ) {
 				$budget[ $field ] = $token_status[ $field ];
 			}
+		}
+		if ( array_key_exists( 'settlement_delta', $token_status ) ) {
+			$budget['settlement_delta'] = $token_status['settlement_delta'];
 		}
 
 		$budget['fits_credit_budget'] = ! empty( $budget['is_byok'] )

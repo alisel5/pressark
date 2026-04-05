@@ -636,6 +636,10 @@ class PressArk_Entitlements {
 			'credits_packs'              => array(),
 			'budget_pressure_state'      => 'normal',
 			'billing_authority'          => self::is_byok() ? 'byok' : 'token_bank_provisional',
+			'billing_state'              => array(),
+			'billing_service_state'      => 'normal',
+			'billing_handshake_state'    => self::is_byok() ? 'byok' : 'provisional',
+			'billing_spend_source'       => self::is_byok() ? 'byok' : 'monthly_included',
 			'local_billing_contract_hash' => self::get_local_billing_contract_hash(),
 			'billing_contract_hash'      => self::get_local_billing_contract_hash(),
 			'billing_contract_mismatch'  => false,
@@ -672,10 +676,14 @@ class PressArk_Entitlements {
 			$info['raw_tokens_used']   = (int) ( $status['raw_tokens_used'] ?? 0 );
 			$info['budget_pressure_state'] = (string) ( $status['budget_pressure_state'] ?? 'normal' );
 			$info['billing_authority'] = (string) ( $status['billing_authority'] ?? 'token_bank_provisional' );
+			$info['billing_state']     = is_array( $status['billing_state'] ?? null ) ? (array) $status['billing_state'] : array();
+			$info['billing_service_state'] = (string) ( $status['billing_service_state'] ?? '' );
+			$info['billing_handshake_state'] = (string) ( $status['billing_handshake_state'] ?? '' );
+			$info['billing_spend_source'] = (string) ( $status['billing_spend_source'] ?? '' );
 			$info['billing_contract_hash'] = (string) ( $catalog['contract_hash'] ?? '' );
 			$info['billing_contract_mismatch'] = ! empty( $info['billing_contract_hash'] ) && $info['billing_contract_hash'] !== $info['local_billing_contract_hash'];
-			$info['verified_handshake']  = (bool) get_option( 'pressark_handshake_verified', false );
-			$info['provisional_handshake'] = ! $info['verified_handshake'];
+			$info['verified_handshake']  = ! empty( $status['verified_handshake'] );
+			$info['provisional_handshake'] = ! empty( $status['provisional_handshake'] );
 			$info['can_buy_credits']    = self::is_paid_tier( $billing_tier );
 			$info['tokens_used']       = $info['icus_used'];
 			$info['tokens_remaining']  = $info['icus_remaining'];
@@ -698,6 +706,14 @@ class PressArk_Entitlements {
 			$info['tokens_remaining'] = 0;
 			$info['billing_contract_hash'] = self::get_local_billing_contract_hash();
 			$info['billing_contract_mismatch'] = false;
+			$byok_snapshot = ( new PressArk_Token_Bank() )->get_financial_snapshot();
+			$info['billing_authority'] = (string) ( $byok_snapshot['billing_authority'] ?? 'byok' );
+			$info['billing_state'] = is_array( $byok_snapshot['billing_state'] ?? null ) ? (array) $byok_snapshot['billing_state'] : array();
+			$info['billing_service_state'] = (string) ( $byok_snapshot['billing_service_state'] ?? 'normal' );
+			$info['billing_handshake_state'] = (string) ( $byok_snapshot['billing_handshake_state'] ?? 'byok' );
+			$info['billing_spend_source'] = (string) ( $byok_snapshot['billing_spend_source'] ?? 'byok' );
+			$info['verified_handshake'] = false;
+			$info['provisional_handshake'] = false;
 		}
 
 		if ( 'free' === $tier ) {

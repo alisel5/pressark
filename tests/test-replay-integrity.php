@@ -118,6 +118,7 @@ require_once __DIR__ . '/../includes/class-pressark-replay-integrity.php';
 require_once __DIR__ . '/../includes/class-pressark-execution-ledger.php';
 require_once __DIR__ . '/../includes/class-pressark-checkpoint.php';
 require_once __DIR__ . '/../includes/class-pressark-tool-result-artifacts.php';
+require_once __DIR__ . '/helpers/harness-fixtures.php';
 
 $passed = 0;
 $failed = 0;
@@ -143,6 +144,21 @@ function assert_eq_ri( string $label, $expected, $actual ): void {
 		echo "  FAIL: {$label}\n";
 		echo '    Expected: ' . var_export( $expected, true ) . "\n";
 		echo '    Actual:   ' . var_export( $actual, true ) . "\n";
+	}
+}
+
+function assert_fixture_ri( string $label, bool $condition, string $detail = '' ): void {
+	global $passed, $failed;
+	if ( $condition ) {
+		$passed++;
+		echo "  PASS: {$label}\n";
+		return;
+	}
+
+	$failed++;
+	echo "  FAIL: {$label}\n";
+	if ( '' !== $detail ) {
+		echo "    {$detail}\n";
 	}
 }
 
@@ -300,6 +316,89 @@ assert_true_ri(
 		array( 'title' => 'Replay Test' )
 	)
 );
+
+function run_replay_fixture_scenario_ri( array $fixture ): array {
+	$input = (array) ( $fixture['input'] ?? array() );
+
+	switch ( (string) ( $fixture['kind'] ?? '' ) ) {
+		case 'repair_messages':
+			return PressArk_Replay_Integrity::repair_messages(
+				(array) ( $input['messages'] ?? array() ),
+				(string) ( $input['phase'] ?? 'provider_call' )
+			);
+
+		case 'round_compaction_window':
+			$result = PressArk_Replay_Integrity::select_round_compaction_window(
+				(array) ( $input['messages'] ?? array() ),
+				(int) ( $input['keep_rounds'] ?? 2 ),
+				(int) ( $input['fallback_tail'] ?? 4 )
+			);
+			$result['recent_messages_count']  = count( (array) ( $result['recent_messages'] ?? array() ) );
+			$result['dropped_messages_count'] = count( (array) ( $result['dropped_messages'] ?? array() ) );
+			return $result;
+
+		case 'artifact_reuse':
+			$report = str_repeat(
+				(string) ( $input['result']['report_line'] ?? 'Report line. ' ),
+				max( 1, (int) ( $input['result']['report_repeat'] ?? 1 ) )
+			);
+			$entry = array(
+				'tool_use_id' => (string) ( $input['tool_use_id'] ?? 'toolu_fixture' ),
+				'tool_name'   => (string) ( $input['tool_name'] ?? 'site_health' ),
+				'result'      => array(
+					'success' => ! empty( $input['result']['success'] ),
+					'message' => (string) ( $input['result']['message'] ?? '' ),
+					'data'    => array(
+						'report' => $report,
+					),
+				),
+			);
+
+			$first_artifacts = new PressArk_Tool_Result_Artifacts(
+				(string) ( $input['run_id'] ?? 'run_fixture' ),
+				(int) ( $input['site_id'] ?? 1 ),
+				(int) ( $input['user_id'] ?? 1 ),
+				(int) ( $input['first_round'] ?? 1 )
+			);
+			$first_prepared = $first_artifacts->prepare_batch( array( $entry ) );
+			$first_journal  = $first_artifacts->get_replacement_journal();
+
+			$second_artifacts = new PressArk_Tool_Result_Artifacts(
+				(string) ( $input['run_id'] ?? 'run_fixture' ),
+				(int) ( $input['site_id'] ?? 1 ),
+				(int) ( $input['user_id'] ?? 1 ),
+				(int) ( $input['second_round'] ?? 2 )
+			);
+			$second_prepared = $second_artifacts->prepare_batch( array( $entry ), $first_journal );
+			$reuse_events    = $second_artifacts->get_replacement_events();
+
+			$checkpoint = PressArk_Checkpoint::from_array( array() );
+			$checkpoint->set_last_replay_resume( (array) ( $input['resume'] ?? array() ) );
+			$checkpoint->merge_replay_replacements( $first_journal );
+			foreach ( $reuse_events as $event ) {
+				$checkpoint->add_replay_event( $event );
+			}
+
+			return array(
+				'first_artifactized'   => ! empty( $first_prepared[0]['_artifactized'] ?? false ) || ! empty( $first_prepared[0]['result']['_artifactized'] ?? false ),
+				'second_matches_first' => ( $first_prepared[0]['result'] ?? array() ) === ( $second_prepared[0]['result'] ?? array() ),
+				'reuse_event'          => $reuse_events[0] ?? array(),
+				'sidecar'              => $checkpoint->get_replay_sidecar(),
+			);
+	}
+
+	return array();
+}
+
+foreach ( pressark_test_load_json_fixtures( 'tests/fixtures/harness/replay' ) as $fixture ) {
+	$actual = run_replay_fixture_scenario_ri( $fixture );
+	pressark_test_assert_fixture_expectations(
+		'assert_fixture_ri',
+		'Fixture replay - ' . (string) ( $fixture['name'] ?? $fixture['_fixture_file'] ?? 'scenario' ),
+		$actual,
+		(array) ( $fixture['expect'] ?? array() )
+	);
+}
 
 echo "\nResults: {$passed} passed, {$failed} failed\n";
 exit( $failed > 0 ? 1 : 0 );

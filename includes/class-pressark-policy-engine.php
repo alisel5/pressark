@@ -238,6 +238,72 @@ class PressArk_Policy_Engine {
 		self::$rules = null;
 	}
 
+	/**
+	 * Return the compiled rule set for operator diagnostics.
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function get_compiled_rules(): array {
+		self::load_rules();
+
+		return array_values(
+			array_map(
+				static function ( array $rule, int $index ): array {
+					return self::export_rule( $rule, $index );
+				},
+				self::$rules ?? array(),
+				array_keys( self::$rules ?? array() )
+			)
+		);
+	}
+
+	/**
+	 * Inspect which rules match one operation/context surface.
+	 *
+	 * Intended for admin diagnostics. This does not execute the operation.
+	 *
+	 * @param string $operation_name Canonical operation name.
+	 * @param array  $params         Operation arguments.
+	 * @param string $context        Execution context.
+	 * @param array  $meta           Additional context.
+	 * @return array<string,mixed>
+	 */
+	public static function inspect(
+		string $operation_name,
+		array $params = array(),
+		string $context = self::CONTEXT_INTERACTIVE,
+		array $meta = array()
+	): array {
+		self::load_rules();
+
+		$operation  = PressArk_Operation_Registry::resolve( $operation_name );
+		$op_context = self::build_context( $operation_name, $operation, $params, $context, $meta );
+		$matched    = array(
+			self::DENY  => array(),
+			self::ASK   => array(),
+			self::ALLOW => array(),
+		);
+
+		foreach ( self::$rules as $index => $rule ) {
+			if ( ! empty( $rule['contexts'] ) && ! in_array( $op_context['context'], $rule['contexts'], true ) ) {
+				continue;
+			}
+
+			if ( self::rule_matches( $rule, $op_context ) ) {
+				$matched[ $rule['behavior'] ][] = self::export_rule( $rule, (int) $index );
+			}
+		}
+
+		return array(
+			'operation'     => $operation_name,
+			'context'       => $context,
+			'meta'          => $meta,
+			'op_context'    => $op_context,
+			'decision'      => self::evaluate( $operation_name, $params, $context, $meta ),
+			'matched_rules' => $matched,
+		);
+	}
+
 	// ═══════════════════════════════════════════════════════════════
 	//  RULE LOADING & COMPILATION
 	// ═══════════════════════════════════════════════════════════════
@@ -334,6 +400,35 @@ class PressArk_Policy_Engine {
 			'source'   => (string) ( $rule['source'] ?? 'custom' ),
 			'reason'   => (string) ( $rule['reason'] ?? '' ),
 			'contexts' => $contexts,
+		);
+	}
+
+	/**
+	 * Export one compiled rule into an admin-safe diagnostics row.
+	 *
+	 * @param array $rule  Compiled rule.
+	 * @param int   $index Stable in-request index.
+	 * @return array<string,mixed>
+	 */
+	private static function export_rule( array $rule, int $index ): array {
+		$value = $rule['value'] ?? '';
+		if ( is_callable( $value ) ) {
+			$value = '{callable}';
+		} elseif ( is_scalar( $value ) ) {
+			$value = sanitize_text_field( (string) $value );
+		} else {
+			$value = sanitize_text_field( wp_json_encode( $value ) ?: '' );
+		}
+
+		return array(
+			'index'    => $index,
+			'behavior' => sanitize_key( (string) ( $rule['behavior'] ?? '' ) ),
+			'match'    => sanitize_key( (string) ( $rule['match'] ?? '' ) ),
+			'value'    => (string) $value,
+			'priority' => (int) ( $rule['priority'] ?? 100 ),
+			'source'   => sanitize_key( (string) ( $rule['source'] ?? '' ) ),
+			'reason'   => sanitize_text_field( (string) ( $rule['reason'] ?? '' ) ),
+			'contexts' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $rule['contexts'] ?? array() ) ) ) ),
 		);
 	}
 

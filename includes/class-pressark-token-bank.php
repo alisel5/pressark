@@ -14,12 +14,22 @@ class PressArk_Token_Bank {
 
 	private string $server_url;
 	private string $site_token;
+	private const CONTACT_STATE_OPTION   = 'pressark_bank_contact_state';
+	private const HANDSHAKE_STATE_OPTION = 'pressark_bank_handshake_snapshot';
 
 	public function __construct() {
 		$this->server_url = defined( 'PRESSARK_TOKEN_BANK_URL' )
 			? PRESSARK_TOKEN_BANK_URL
 			: get_option( 'pressark_token_bank_url', 'https://tokens.pressark.com' );
 		$this->site_token = (string) get_option( 'pressark_site_token', '' );
+	}
+
+	public function get_contact_snapshot(): array {
+		return $this->normalize_contact_snapshot( get_option( self::CONTACT_STATE_OPTION, array() ) );
+	}
+
+	public function get_handshake_snapshot(): array {
+		return $this->normalize_handshake_snapshot( get_option( self::HANDSHAKE_STATE_OPTION, array() ) );
 	}
 
 	// ── Per-install Handshake ────────────────────────────────────
@@ -88,6 +98,7 @@ class PressArk_Token_Bank {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			$this->note_bank_response( 'auth/handshake', $response );
 			return array( 'success' => false, 'error' => $response->get_error_message() );
 		}
 
@@ -95,9 +106,12 @@ class PressArk_Token_Bank {
 		$data        = json_decode( wp_remote_retrieve_body( $response ), true );
 
 		if ( 200 !== $status_code || empty( $data['success'] ) ) {
+			$this->note_bank_response( 'auth/handshake', $response );
 			$error_msg = $data['error']['message'] ?? 'Handshake failed (HTTP ' . $status_code . ')';
 			return array( 'success' => false, 'error' => $error_msg );
 		}
+
+		$this->note_bank_response( 'auth/handshake', $response );
 
 		// Store the per-install site_token (verified OR provisional).
 		$site_token = (string) ( $data['site_token'] ?? '' );
@@ -109,6 +123,14 @@ class PressArk_Token_Bank {
 		// Track verification state so ensure_handshaked() can upgrade later.
 		$verified = ! empty( $data['verified'] );
 		update_option( 'pressark_handshake_verified', $verified, false );
+		$this->record_handshake_success(
+			array(
+				'tier'        => (string) ( $data['tier'] ?? 'free' ),
+				'verified'    => $verified,
+				'provisional' => ! $verified,
+				'site_token'  => $site_token,
+			)
+		);
 
 		// Cache the bank-determined tier.
 		$tier = (string) ( $data['tier'] ?? 'free' );
@@ -116,13 +138,26 @@ class PressArk_Token_Bank {
 		delete_transient( 'pressark_token_status_' . $this->user_id() );
 		delete_transient( 'pressark_license_cache_' . get_current_user_id() );
 
+		$billing_state = $this->normalize_billing_state(
+			is_array( $data['billing_state'] ?? null ) ? (array) $data['billing_state'] : array(),
+			array(
+				'verified'    => $verified,
+				'provisional' => ! $verified,
+			)
+		);
+
 		return array(
-			'success'    => true,
-			'site_token' => $site_token,
-			'tier'       => $tier,
-			'icu_budget' => (int) ( $data['icu_budget'] ?? 0 ),
-			'verified'   => $verified,
-			'provisional' => ! $verified,
+			'success'                => true,
+			'site_token'             => $site_token,
+			'tier'                   => $tier,
+			'icu_budget'             => (int) ( $data['icu_budget'] ?? 0 ),
+			'verified'               => $verified,
+			'provisional'            => ! $verified,
+			'billing_authority'      => $this->billing_state_to_legacy_authority( $billing_state ),
+			'billing_state'          => $billing_state,
+			'billing_service_state'  => (string) $billing_state['service_state'],
+			'billing_handshake_state'=> (string) $billing_state['handshake_state'],
+			'billing_spend_source'   => (string) $billing_state['spend_source'],
 		);
 	}
 
@@ -199,7 +234,7 @@ class PressArk_Token_Bank {
 		return (string) $site->id;
 	}
 
-	public function reserve( int $estimated_icus, string $reservation_id, string $tier = 'free', string $model = '' ): array {
+	public function reserve( int $estimated_icus, string $reservation_id, string $tier = 'free', string $model = '', int $estimated_raw_tokens = 0 ): array {
 		$trace_context = $this->merge_trace_context(
 			array(
 				'reservation_id' => $reservation_id,
@@ -222,6 +257,7 @@ class PressArk_Token_Bank {
 				'user_id'          => $this->user_id(),
 				'icus_requested'   => $estimated_icus,
 				'tokens_requested' => $estimated_icus,
+				'estimated_raw_tokens' => max( 0, $estimated_raw_tokens ),
 				'reservation_id'   => $reservation_id,
 				'model'            => $model,
 			),
@@ -248,6 +284,7 @@ class PressArk_Token_Bank {
 					'user_id'          => $this->user_id(),
 					'icus_requested'   => $estimated_icus,
 					'tokens_requested' => $estimated_icus,
+					'estimated_raw_tokens' => max( 0, $estimated_raw_tokens ),
 					'reservation_id'   => $reservation_id,
 					'model'            => $model,
 				),
@@ -266,11 +303,14 @@ class PressArk_Token_Bank {
 		$data = $this->normalize_status( is_array( $data ) ? $data : array(), $tier );
 
 		if ( 429 === $status_code || ! empty( $data['at_limit'] ) ) {
-			return array(
+			return array_merge(
+				array(
 				'ok'              => false,
 				'error'           => 'token_limit_reached',
 				'icus_remaining'  => (int) ( $data['icus_remaining'] ?? 0 ),
 				'tokens_remaining'=> (int) ( $data['tokens_remaining'] ?? 0 ),
+				),
+				$this->billing_state_aliases( is_array( $data['billing_state'] ?? null ) ? (array) $data['billing_state'] : array() )
 			);
 		}
 
@@ -278,10 +318,13 @@ class PressArk_Token_Bank {
 			$this->cache_status( $data );
 		}
 
-		return array(
-			'ok'               => true,
-			'icus_remaining'   => (int) ( $data['icus_remaining'] ?? 0 ),
-			'tokens_remaining' => (int) ( $data['tokens_remaining'] ?? 0 ),
+		return array_merge(
+			array(
+				'ok'               => true,
+				'icus_remaining'   => (int) ( $data['icus_remaining'] ?? 0 ),
+				'tokens_remaining' => (int) ( $data['tokens_remaining'] ?? 0 ),
+			),
+			$this->billing_state_aliases( is_array( $data['billing_state'] ?? null ) ? (array) $data['billing_state'] : array() )
 		);
 	}
 
@@ -427,8 +470,11 @@ class PressArk_Token_Bank {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			$this->note_bank_response( 'trace', $response );
 			return array();
 		}
+
+		$this->note_bank_response( 'trace', $response );
 
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		return is_array( $data['events'] ?? null ) ? $data['events'] : array();
@@ -488,8 +534,11 @@ class PressArk_Token_Bank {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			$this->note_bank_response( 'check', $response );
 			return $this->get_cached_status();
 		}
+
+		$this->note_bank_response( 'check', $response );
 
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		return is_array( $data ) ? $data : array();
@@ -544,12 +593,15 @@ class PressArk_Token_Bank {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			$this->note_bank_response( 'credits', $response );
 			return array(
 				'credits'         => array(),
 				'total_remaining' => 0,
 				'total_purchased' => 0,
 			);
 		}
+
+		$this->note_bank_response( 'credits', $response );
 
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		return is_array( $data ) ? $data : array(
@@ -583,8 +635,11 @@ class PressArk_Token_Bank {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			$this->note_bank_response( 'catalog', $response );
 			return array();
 		}
+
+		$this->note_bank_response( 'catalog', $response );
 
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		$data = $this->normalize_billing_catalog( is_array( $data ) ? $data : array() );
@@ -597,10 +652,18 @@ class PressArk_Token_Bank {
 
 	public function get_financial_snapshot(): array {
 		if ( $this->is_byok() ) {
-			return array(
+			$billing_state = $this->normalize_billing_state(
+				array(),
+				array(
+					'is_byok' => true,
+				)
+			);
+
+			return array_merge(
+				array(
 				'billing_authority'       => 'byok',
-				'verified_handshake'      => (bool) get_option( 'pressark_handshake_verified', false ),
-				'provisional_handshake'   => ! (bool) get_option( 'pressark_handshake_verified', false ),
+				'verified_handshake'      => false,
+				'provisional_handshake'   => false,
 				'monthly_icu_budget'      => 0,
 				'monthly_included_icu_budget' => 0,
 				'monthly_remaining'       => PHP_INT_MAX,
@@ -616,14 +679,30 @@ class PressArk_Token_Bank {
 				'using_legacy_bonus'      => false,
 				'budget_pressure_state'   => 'normal',
 				'is_byok'                 => true,
+				),
+				$this->billing_state_aliases( $billing_state )
 			);
 		}
 
 		$status = $this->get_status();
-		return array(
-			'billing_authority'           => (string) ( $status['billing_authority'] ?? $this->local_billing_authority( ! empty( $status['offline'] ) ) ),
-			'verified_handshake'          => (bool) get_option( 'pressark_handshake_verified', false ),
-			'provisional_handshake'       => ! (bool) get_option( 'pressark_handshake_verified', false ),
+		$billing_state = $this->normalize_billing_state(
+			is_array( $status['billing_state'] ?? null ) ? (array) $status['billing_state'] : array(),
+			array(
+				'verified'              => ! empty( $status['verified_handshake'] ),
+				'provisional'           => ! empty( $status['provisional_handshake'] ),
+				'offline'               => ! empty( $status['offline'] ),
+				'monthly_remaining'     => (int) ( $status['monthly_included_remaining'] ?? $status['monthly_remaining'] ?? 0 ),
+				'credits_remaining'     => (int) ( $status['purchased_credits_remaining'] ?? $status['credits_remaining'] ?? 0 ),
+				'legacy_bonus_remaining'=> (int) ( $status['legacy_bonus_remaining'] ?? 0 ),
+				'total_remaining'       => (int) ( $status['total_remaining'] ?? 0 ),
+			)
+		);
+
+		return array_merge(
+			array(
+			'billing_authority'           => $this->billing_state_to_legacy_authority( $billing_state ),
+			'verified_handshake'          => ! empty( $status['verified_handshake'] ),
+			'provisional_handshake'       => ! empty( $status['provisional_handshake'] ),
 			'billing_tier'                => (string) ( $status['tier'] ?? $this->get_current_tier() ),
 			'monthly_icu_budget'          => (int) ( $status['monthly_icu_budget'] ?? $status['icu_budget'] ?? 0 ),
 			'monthly_included_icu_budget' => (int) ( $status['monthly_included_icu_budget'] ?? $status['monthly_icu_budget'] ?? $status['icu_budget'] ?? 0 ),
@@ -641,6 +720,8 @@ class PressArk_Token_Bank {
 			'budget_pressure_state'       => (string) ( $status['budget_pressure_state'] ?? 'normal' ),
 			'is_byok'                     => false,
 			'offline'                     => ! empty( $status['offline'] ),
+			),
+			$this->billing_state_aliases( $billing_state )
 		);
 	}
 
@@ -694,9 +775,12 @@ class PressArk_Token_Bank {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			$this->note_bank_response( 'multipliers', $response );
 			$cached = get_option( 'pressark_bank_multipliers_cache' );
 			return is_array( $cached ) ? $cached : $this->default_multiplier_config();
 		}
+
+		$this->note_bank_response( 'multipliers', $response );
 
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		$data = is_array( $data ) ? $data : $this->default_multiplier_config();
@@ -783,6 +867,7 @@ class PressArk_Token_Bank {
 		string $model = '',
 		string $provider = 'openrouter',
 		int $estimated_icus = 0,
+		int $estimated_raw_tokens = 0,
 		int $timeout = 20
 	) {
 		$route = in_array( $route, array( 'chat', 'summarize' ), true ) ? $route : 'chat';
@@ -805,6 +890,7 @@ class PressArk_Token_Bank {
 				'provider'       => $provider,
 				'stream'         => false,
 				'estimated_icus' => $estimated_icus,
+				'estimated_raw_tokens' => max( 0, $estimated_raw_tokens ),
 				'request_body'   => $request_body,
 			),
 			$timeout,
@@ -826,9 +912,10 @@ class PressArk_Token_Bank {
 		string $model = '',
 		string $provider = 'openrouter',
 		int $estimated_icus = 1200,
+		int $estimated_raw_tokens = 0,
 		int $timeout = 20
 	) {
-		return $this->proxy_request( 'summarize', $request_body, $tier, $model, $provider, $estimated_icus, $timeout );
+		return $this->proxy_request( 'summarize', $request_body, $tier, $model, $provider, $estimated_icus, $estimated_raw_tokens, $timeout );
 	}
 
 	private function post( string $path, array $payload, int $timeout = 5, bool $blocking = true, bool $is_retry = false, array $trace_context = array() ) {
@@ -869,6 +956,8 @@ class PressArk_Token_Bank {
 				'body'     => wp_json_encode( $payload ),
 			)
 		);
+
+		$this->note_bank_response( $path, $response );
 
 		// Auto-re-handshake on auth failure (401), but only once.
 		if ( ! $is_retry && ! is_wp_error( $response ) ) {
@@ -913,6 +1002,113 @@ class PressArk_Token_Bank {
 		}
 
 		return $headers;
+	}
+
+	private function note_bank_response( string $path, $response ): void {
+		$path = trim( $path );
+		if ( is_wp_error( $response ) ) {
+			$this->record_contact_failure( $path, $response->get_error_message(), 0 );
+			return;
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $response );
+		if ( $status_code >= 200 && $status_code < 300 ) {
+			$this->record_contact_success( $path, $status_code );
+			return;
+		}
+
+		$body  = json_decode( wp_remote_retrieve_body( $response ), true );
+		$error = '';
+		if ( is_array( $body ) ) {
+			$error = (string) ( $body['error']['message'] ?? $body['error']['code'] ?? '' );
+		}
+
+		$this->record_contact_failure( $path, $error, $status_code );
+	}
+
+	private function record_contact_success( string $path, int $status_code ): void {
+		$current = $this->get_contact_snapshot();
+		update_option(
+			self::CONTACT_STATE_OPTION,
+			array(
+				'last_attempt_at'             => current_time( 'mysql' ),
+				'last_attempt_path'           => sanitize_text_field( $path ),
+				'last_attempt_status'         => max( 0, $status_code ),
+				'last_successful_contact_at'  => current_time( 'mysql' ),
+				'last_successful_contact_path'=> sanitize_text_field( $path ),
+				'last_successful_status'      => max( 0, $status_code ),
+				'last_failure_at'             => $current['last_failure_at'] ?? '',
+				'last_failure_path'           => $current['last_failure_path'] ?? '',
+				'last_failure_status'         => (int) ( $current['last_failure_status'] ?? 0 ),
+				'last_failure_error'          => $current['last_failure_error'] ?? '',
+			),
+			false
+		);
+	}
+
+	private function record_contact_failure( string $path, string $error, int $status_code ): void {
+		$current = $this->get_contact_snapshot();
+		update_option(
+			self::CONTACT_STATE_OPTION,
+			array(
+				'last_attempt_at'             => current_time( 'mysql' ),
+				'last_attempt_path'           => sanitize_text_field( $path ),
+				'last_attempt_status'         => max( 0, $status_code ),
+				'last_successful_contact_at'  => $current['last_successful_contact_at'] ?? '',
+				'last_successful_contact_path'=> $current['last_successful_contact_path'] ?? '',
+				'last_successful_status'      => (int) ( $current['last_successful_status'] ?? 0 ),
+				'last_failure_at'             => current_time( 'mysql' ),
+				'last_failure_path'           => sanitize_text_field( $path ),
+				'last_failure_status'         => max( 0, $status_code ),
+				'last_failure_error'          => sanitize_text_field( $error ),
+			),
+			false
+		);
+	}
+
+	private function record_handshake_success( array $snapshot ): void {
+		update_option(
+			self::HANDSHAKE_STATE_OPTION,
+			array(
+				'last_successful_handshake_at' => current_time( 'mysql' ),
+				'tier'                         => sanitize_key( (string) ( $snapshot['tier'] ?? 'free' ) ),
+				'verified'                     => ! empty( $snapshot['verified'] ),
+				'provisional'                  => ! empty( $snapshot['provisional'] ),
+				'handshake_state'              => ! empty( $snapshot['verified'] ) ? 'verified' : 'provisional',
+				'site_token_present'           => ! empty( $snapshot['site_token'] ),
+			),
+			false
+		);
+	}
+
+	private function normalize_contact_snapshot( $value ): array {
+		$value = is_array( $value ) ? $value : array();
+
+		return array(
+			'last_attempt_at'              => sanitize_text_field( (string) ( $value['last_attempt_at'] ?? '' ) ),
+			'last_attempt_path'            => sanitize_text_field( (string) ( $value['last_attempt_path'] ?? '' ) ),
+			'last_attempt_status'          => (int) ( $value['last_attempt_status'] ?? 0 ),
+			'last_successful_contact_at'   => sanitize_text_field( (string) ( $value['last_successful_contact_at'] ?? '' ) ),
+			'last_successful_contact_path' => sanitize_text_field( (string) ( $value['last_successful_contact_path'] ?? '' ) ),
+			'last_successful_status'       => (int) ( $value['last_successful_status'] ?? 0 ),
+			'last_failure_at'              => sanitize_text_field( (string) ( $value['last_failure_at'] ?? '' ) ),
+			'last_failure_path'            => sanitize_text_field( (string) ( $value['last_failure_path'] ?? '' ) ),
+			'last_failure_status'          => (int) ( $value['last_failure_status'] ?? 0 ),
+			'last_failure_error'           => sanitize_text_field( (string) ( $value['last_failure_error'] ?? '' ) ),
+		);
+	}
+
+	private function normalize_handshake_snapshot( $value ): array {
+		$value = is_array( $value ) ? $value : array();
+
+		return array(
+			'last_successful_handshake_at' => sanitize_text_field( (string) ( $value['last_successful_handshake_at'] ?? '' ) ),
+			'tier'                         => sanitize_key( (string) ( $value['tier'] ?? '' ) ),
+			'verified'                     => ! empty( $value['verified'] ),
+			'provisional'                  => ! empty( $value['provisional'] ),
+			'handshake_state'              => sanitize_key( (string) ( $value['handshake_state'] ?? '' ) ),
+			'site_token_present'           => ! empty( $value['site_token_present'] ),
+		);
 	}
 
 	/**
@@ -980,7 +1176,8 @@ class PressArk_Token_Bank {
 		$tier  = $this->get_current_tier();
 		$limit = PressArk_Entitlements::icu_budget( $tier );
 
-		return array(
+		return $this->normalize_status(
+			array(
 			'tier'                    => $tier,
 			'icus_used'               => 0,
 			'icus_reserved'           => 0,
@@ -1013,6 +1210,7 @@ class PressArk_Token_Bank {
 			'tokens_reserved'         => 0,
 			'tokens_limit'            => $limit,
 			'tokens_remaining'        => $limit,
+			)
 		);
 	}
 
@@ -1020,6 +1218,21 @@ class PressArk_Token_Bank {
 		$user_id = $this->user_id();
 		$budget  = PressArk_Entitlements::icu_budget( $tier );
 		$last    = get_option( 'pressark_last_token_status_' . $user_id );
+		$fallback_status = $this->normalize_status(
+			is_array( $last )
+				? array_merge( $last, array( 'offline' => true ) )
+				: array(
+					'tier'              => $tier,
+					'icus_used'         => 0,
+					'icus_reserved'     => 0,
+					'icu_budget'        => $budget,
+					'icus_remaining'    => $budget,
+					'monthly_remaining' => $budget,
+					'total_remaining'   => $budget,
+					'offline'           => true,
+				),
+			$tier
+		);
 
 		if ( is_array( $last ) && isset( $last['snapshot_at'] ) ) {
 			$ledger      = new PressArk_Cost_Ledger();
@@ -1027,39 +1240,51 @@ class PressArk_Token_Bank {
 			$remaining   = max( 0, (int) ( $last['icus_remaining'] ?? $budget ) - $local_since );
 
 			if ( $estimated_icus > $remaining ) {
-				return array(
+				return array_merge(
+					array(
 					'ok'               => false,
 					'offline'          => true,
 					'error'            => 'token_limit_reached',
 					'icus_remaining'   => $remaining,
 					'tokens_remaining' => $remaining,
+					),
+					$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
 				);
 			}
 
-			return array(
+			return array_merge(
+				array(
 				'ok'               => true,
 				'offline'          => true,
 				'icus_remaining'   => max( 0, $remaining - $estimated_icus ),
 				'tokens_remaining' => max( 0, $remaining - $estimated_icus ),
+				),
+				$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
 			);
 		}
 
 		$emergency_cap = min( $budget, 50000 );
 		if ( $estimated_icus > $emergency_cap ) {
-			return array(
+			return array_merge(
+				array(
 				'ok'               => false,
 				'offline'          => true,
 				'error'            => 'token_limit_reached',
 				'icus_remaining'   => 0,
 				'tokens_remaining' => 0,
+				),
+				$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
 			);
 		}
 
-		return array(
+		return array_merge(
+			array(
 			'ok'               => true,
 			'offline'          => true,
 			'icus_remaining'   => max( 0, $emergency_cap - $estimated_icus ),
 			'tokens_remaining' => max( 0, $emergency_cap - $estimated_icus ),
+			),
+			$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
 		);
 	}
 
@@ -1125,10 +1350,28 @@ class PressArk_Token_Bank {
 		$using_purchased    = ! empty( $data['using_purchased_credits'] ) || ( $monthly_remaining <= 0 && $credits_remaining > 0 );
 		$using_legacy_bonus = ! empty( $data['using_legacy_bonus'] ) || ( $monthly_remaining <= 0 && 0 === $credits_remaining && $legacy_bonus > 0 );
 		$pressure_state     = (string) ( $data['budget_pressure_state'] ?? $this->calculate_budget_pressure_state( $icu_budget, $monthly_remaining, $total_remaining, $total_available ) );
-		$billing_authority  = (string) ( $data['billing_authority'] ?? '' );
-		if ( '' === $billing_authority || 'token_bank' === $billing_authority ) {
-			$billing_authority = $this->local_billing_authority( ! empty( $data['offline'] ) );
-		}
+		$verified_handshake = array_key_exists( 'verified_handshake', $data )
+			? ! empty( $data['verified_handshake'] )
+			: ( ! empty( $data['verified'] ) || (bool) get_option( 'pressark_handshake_verified', false ) );
+		$provisional_handshake = array_key_exists( 'provisional_handshake', $data )
+			? ! empty( $data['provisional_handshake'] )
+			: ! $verified_handshake;
+		$billing_state = $this->normalize_billing_state(
+			is_array( $data['billing_state'] ?? null ) ? (array) $data['billing_state'] : array(),
+			array(
+				'verified'               => $verified_handshake,
+				'provisional'            => $provisional_handshake,
+				'offline'                => ! empty( $data['offline'] ),
+				'service_state'          => (string) ( $data['billing_service_state'] ?? '' ),
+				'handshake_state'        => (string) ( $data['billing_handshake_state'] ?? '' ),
+				'spend_source'           => (string) ( $data['billing_spend_source'] ?? '' ),
+				'monthly_remaining'      => $monthly_remaining,
+				'credits_remaining'      => $credits_remaining,
+				'legacy_bonus_remaining' => $legacy_bonus,
+				'total_remaining'        => $total_remaining,
+			)
+		);
+		$billing_authority = $this->billing_state_to_legacy_authority( $billing_state );
 
 		$data['tier']              = $resolved_tier;
 		$data['billing_tier']      = $resolved_tier;
@@ -1157,6 +1400,12 @@ class PressArk_Token_Bank {
 		$data['uses_anniversary_reset'] = ! empty( $data['uses_anniversary_reset'] );
 		$data['budget_pressure_state'] = $pressure_state;
 		$data['billing_authority'] = $billing_authority;
+		$data['billing_state']     = $billing_state;
+		$data['billing_service_state'] = (string) $billing_state['service_state'];
+		$data['billing_handshake_state'] = (string) $billing_state['handshake_state'];
+		$data['billing_spend_source'] = (string) $billing_state['spend_source'];
+		$data['verified_handshake'] = $verified_handshake;
+		$data['provisional_handshake'] = $provisional_handshake;
 		$data['tokens_used']       = $icus_used;
 		$data['tokens_reserved']   = $icus_reserved;
 		$data['tokens_limit']      = $icu_budget;
@@ -1224,13 +1473,201 @@ class PressArk_Token_Bank {
 		return 'normal';
 	}
 
-	private function local_billing_authority( bool $offline = false ): string {
-		$verified = (bool) get_option( 'pressark_handshake_verified', false );
-		if ( $offline ) {
+	private function normalize_billing_state( array $state, array $context = array() ): array {
+		$is_byok     = ! empty( $context['is_byok'] );
+		$verified    = ! empty( $context['verified'] );
+		$provisional = array_key_exists( 'provisional', $context ) ? ! empty( $context['provisional'] ) : ! $verified;
+
+		$authority_mode = sanitize_key( (string) ( $state['authority_mode'] ?? $context['authority_mode'] ?? '' ) );
+		if ( ! in_array( $authority_mode, array( 'bank_verified', 'bank_provisional', 'byok' ), true ) ) {
+			$authority_mode = $is_byok ? 'byok' : ( $verified ? 'bank_verified' : 'bank_provisional' );
+		}
+
+		$handshake_state = sanitize_key( (string) ( $state['handshake_state'] ?? $context['handshake_state'] ?? '' ) );
+		if ( ! in_array( $handshake_state, array( 'verified', 'provisional', 'byok' ), true ) ) {
+			$handshake_state = $is_byok ? 'byok' : ( $verified && ! $provisional ? 'verified' : 'provisional' );
+		}
+
+		$service_state = sanitize_key( (string) ( $state['service_state'] ?? $context['service_state'] ?? '' ) );
+		if ( ! empty( $context['offline'] ) ) {
+			$service_state = 'offline_assisted';
+		} elseif ( ! in_array( $service_state, array( 'normal', 'degraded', 'offline_assisted' ), true ) ) {
+			$service_state = ! empty( $context['cached'] ) ? 'degraded' : 'normal';
+		}
+
+		$spend_source = sanitize_key( (string) ( $state['spend_source'] ?? $context['spend_source'] ?? '' ) );
+		if ( ! in_array( $spend_source, array( 'monthly_included', 'purchased_credits', 'legacy_bonus', 'mixed', 'depleted', 'byok' ), true ) ) {
+			$spend_source = $this->resolve_billing_spend_source(
+				(int) ( $context['monthly_remaining'] ?? 0 ),
+				(int) ( $context['credits_remaining'] ?? 0 ),
+				(int) ( $context['legacy_bonus_remaining'] ?? 0 ),
+				(int) ( $context['total_remaining'] ?? 0 ),
+				$is_byok
+			);
+		}
+
+		$estimate_mode = sanitize_key( (string) ( $state['estimate_mode'] ?? '' ) );
+		if ( '' === $estimate_mode ) {
+			$estimate_mode = $is_byok ? 'provider_usage' : 'plugin_local_advisory';
+		}
+
+		return array(
+			'version'           => max( 1, (int) ( $state['version'] ?? 1 ) ),
+			'authority_mode'    => $authority_mode,
+			'handshake_state'   => $handshake_state,
+			'service_state'     => $service_state,
+			'spend_source'      => $spend_source,
+			'estimate_mode'     => $estimate_mode,
+			'authority_label'   => (string) ( $state['authority_label'] ?? $this->billing_authority_label( $authority_mode ) ),
+			'service_label'     => (string) ( $state['service_label'] ?? $this->billing_service_label( $service_state ) ),
+			'spend_label'       => (string) ( $state['spend_label'] ?? $this->billing_spend_label( $spend_source ) ),
+			'authority_notice'  => (string) ( $state['authority_notice'] ?? $this->billing_authority_notice( $authority_mode ) ),
+			'service_notice'    => (string) ( $state['service_notice'] ?? $this->billing_service_notice( $service_state, $authority_mode ) ),
+			'estimate_notice'   => (string) ( $state['estimate_notice'] ?? $this->billing_estimate_notice( $is_byok ) ),
+		);
+	}
+
+	private function billing_state_aliases( array $billing_state ): array {
+		if ( empty( $billing_state ) ) {
+			return array();
+		}
+
+		return array(
+			'billing_authority'       => $this->billing_state_to_legacy_authority( $billing_state ),
+			'billing_state'           => $billing_state,
+			'billing_service_state'   => (string) ( $billing_state['service_state'] ?? '' ),
+			'billing_handshake_state' => (string) ( $billing_state['handshake_state'] ?? '' ),
+			'billing_spend_source'    => (string) ( $billing_state['spend_source'] ?? '' ),
+		);
+	}
+
+	private function resolve_billing_spend_source( int $monthly_remaining, int $credits_remaining, int $legacy_bonus_remaining, int $total_remaining, bool $is_byok = false ): string {
+		if ( $is_byok ) {
+			return 'byok';
+		}
+
+		$has_monthly = $monthly_remaining > 0;
+		$has_credits = $credits_remaining > 0;
+		$has_legacy  = $legacy_bonus_remaining > 0;
+
+		if ( $has_monthly && ! $has_credits && ! $has_legacy ) {
+			return 'monthly_included';
+		}
+
+		if ( ! $has_monthly && $has_credits && ! $has_legacy ) {
+			return 'purchased_credits';
+		}
+
+		if ( ! $has_monthly && ! $has_credits && $has_legacy ) {
+			return 'legacy_bonus';
+		}
+
+		if ( ( $has_monthly && $has_credits ) || ( $has_monthly && $has_legacy ) || ( $has_credits && $has_legacy ) ) {
+			return 'mixed';
+		}
+
+		return $total_remaining > 0 ? 'monthly_included' : 'depleted';
+	}
+
+	private function billing_state_to_legacy_authority( array $billing_state ): string {
+		$authority_mode = (string) ( $billing_state['authority_mode'] ?? '' );
+		$service_state  = (string) ( $billing_state['service_state'] ?? '' );
+
+		if ( 'byok' === $authority_mode ) {
+			return 'byok';
+		}
+
+		if ( in_array( $service_state, array( 'degraded', 'offline_assisted' ), true ) ) {
 			return 'token_bank_cached';
 		}
 
-		return $verified ? 'token_bank_verified' : 'token_bank_provisional';
+		return 'bank_verified' === $authority_mode ? 'token_bank_verified' : 'token_bank_provisional';
+	}
+
+	private function billing_authority_label( string $authority_mode ): string {
+		switch ( $authority_mode ) {
+			case 'bank_verified':
+				return 'Bank verified';
+			case 'byok':
+				return 'BYOK';
+			default:
+				return 'Bank provisional';
+		}
+	}
+
+	private function billing_service_label( string $service_state ): string {
+		switch ( $service_state ) {
+			case 'degraded':
+				return 'Degraded';
+			case 'offline_assisted':
+				return 'Offline assisted';
+			default:
+				return 'Normal';
+		}
+	}
+
+	private function billing_spend_label( string $spend_source ): string {
+		switch ( $spend_source ) {
+			case 'purchased_credits':
+				return 'Purchased credits';
+			case 'legacy_bonus':
+				return 'Legacy bonus';
+			case 'mixed':
+				return 'Mixed sources';
+			case 'depleted':
+				return 'Depleted';
+			case 'byok':
+				return 'BYOK';
+			default:
+				return 'Monthly included';
+		}
+	}
+
+	private function billing_authority_notice( string $authority_mode ): string {
+		if ( 'byok' === $authority_mode ) {
+			return 'Bundled credits are bypassed in BYOK mode. Your provider account is authoritative for spend while PressArk still enforces plan entitlements.';
+		}
+
+		if ( 'bank_verified' === $authority_mode ) {
+			return 'The PressArk bank is authoritative for tier, reservations, credits, and settlement.';
+		}
+
+		return 'The PressArk bank remains authoritative, but this installation is still operating on a provisional handshake until verification completes.';
+	}
+
+	private function billing_service_notice( string $service_state, string $authority_mode ): string {
+		if ( 'offline_assisted' === $service_state ) {
+			return 'The plugin is operating from the last bank snapshot plus local settled usage. Bank authority is preserved and final settlement still comes from the bank.';
+		}
+
+		if ( 'degraded' === $service_state ) {
+			return 'byok' === $authority_mode
+				? 'Some billing-side verification data is degraded, but BYOK requests can continue with your provider account.'
+				: 'A billing dependency is degraded. Existing bank truth is still being served, but the latest verification data may be delayed.';
+		}
+
+		return 'byok' === $authority_mode
+			? 'Using your own provider key. Bundled credit accounting is not in play for these requests.'
+			: 'The bank is healthy and serving live billing truth for this installation.';
+	}
+
+	private function billing_estimate_notice( bool $is_byok ): string {
+		return $is_byok
+			? 'Provider usage is shown directly in BYOK mode and does not settle against bundled credits.'
+			: 'Plugin-side token and ICU estimates are advisory. Billable ICUs are finalized only when the bank settles provider usage.';
+	}
+
+	private function local_billing_authority( bool $offline = false ): string {
+		return $this->billing_state_to_legacy_authority(
+			$this->normalize_billing_state(
+				array(),
+				array(
+					'verified'    => (bool) get_option( 'pressark_handshake_verified', false ),
+					'provisional' => ! (bool) get_option( 'pressark_handshake_verified', false ),
+					'offline'     => $offline,
+				)
+			)
+		);
 	}
 
 	private function default_multiplier_config(): array {

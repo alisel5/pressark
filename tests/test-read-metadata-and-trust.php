@@ -165,10 +165,13 @@ if ( ! function_exists( 'wp_generate_uuid4' ) ) {
 require_once __DIR__ . '/../includes/class-pressark-read-metadata.php';
 require_once __DIR__ . '/../includes/class-pressark-operation.php';
 require_once __DIR__ . '/../includes/class-pressark-operation-registry.php';
+require_once __DIR__ . '/../includes/class-pressark-evidence-receipt.php';
 require_once __DIR__ . '/../includes/class-pressark-execution-ledger.php';
 require_once __DIR__ . '/../includes/class-pressark-checkpoint.php';
+require_once __DIR__ . '/../includes/class-pressark-run-trust-surface.php';
 require_once __DIR__ . '/../includes/class-pressark-tool-result-artifacts.php';
 require_once __DIR__ . '/../includes/class-pressark-resource-registry.php';
+require_once __DIR__ . '/helpers/harness-fixtures.php';
 
 if ( ! class_exists( 'PressArk_AI_Connector' ) ) {
 	class PressArk_AI_Connector {
@@ -241,6 +244,21 @@ function assert_eq_rmt( string $label, $expected, $actual ): void {
 
 function assert_contains_rmt( string $label, string $needle, string $haystack ): void {
 	assert_true_rmt( $label, false !== strpos( $haystack, $needle ) );
+}
+
+function assert_fixture_rmt( string $label, bool $condition, string $detail = '' ): void {
+	global $passed, $failed;
+	if ( $condition ) {
+		$passed++;
+		echo "  PASS: {$label}\n";
+		return;
+	}
+
+	$failed++;
+	echo "  FAIL: {$label}\n";
+	if ( '' !== $detail ) {
+		echo "    {$detail}\n";
+	}
 }
 
 function reset_runtime_state_rmt(): void {
@@ -507,6 +525,177 @@ assert_contains_rmt(
 	'Alpha page content loaded',
 	$untrusted_slice
 );
+
+$evidence_ledger = PressArk_Execution_Ledger::record_write(
+	array(),
+	'edit_content',
+	array( 'post_id' => 42, 'title' => 'Alpha', 'post_status' => 'publish' ),
+	array(
+		'success'    => true,
+		'data'       => array(
+			'id'          => 42,
+			'title'       => 'Alpha',
+			'post_status' => 'publish',
+		),
+		'post_title' => 'Alpha',
+	)
+);
+$evidence_ledger = PressArk_Execution_Ledger::record_verification(
+	$evidence_ledger,
+	'edit_content',
+	array(
+		'success'   => true,
+		'data'      => array(
+			'id'          => 42,
+			'title'       => 'Alpha',
+			'post_status' => 'publish',
+		),
+		'read_meta' => array(
+			'freshness'    => 'fresh',
+			'completeness' => 'complete',
+			'trust_class'  => 'trusted_system',
+		),
+	),
+	true,
+	'#42 title=Alpha status=publish',
+	array(
+		'policy'     => array(
+			'strategy'     => 'field_check',
+			'read_tool'    => 'read_content',
+			'check_fields' => array( 'title', 'post_status' ),
+		),
+		'readback'   => array( 'tool' => 'read_content' ),
+		'mismatches' => array(),
+	)
+);
+$evidence_rows = PressArk_Execution_Ledger::evidence_receipts( $evidence_ledger );
+$evidence_receipt = $evidence_rows[0]['evidence_receipt'] ?? array();
+
+assert_eq_rmt( 'Evidence receipt is attached to write rows', 1, count( $evidence_rows ) );
+assert_eq_rmt( 'Field-check verification maps to strong confidence', 'strong', $evidence_receipt['confidence'] ?? '' );
+assert_eq_rmt( 'Evidence receipt preserves verified status', 'verified', $evidence_receipt['status'] ?? '' );
+
+$trust_surface = PressArk_Run_Trust_Surface::build(
+	array(
+		'status'         => 'settled',
+		'route'          => 'chat',
+		'workflow_state' => array(
+			'workflow_stage' => 'verify',
+		),
+		'result'         => array(
+			'budget' => array(
+				'billing_state'    => array(
+					'authority_mode'  => 'bank_verified',
+					'authority_label' => 'Bank verified',
+					'service_state'   => 'degraded',
+					'service_label'   => 'Degraded',
+					'spend_source'    => 'purchased_credits',
+					'spend_label'     => 'Purchased credits',
+				),
+				'settlement_delta' => array(
+					'estimate_authority'   => 'plugin_local_advisory',
+					'settlement_authority' => 'bank',
+					'estimated_icus'       => 1200,
+					'settled_icus'         => 1500,
+					'delta_icus'           => 300,
+					'summary'              => 'The bank settled more ICUs than the advisory estimate.',
+				),
+			),
+		),
+	),
+	array(
+		array(
+			'source'      => 'plugin',
+			'reason'      => 'fallback_model_policy',
+			'status'      => 'succeeded',
+			'summary'     => 'The run fell back to another model candidate.',
+			'occurred_at' => '2026-04-05 09:00:00',
+		),
+	),
+	$evidence_ledger
+);
+
+assert_eq_rmt(
+	'Trust surface keeps evidence quality on the verified example',
+	'strong',
+	$trust_surface['evidence']['verified_example']['evidence_receipt']['confidence'] ?? ''
+);
+assert_eq_rmt(
+	'Trust surface keeps billing authority separate and explicit',
+	'Bank verified',
+	$trust_surface['billing']['authority_label'] ?? ''
+);
+assert_eq_rmt(
+	'Trust surface carries a fallback example from the event spine',
+	'fallback_model_policy',
+	$trust_surface['fallback']['example']['reason'] ?? ''
+);
+assert_contains_rmt(
+	'Trust surface explains the evidence versus authority boundary',
+	'Evidence quality',
+	(string) ( $trust_surface['authority_boundary_note'] ?? '' )
+);
+
+function find_snapshot_by_tool_fixture_rmt( array $snapshots, string $tool_name ): array {
+	foreach ( $snapshots as $snapshot ) {
+		if ( $tool_name === (string) ( $snapshot['tool_name'] ?? '' ) ) {
+			return $snapshot;
+		}
+	}
+	return array();
+}
+
+function run_trust_fixture_scenario_rmt( array $fixture ): array {
+	$input = (array) ( $fixture['input'] ?? array() );
+	reset_runtime_state_rmt();
+
+	$checkpoint = new PressArk_Checkpoint();
+	foreach ( (array) ( $input['reads'] ?? array() ) as $read ) {
+		$checkpoint->record_read_snapshot(
+			PressArk_Read_Metadata::snapshot_from_tool_result(
+				(string) ( $read['tool_name'] ?? '' ),
+				(array) ( $read['args'] ?? array() ),
+				(array) ( $read['result'] ?? array() )
+			)
+		);
+	}
+
+	$before_snapshots = $checkpoint->get_read_state();
+	if ( ! empty( $input['write'] ) ) {
+		$write = (array) $input['write'];
+		$checkpoint->record_execution_write(
+			(string) ( $write['tool_name'] ?? '' ),
+			(array) ( $write['args'] ?? array() ),
+			(array) ( $write['result'] ?? array() )
+		);
+	}
+
+	$after_snapshots = $checkpoint->get_read_state();
+	$invalidations   = $checkpoint->get_read_invalidation_log();
+
+	return array(
+		'before' => array(
+			'read_content'      => find_snapshot_by_tool_fixture_rmt( $before_snapshots, 'read_content' ),
+			'search_knowledge'  => find_snapshot_by_tool_fixture_rmt( $before_snapshots, 'search_knowledge' ),
+		),
+		'after' => array(
+			'read_content'      => find_snapshot_by_tool_fixture_rmt( $after_snapshots, 'read_content' ),
+			'search_knowledge'  => find_snapshot_by_tool_fixture_rmt( $after_snapshots, 'search_knowledge' ),
+		),
+		'header'             => $checkpoint->to_context_header(),
+		'invalidations_count'=> count( $invalidations ),
+	);
+}
+
+foreach ( pressark_test_load_json_fixtures( 'tests/fixtures/harness/trust' ) as $fixture ) {
+	$actual = run_trust_fixture_scenario_rmt( $fixture );
+	pressark_test_assert_fixture_expectations(
+		'assert_fixture_rmt',
+		'Fixture trust - ' . (string) ( $fixture['name'] ?? $fixture['_fixture_file'] ?? 'scenario' ),
+		$actual,
+		(array) ( $fixture['expect'] ?? array() )
+	);
+}
 
 echo "\nResults: {$passed} passed, {$failed} failed\n";
 exit( $failed > 0 ? 1 : 0 );

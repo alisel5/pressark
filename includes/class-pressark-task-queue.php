@@ -283,6 +283,175 @@ class PressArk_Task_Queue {
 	}
 
 	/**
+	 * Build a compact, inspectable handoff capsule for queued background work.
+	 *
+	 * @param string     $message          Original request text.
+	 * @param array      $conversation     Conversation snapshot at enqueue time.
+	 * @param array      $loaded_groups    Loaded tool groups.
+	 * @param array|null $checkpoint_data  Checkpoint snapshot, if available.
+	 * @param array      $resolved_context Bounded resolved context.
+	 * @param string     $source           Handoff source key.
+	 * @return array<string,mixed>
+	 */
+	public static function build_handoff_capsule(
+		string $message,
+		array $conversation = array(),
+		array $loaded_groups = array(),
+		?array $checkpoint_data = null,
+		array $resolved_context = array(),
+		string $source = 'queue_handoff'
+	): array {
+		$capsule = array(
+			'source'             => sanitize_key( $source ),
+			'request'            => mb_substr( sanitize_textarea_field( $message ), 0, 240 ),
+			'conversation_turns' => max( 0, count( $conversation ) ),
+			'loaded_groups'      => array_values( array_unique( array_filter( array_map(
+				'sanitize_text_field',
+				array_slice( $loaded_groups, 0, 8 )
+			) ) ) ),
+			'updated_at'         => current_time( 'mysql', true ),
+		);
+
+		$context = array();
+		if ( ! empty( $resolved_context['chat_id'] ) ) {
+			$context['chat_id'] = absint( $resolved_context['chat_id'] );
+		}
+		if ( ! empty( $resolved_context['automation_id'] ) ) {
+			$context['automation_id'] = sanitize_text_field( (string) $resolved_context['automation_id'] );
+		}
+		if ( ! empty( $resolved_context['post_id'] ) ) {
+			$context['post_id'] = absint( $resolved_context['post_id'] );
+		}
+		if ( ! empty( $resolved_context['screen'] ) ) {
+			$context['screen'] = sanitize_key( (string) $resolved_context['screen'] );
+		}
+		if ( ! empty( $context ) ) {
+			$capsule['context'] = $context;
+		}
+
+		if ( ! empty( $checkpoint_data ) && class_exists( 'PressArk_Checkpoint' ) ) {
+			$checkpoint      = PressArk_Checkpoint::from_array( $checkpoint_data );
+			$context_capsule = $checkpoint->get_context_capsule();
+			$target          = $checkpoint->get_selected_target();
+			$progress        = class_exists( 'PressArk_Execution_Ledger' )
+				? PressArk_Execution_Ledger::progress_snapshot( $checkpoint->get_execution() )
+				: array();
+			$checkpoint_view = $checkpoint->to_array();
+			$bundle_ids      = array_values( array_filter( array_map(
+				'sanitize_text_field',
+				array_slice( $checkpoint->get_bundle_ids(), 0, 6 )
+			) ) );
+
+			if ( ! empty( $context_capsule['summary'] ) ) {
+				$capsule['summary'] = sanitize_text_field( (string) $context_capsule['summary'] );
+			}
+			if ( ! empty( $context_capsule['active_request'] ) || ! empty( $context_capsule['task'] ) ) {
+				$capsule['active_request'] = sanitize_text_field(
+					(string) ( $context_capsule['active_request'] ?? $context_capsule['task'] )
+				);
+			}
+			if ( ! empty( $target ) ) {
+				$capsule['target'] = self::format_handoff_target( $target );
+			}
+			if ( '' !== $checkpoint->get_workflow_stage() ) {
+				$capsule['workflow_stage'] = sanitize_key( $checkpoint->get_workflow_stage() );
+			}
+			if ( empty( $capsule['loaded_groups'] ) ) {
+				$capsule['loaded_groups'] = array_values( array_unique( array_filter( array_map(
+					'sanitize_text_field',
+					array_slice( $checkpoint->get_loaded_tool_groups(), 0, 8 )
+				) ) ) );
+			}
+			if ( ! empty( $bundle_ids ) ) {
+				$capsule['bundle_ids'] = $bundle_ids;
+			}
+			if ( ! empty( $progress['completed_labels'] ) ) {
+				$capsule['completed'] = array_values( array_filter( array_map(
+					'sanitize_text_field',
+					array_slice( (array) $progress['completed_labels'], 0, 4 )
+				) ) );
+			}
+			if ( ! empty( $progress['remaining_labels'] ) ) {
+				$capsule['remaining'] = array_values( array_filter( array_map(
+					'sanitize_text_field',
+					array_slice( (array) $progress['remaining_labels'], 0, 4 )
+				) ) );
+			}
+			if ( ! empty( $context_capsule['recent_receipts'] ) ) {
+				$capsule['recent_receipts'] = array_values( array_filter( array_map(
+					'sanitize_text_field',
+					array_slice( (array) $context_capsule['recent_receipts'], 0, 4 )
+				) ) );
+			}
+			if ( ! empty( $checkpoint_view['plan_state']['phase'] ) ) {
+				$capsule['plan_phase'] = sanitize_key( (string) $checkpoint_view['plan_state']['phase'] );
+			}
+			if ( ! empty( $checkpoint_view['turn'] ) ) {
+				$capsule['checkpoint_turn'] = absint( $checkpoint_view['turn'] );
+			}
+			if ( ! empty( $capsule['loaded_groups'] ) || ! empty( $bundle_ids ) ) {
+				$capsule['batch_provenance'] = array_filter(
+					array(
+						'loaded_groups'      => (array) ( $capsule['loaded_groups'] ?? array() ),
+						'bundle_ids'         => $bundle_ids,
+						'conversation_turns' => max( 0, count( $conversation ) ),
+					),
+					static function ( $value ) {
+						return ! ( is_array( $value ) ? empty( $value ) : 0 === (int) $value );
+					}
+				);
+			}
+		}
+
+		if ( empty( $capsule['summary'] ) ) {
+			$capsule['summary'] = ! empty( $capsule['request'] )
+				? sanitize_text_field( (string) $capsule['request'] )
+				: 'Background queue handoff persisted.';
+		}
+		if ( empty( $capsule['active_request'] ) && ! empty( $capsule['request'] ) ) {
+			$capsule['active_request'] = sanitize_text_field( (string) $capsule['request'] );
+		}
+
+		return array_filter(
+			$capsule,
+			static function ( $value ) {
+				if ( is_array( $value ) ) {
+					return ! empty( $value );
+				}
+				if ( is_int( $value ) ) {
+					return $value > 0;
+				}
+				return '' !== (string) $value;
+			}
+		);
+	}
+
+	/**
+	 * Render a selected-target snapshot into one compact label.
+	 *
+	 * @param array<string,mixed> $target Selected target payload.
+	 * @return string
+	 */
+	private static function format_handoff_target( array $target ): string {
+		$title = sanitize_text_field( (string) ( $target['title'] ?? '' ) );
+		$id    = absint( $target['id'] ?? $target['post_id'] ?? 0 );
+		$type  = sanitize_key( (string) ( $target['type'] ?? '' ) );
+		$parts = array();
+
+		if ( '' !== $title ) {
+			$parts[] = $title;
+		}
+		if ( $id > 0 ) {
+			$parts[] = '#' . $id;
+		}
+		if ( '' !== $type ) {
+			$parts[] = '(' . $type . ')';
+		}
+
+		return trim( implode( ' ', $parts ) );
+	}
+
+	/**
 	 * Create and queue a task. Returns immediately with task ID.
 	 *
 	 * Accepts optional idempotency_key for callers that have real
@@ -303,12 +472,25 @@ class PressArk_Task_Queue {
 		?array $checkpoint_data = null,
 		string $run_id = '',
 		array  $resolved_context = array(),
-		string $idempotency_key = ''
+		string $idempotency_key = '',
+		array  $lineage = array()
 	): array {
-		$task_id = wp_generate_uuid4();
-		$user_id = $user_id ?: get_current_user_id();
+		$task_id       = wp_generate_uuid4();
+		$user_id       = $user_id ?: get_current_user_id();
 		$trace_context = PressArk_Activity_Trace::current_context();
 		$correlation_id = (string) ( $trace_context['correlation_id'] ?? '' );
+		$parent_run_id = sanitize_text_field( (string) ( $lineage['parent_run_id'] ?? '' ) );
+		$root_run_id   = sanitize_text_field( (string) ( $lineage['root_run_id'] ?? '' ) );
+		$handoff_capsule = ! empty( $lineage['handoff_capsule'] ) && is_array( $lineage['handoff_capsule'] )
+			? $lineage['handoff_capsule']
+			: self::build_handoff_capsule(
+				$message,
+				$conversation,
+				$loaded_groups,
+				$checkpoint_data,
+				$resolved_context,
+				! empty( $resolved_context['automation_id'] ) ? 'automation_handoff' : 'async_handoff'
+			);
 
 		if ( '' === $correlation_id && '' !== $run_id ) {
 			$run_store = new PressArk_Run_Store();
@@ -318,25 +500,40 @@ class PressArk_Task_Queue {
 			}
 		}
 
+		if ( '' === $root_run_id ) {
+			if ( '' !== $parent_run_id ) {
+				$root_run_id = $parent_run_id;
+			} elseif ( '' !== $run_id ) {
+				$root_run_id = $run_id;
+			}
+		}
+
 		$idem_key = ! empty( $idempotency_key )
 			? sanitize_text_field( $idempotency_key )
 			: null;
 
 		$create = $this->store->create_record( array(
-			'task_id'         => $task_id,
-			'user_id'         => $user_id,
-			'message'         => $message,
-			'payload'         => array(
+			'task_id'        => $task_id,
+			'run_id'         => $run_id,
+			'parent_run_id'  => $parent_run_id,
+			'root_run_id'    => $root_run_id,
+			'user_id'        => $user_id,
+			'message'        => $message,
+			'payload'        => array(
 				'conversation'     => array_slice( $conversation, -10 ),
 				'deep_mode'        => $deep_mode,
 				'loaded_groups'    => $loaded_groups,
 				'checkpoint'       => $checkpoint_data,
 				'run_id'           => $run_id,
+				'parent_run_id'    => $parent_run_id,
+				'root_run_id'      => $root_run_id,
+				'handoff_capsule'  => $handoff_capsule,
 				'correlation_id'   => $correlation_id,
 				// v3.3.0: Resolved context captured at enqueue time so async
 				// execution has the same environmental awareness as foreground.
 				'resolved_context' => $resolved_context,
 			),
+			'handoff_capsule' => $handoff_capsule,
 			'reservation_id'  => $reservation_id,
 			'idempotency_key' => $idem_key,
 			'max_retries'     => 2,
@@ -368,6 +565,11 @@ class PressArk_Task_Queue {
 			}
 		}
 
+		$existing_task = null;
+		if ( ! empty( $create['reused_existing'] ) ) {
+			$existing_task = $this->store->get( $task_id );
+		}
+
 		if ( ! empty( $create['created'] ) ) {
 			// v4.2.0: Link the task to its durable run for cross-referencing.
 			if ( ! empty( $run_id ) ) {
@@ -377,13 +579,21 @@ class PressArk_Task_Queue {
 
 			PressArk_Activity_Trace::publish(
 				array(
-					'event_type' => 'task.queued',
+					'event_type' => 'worker.handoff',
 					'phase'      => 'async',
 					'status'     => 'queued',
-					'reason'     => 'state_change',
-					'summary'    => 'Async task queued for background processing.',
+					'reason'     => 'queue_handoff',
+					'summary'    => 'Background worker handoff persisted to the queue.',
 					'payload'    => array(
-						'max_retries' => 2,
+						'max_retries'      => 2,
+						'backend'          => $this->backend->get_name(),
+						'parent_run_id'    => $parent_run_id,
+						'root_run_id'      => $root_run_id,
+						'handoff_summary'  => sanitize_text_field( (string) ( $handoff_capsule['summary'] ?? '' ) ),
+						'workflow_stage'   => sanitize_key( (string) ( $handoff_capsule['workflow_stage'] ?? '' ) ),
+						'loaded_groups'    => (array) ( $handoff_capsule['loaded_groups'] ?? array() ),
+						'bundle_ids'       => (array) ( $handoff_capsule['bundle_ids'] ?? array() ),
+						'batch_provenance' => (array) ( $handoff_capsule['batch_provenance'] ?? array() ),
 					),
 				),
 				array(
@@ -398,9 +608,40 @@ class PressArk_Task_Queue {
 			);
 		}
 
+		if ( ! empty( $create['reused_existing'] ) && is_array( $existing_task ) ) {
+			PressArk_Activity_Trace::publish(
+				array(
+					'event_type' => 'worker.handoff',
+					'phase'      => 'async',
+					'status'     => 'queued',
+					'reason'     => 'queue_handoff',
+					'summary'    => 'Background handoff reused the already active queued task.',
+					'payload'    => array(
+						'reused_existing' => true,
+						'backend'         => $this->backend->get_name(),
+						'run_id'          => (string) ( $existing_task['run_id'] ?? '' ),
+						'parent_run_id'   => (string) ( $existing_task['parent_run_id'] ?? $parent_run_id ),
+						'root_run_id'     => (string) ( $existing_task['root_run_id'] ?? $root_run_id ),
+					),
+				),
+				array(
+					'correlation_id' => $correlation_id,
+					'run_id'         => (string) ( $existing_task['run_id'] ?? '' ),
+					'task_id'        => $task_id,
+					'reservation_id' => $reservation_id,
+					'user_id'        => $user_id,
+					'chat_id'        => (int) ( $resolved_context['chat_id'] ?? 0 ),
+					'route'          => ! empty( $resolved_context['automation_id'] ) ? 'automation' : 'async',
+				)
+			);
+		}
+
 		return array(
 			'type'            => 'queued',
 			'task_id'         => $task_id,
+			'run_id'          => ! empty( $run_id ) ? $run_id : (string) ( $existing_task['run_id'] ?? '' ),
+			'parent_run_id'   => $parent_run_id ?: (string) ( $existing_task['parent_run_id'] ?? '' ),
+			'root_run_id'     => $root_run_id ?: (string) ( $existing_task['root_run_id'] ?? '' ),
 			'reused_existing' => ! empty( $create['reused_existing'] ),
 			'message' => "I'm working on that in the background. You can track progress and view results in the Activity page — even if you close this tab.",
 		);
@@ -426,9 +667,13 @@ class PressArk_Task_Queue {
 
 		$reservation_id = $task['reservation_id'] ?? '';
 		$payload        = $task['payload'] ?? array();
-		$run_id         = $payload['run_id'] ?? '';
+		$run_id         = (string) ( $task['run_id'] ?? ( $payload['run_id'] ?? '' ) );
+		$parent_run_id  = (string) ( $task['parent_run_id'] ?? ( $payload['parent_run_id'] ?? '' ) );
+		$root_run_id    = (string) ( $task['root_run_id'] ?? ( $payload['root_run_id'] ?? '' ) );
 		$correlation_id = (string) ( $payload['correlation_id'] ?? '' );
 		$run            = null;
+		$pipeline       = null;
+		$throttle       = null;
 
 		if ( '' !== $run_id ) {
 			$run_store = new PressArk_Run_Store();
@@ -440,11 +685,20 @@ class PressArk_Task_Queue {
 				if ( empty( $reservation_id ) ) {
 					$reservation_id = (string) ( $run['reservation_id'] ?? '' );
 				}
+				if ( '' === $parent_run_id ) {
+					$parent_run_id = (string) ( $run['parent_run_id'] ?? '' );
+				}
+				if ( '' === $root_run_id ) {
+					$root_run_id = (string) ( $run['root_run_id'] ?? '' );
+				}
 			}
 		}
 
 		$resolved_pre = $payload['resolved_context'] ?? array();
 		$route        = $run['route'] ?? ( ! empty( $resolved_pre['automation_id'] ) ? 'automation' : 'async' );
+		if ( '' === $root_run_id && '' !== $run_id ) {
+			$root_run_id = $run_id;
+		}
 
 		PressArk_Activity_Trace::clear_current_context();
 		PressArk_Activity_Trace::set_current_context(
@@ -459,12 +713,92 @@ class PressArk_Task_Queue {
 			)
 		);
 
+		PressArk_Activity_Trace::publish(
+			array(
+				'event_type' => 'worker.claimed',
+				'phase'      => 'async',
+				'status'     => 'running',
+				'reason'     => 'worker_claimed',
+				'summary'    => 'Background worker claimed the queued task.',
+				'payload'    => array(
+					'attempt'       => (int) ( $task['retries'] ?? 0 ) + 1,
+					'parent_run_id' => $parent_run_id,
+					'root_run_id'   => $root_run_id,
+					'backend'       => $this->backend->get_name(),
+				),
+			)
+		);
+
 		try {
 			wp_set_current_user( (int) $task['user_id'] );
 
 			$license = new PressArk_License();
 			$tier    = $license->get_tier();
-			$agent   = pressark_get_agent( (int) $task['user_id'] );
+
+			if ( $run && 'running' !== (string) ( $run['status'] ?? 'running' ) ) {
+				PressArk_Activity_Trace::publish(
+					array(
+						'event_type' => 'worker.cancelled',
+						'phase'      => 'async',
+						'status'     => 'cancelled',
+						'reason'     => 'worker_cancelled',
+						'summary'    => 'Background worker stopped because its parent run was already cancelled or terminal.',
+						'payload'    => array(
+							'run_status'     => sanitize_key( (string) ( $run['status'] ?? '' ) ),
+							'parent_run_id'  => $parent_run_id,
+							'root_run_id'    => $root_run_id,
+						),
+					)
+				);
+				$this->store->fail( $task_id, 'Background worker cancelled before execution started.' );
+				return;
+			}
+
+			$throttle = new PressArk_Throttle();
+			$slot_id  = $throttle->acquire_slot( (int) $task['user_id'], $tier );
+			if ( ! $slot_id ) {
+				$payload['defer_count'] = (int) ( $payload['defer_count'] ?? 0 ) + 1;
+				$this->store->update_payload( $task_id, $payload );
+
+				PressArk_Activity_Trace::publish(
+					array(
+						'event_type' => 'worker.slot_contention',
+						'phase'      => 'async',
+						'status'     => 'waiting',
+						'reason'     => 'worker_slot_contention',
+						'summary'    => 'Background worker could not acquire a concurrency slot.',
+						'payload'    => array(
+							'defer_count'    => (int) $payload['defer_count'],
+							'active_slots'   => $throttle->active_slots( (int) $task['user_id'] ),
+							'parent_run_id'  => $parent_run_id,
+							'root_run_id'    => $root_run_id,
+						),
+					)
+				);
+
+				if ( $this->store->defer( $task_id ) ) {
+					$delay = min( 60, 10 + ( ( (int) $payload['defer_count'] ) - 1 ) * 10 );
+					PressArk_Activity_Trace::publish(
+						array(
+							'event_type' => 'worker.deferred',
+							'phase'      => 'async',
+							'status'     => 'queued',
+							'reason'     => 'worker_deferred',
+							'summary'    => 'Background worker deferred the task and re-queued it for a later slot.',
+							'payload'    => array(
+								'delay_seconds'  => $delay,
+								'defer_count'    => (int) $payload['defer_count'],
+								'parent_run_id'  => $parent_run_id,
+								'root_run_id'    => $root_run_id,
+							),
+						)
+					);
+					$this->backend->schedule( $task_id, $delay );
+				}
+				return;
+			}
+
+			$agent = pressark_get_agent( (int) $task['user_id'] );
 
 			// v3.7.1: Set async task context for business idempotency.
 			// Handlers can now check has_operation_receipt() / record_operation_receipt()
@@ -538,20 +872,24 @@ class PressArk_Task_Queue {
 					);
 					$this->store->retry( $task_id );
 					$attempt = (int) $task['retries'];
+					$delay   = $this->retry_backoff( $attempt, $failure_class );
 					PressArk_Activity_Trace::publish(
 						array(
-							'event_type' => 'task.retry_scheduled',
+							'event_type' => 'worker.retry_scheduled',
 							'phase'      => 'async',
 							'status'     => 'retrying',
 							'reason'     => 'retry_async_failure',
 							'summary'    => 'Async retry scheduled after a retryable failure.',
 							'payload'    => array(
-								'attempt'       => $attempt + 1,
-								'failure_class' => (string) $failure_class,
+								'attempt'        => $attempt + 1,
+								'failure_class'  => (string) $failure_class,
+								'delay_seconds'  => $delay,
+								'parent_run_id'  => $parent_run_id,
+								'root_run_id'    => $root_run_id,
 							),
 						)
 					);
-					$this->backend->schedule( $task_id, $this->retry_backoff( $attempt, $failure_class ) );
+					$this->backend->schedule( $task_id, $delay );
 					return;
 				}
 			}
@@ -559,11 +897,10 @@ class PressArk_Task_Queue {
 			// v3.0.0: Settle via unified pipeline (same path as sync).
 			$reservation = new PressArk_Reservation();
 			$tracker     = new PressArk_Usage_Tracker();
-			$throttle    = new PressArk_Throttle();
 
 			$pipeline = new PressArk_Pipeline( $reservation, $tracker, $throttle, $tier );
 			if ( ! empty( $reservation_id ) ) {
-				$pipeline->register_resources( $reservation_id, (int) $task['user_id'] );
+				$pipeline->register_resources( $reservation_id, (int) $task['user_id'], true, $slot_id );
 			}
 
 			if ( 'confirm_card' === ( $result['type'] ?? '' ) && ! empty( $result['pending_actions'] ) ) {
@@ -633,6 +970,21 @@ class PressArk_Task_Queue {
 			}
 
 			if ( $task_failed ) {
+				PressArk_Activity_Trace::publish(
+					array(
+						'event_type' => 'worker.completed',
+						'phase'      => 'async',
+						'status'     => 'failed',
+						'reason'     => 'worker_completed',
+						'summary'    => 'Background worker completed with a terminal failure.',
+						'payload'    => array(
+							'result_type'    => (string) ( $task_result['type'] ?? '' ),
+							'error'          => $task_error,
+							'parent_run_id'  => $parent_run_id,
+							'root_run_id'    => $root_run_id,
+						),
+					)
+				);
 				$this->store->fail( $task_id, $task_error );
 			} else {
 				if ( $async_chat_id > 0 && empty( $task_result['chat_id'] ) ) {
@@ -644,6 +996,20 @@ class PressArk_Task_Queue {
 				if ( '' !== $correlation_id && empty( $task_result['correlation_id'] ) ) {
 					$task_result['correlation_id'] = $correlation_id;
 				}
+				PressArk_Activity_Trace::publish(
+					array(
+						'event_type' => 'worker.completed',
+						'phase'      => 'async',
+						'status'     => 'succeeded',
+						'reason'     => 'worker_completed',
+						'summary'    => 'Background worker completed and persisted its result.',
+						'payload'    => array(
+							'result_type'    => (string) ( $task_result['type'] ?? 'final_response' ),
+							'parent_run_id'  => $parent_run_id,
+							'root_run_id'    => $root_run_id,
+						),
+					)
+				);
 				$this->store->complete( $task_id, $task_result );
 			}
 
@@ -661,22 +1027,40 @@ class PressArk_Task_Queue {
 			if ( $this->should_retry_failure( $failure_class, $task, $payload ) ) {
 				$this->store->retry( $task_id );
 				$attempt = (int) $task['retries'];
+				$delay   = $this->retry_backoff( $attempt, $failure_class );
 				PressArk_Activity_Trace::publish(
 					array(
-						'event_type' => 'task.retry_scheduled',
+						'event_type' => 'worker.retry_scheduled',
 						'phase'      => 'async',
 						'status'     => 'retrying',
 						'reason'     => 'retry_async_failure',
 						'summary'    => 'Async retry scheduled after an exception.',
 						'payload'    => array(
-							'attempt'       => $attempt + 1,
-							'failure_class' => (string) $failure_class,
+							'attempt'        => $attempt + 1,
+							'failure_class'  => (string) $failure_class,
+							'delay_seconds'  => $delay,
+							'parent_run_id'  => $parent_run_id,
+							'root_run_id'    => $root_run_id,
 						),
 					)
 				);
-				$this->backend->schedule( $task_id, $this->retry_backoff( $attempt, $failure_class ) );
+				$this->backend->schedule( $task_id, $delay );
 			} else {
 				// v3.7.0: Final failure — move to dead_letter for supportability.
+				PressArk_Activity_Trace::publish(
+					array(
+						'event_type' => 'worker.completed',
+						'phase'      => 'async',
+						'status'     => 'failed',
+						'reason'     => 'worker_completed',
+						'summary'    => 'Background worker failed permanently and moved the task to dead letter.',
+						'payload'    => array(
+							'failure_class'  => (string) $failure_class,
+							'parent_run_id'  => $parent_run_id,
+							'root_run_id'    => $root_run_id,
+						),
+					)
+				);
 				$this->store->dead_letter( $task_id, 'All retries exhausted: ' . $this->format_failure_reason( $failure_class, $e->getMessage() ) );
 
 				// Release reservation.
@@ -702,6 +1086,9 @@ class PressArk_Task_Queue {
 				}
 			}
 		} finally {
+			if ( $pipeline ) {
+				$pipeline->cleanup();
+			}
 			PressArk_Activity_Trace::clear_current_context();
 		}
 	}

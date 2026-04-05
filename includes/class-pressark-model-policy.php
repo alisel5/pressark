@@ -604,15 +604,34 @@ class PressArk_Model_Policy {
 	 * @return bool
 	 */
 	public static function can_use_fallback( string $transport_provider, bool $is_byok, array $constraints = array() ): bool {
+		return empty( self::fallback_blockers( $transport_provider, $is_byok, $constraints ) );
+	}
+
+	/**
+	 * Explain why a bundled fallback path is unavailable.
+	 *
+	 * @param string $transport_provider Current transport provider.
+	 * @param bool   $is_byok            Whether the request uses BYOK credentials.
+	 * @param array  $constraints        Routing constraints.
+	 * @return string[]
+	 */
+	public static function fallback_blockers( string $transport_provider, bool $is_byok, array $constraints = array() ): array {
+		$blockers = array();
+
 		if ( $is_byok ) {
-			return false;
+			$blockers[] = 'byok_provider_locked';
+		}
+		if ( ! empty( $constraints['model_pinned'] ) ) {
+			$blockers[] = 'model_pinned';
+		}
+		if ( ! empty( $constraints['data_policy_locked'] ) ) {
+			$blockers[] = 'data_policy_locked';
+		}
+		if ( ! in_array( $transport_provider, self::ALL_PROVIDERS, true ) ) {
+			$blockers[] = 'provider_unsupported';
 		}
 
-		if ( ! empty( $constraints['model_pinned'] ) || ! empty( $constraints['data_policy_locked'] ) ) {
-			return false;
-		}
-
-		return in_array( $transport_provider, self::ALL_PROVIDERS, true );
+		return $blockers;
 	}
 
 	/**

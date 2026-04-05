@@ -59,11 +59,13 @@ if ( ! function_exists( 'current_time' ) ) {
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-pressark-permission-decision.php';
+require_once dirname( __DIR__ ) . '/includes/class-pressark-policy-diagnostics.php';
 require_once dirname( __DIR__ ) . '/includes/class-pressark-permission-service.php';
 require_once dirname( __DIR__ ) . '/includes/class-pressark-policy-engine.php';
 require_once dirname( __DIR__ ) . '/includes/class-pressark-tool-catalog.php';
 require_once dirname( __DIR__ ) . '/includes/class-pressark-tool-loader.php';
 require_once dirname( __DIR__ ) . '/includes/class-pressark-run-store.php';
+require_once __DIR__ . '/helpers/harness-fixtures.php';
 
 if ( ! class_exists( 'PressArk_Operation' ) ) {
 	class PressArk_Operation {
@@ -172,6 +174,14 @@ if ( ! class_exists( 'PressArk_Operation_Registry' ) ) {
 if ( ! class_exists( 'PressArk_Automation_Policy' ) ) {
 	class PressArk_Automation_Policy {
 		public const POLICY_EDITORIAL = 'editorial';
+
+		public static function all_policies(): array {
+			return array(
+				self::POLICY_EDITORIAL,
+				'merchandising',
+				'full',
+			);
+		}
 
 		public static function check( string $op, string $policy, array $args = array() ): array {
 			unset( $args );
@@ -640,6 +650,127 @@ $pause_state = PressArk_Run_Store::build_pause_state(
 );
 assert_test( '16a. Pause snapshot stores effective visible tools for replay/debug', array( 'read_content', 'discover_tools' ) === ( $pause_state['effective_visible_tools'] ?? array() ) );
 assert_test( '16b. Pause snapshot stores permission surface for operators', 1 === (int) ( $pause_state['permission_surface']['hidden_tool_count'] ?? 0 ) );
+
+reset_test_state();
+add_filter( 'pressark_policy_rules', function ( $rules ) {
+	$rules[] = array(
+		'behavior' => PressArk_Policy_Engine::ASK,
+		'match'    => PressArk_Policy_Engine::MATCH_GROUP,
+		'value'    => 'seo',
+		'source'   => 'shared_policy',
+	);
+	$rules[] = array(
+		'behavior' => PressArk_Policy_Engine::ALLOW,
+		'match'    => PressArk_Policy_Engine::MATCH_OPERATION,
+		'value'    => 'fix_seo',
+		'source'   => 'local_exception',
+	);
+	return $rules;
+}, 10, 1 );
+$shadowed_rules = PressArk_Policy_Diagnostics::detect_shadowed_rules();
+$first_shadow   = $shadowed_rules[0] ?? array();
+$dead_groups    = PressArk_Policy_Diagnostics::detect_dead_group_combinations();
+$has_dead_seo   = false;
+foreach ( $dead_groups as $row ) {
+	if ( 'seo' === ( $row['group'] ?? '' ) ) {
+		$has_dead_seo = true;
+		break;
+	}
+}
+assert_test( '17a. Shadowed rules detect unreachable allow exceptions', ! empty( $shadowed_rules ) );
+assert_test( '17b. Shadowed rules report ask-shadowing for the specific allow rule', 'ask' === ( $first_shadow['shadow_type'] ?? '' ) );
+assert_test( '17c. Dead group combinations detect automation surfaces with no visible SEO tools', $has_dead_seo );
+
+reset_test_state();
+$report = PressArk_Policy_Diagnostics::build_report_from_events(
+	array(
+		array(
+			'event_type' => 'policy.surface',
+			'reason'     => 'requested_group_unreachable',
+			'payload'    => array(
+				'context'          => PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+				'requested_groups' => array( 'seo' ),
+				'visible_groups'   => array(),
+				'hidden_tools'     => array( 'fix_seo' ),
+				'hidden_summary'   => array( 'entitlement_denied' => 1 ),
+				'hidden_decisions' => array(
+					array(
+						'tool'         => 'fix_seo',
+						'reason_codes' => array( 'entitlement_denied' ),
+					),
+				),
+			),
+		),
+		array(
+			'event_type' => 'policy.denial',
+			'reason'     => 'entitlement_denied',
+			'payload'    => array(
+				'operation'    => 'fix_seo',
+				'group'        => 'seo',
+				'context'      => PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+				'source'       => 'entitlements',
+				'reason_codes' => array( 'entitlement_denied' ),
+			),
+		),
+		array(
+			'event_type' => 'tool.discovery',
+			'reason'     => 'discover_repeated_misfire',
+			'payload'    => array(
+				'query'              => 'fix seo title',
+				'requested_families' => array( 'seo' ),
+			),
+		),
+	),
+	7
+);
+assert_test( '18a. Friction report aggregates repeatedly hidden tools', 'fix_seo' === ( $report['top_hidden_tools'][0]['tool'] ?? '' ) );
+assert_test( '18b. Friction report aggregates repeatedly denied operations', 'fix_seo' === ( $report['top_denied_operations'][0]['operation'] ?? '' ) );
+assert_test( '18c. Friction report tracks groups that were requested but never visible', 'seo' === ( $report['requested_never_visible_groups'][0]['group'] ?? '' ) );
+assert_test( '18d. Friction report tracks discovery dead-end queries', 'fix seo title' === ( $report['discovery_dead_ends'][0]['query'] ?? '' ) );
+
+function run_policy_fixture_scenario( array $fixture ): array {
+	$input = (array) ( $fixture['input'] ?? array() );
+	reset_test_state();
+
+	if ( isset( $input['license_tier'] ) ) {
+		PressArk_License::$tier = (string) $input['license_tier'];
+	}
+	PressArk_Entitlements::$limit_exhausted = ! empty( $input['limit_exhausted'] );
+
+	$loader_input = (array) ( $input['loader'] ?? array() );
+	$loader = new PressArk_Tool_Loader();
+	$tool_set = $loader->resolve(
+		(string) ( $loader_input['message'] ?? '' ),
+		array(),
+		(string) ( $loader_input['tier'] ?? PressArk_License::$tier ),
+		(array) ( $loader_input['groups'] ?? array() ),
+		(array) ( $loader_input['options'] ?? array() )
+	);
+
+	$decision_input = (array) ( $input['decision'] ?? array() );
+	$decision = PressArk_Permission_Service::evaluate(
+		(string) ( $decision_input['operation'] ?? '' ),
+		(array) ( $decision_input['args'] ?? array() ),
+		(string) ( $decision_input['context'] ?? PressArk_Policy_Engine::CONTEXT_INTERACTIVE ),
+		(array) ( $decision_input['meta'] ?? array() )
+	);
+
+	return array(
+		'tool_names'          => (array) ( $tool_set['tool_names'] ?? array() ),
+		'permission_surface'  => (array) ( $tool_set['permission_surface'] ?? array() ),
+		'decision'            => $decision,
+	);
+}
+
+foreach ( pressark_test_load_json_fixtures( 'tests/fixtures/harness/permission' ) as $fixture ) {
+	$actual = run_policy_fixture_scenario( $fixture );
+	pressark_test_assert_fixture_expectations(
+		'assert_test',
+		'Fixture permission - ' . (string) ( $fixture['name'] ?? $fixture['_fixture_file'] ?? 'scenario' ),
+		$actual,
+		(array) ( $fixture['expect'] ?? array() )
+	);
+}
 
 echo "\n=== Results: {$passed} passed, {$failed} failed ===\n";
 exit( $failed > 0 ? 1 : 0 );

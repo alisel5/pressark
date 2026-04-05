@@ -1,0 +1,69 @@
+{
+  "kind": "round_compaction_window",
+  "name": "compaction keeps the latest full assistant round",
+  "input": {
+    "keep_rounds": 2,
+    "fallback_tail": 2,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Inspect the site."
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "toolu_r1",
+            "type": "function",
+            "function": {
+              "name": "site_health",
+              "arguments": "{}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "toolu_r1",
+        "content": "round 1 result"
+      },
+      {
+        "role": "assistant",
+        "content": "Round 1 complete."
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "toolu_r2",
+            "type": "function",
+            "function": {
+              "name": "site_health",
+              "arguments": "{\"scope\":\"full\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "toolu_r2",
+        "content": "round 2 result"
+      },
+      {
+        "role": "assistant",
+        "content": "Round 2 complete."
+      }
+    ]
+  },
+  "expect": {
+    "paths": {
+      "recent_messages_count": 3,
+      "recent_messages.0.role": "assistant",
+      "recent_messages.1.tool_call_id": "toolu_r2",
+      "dropped_rounds": 2,
+      "used_rounds": true
+    }
+  }
+}

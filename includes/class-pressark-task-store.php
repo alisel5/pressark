@@ -68,9 +68,13 @@ class PressArk_Task_Store {
 		return "CREATE TABLE {$table} (
 			id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			task_id VARCHAR(64) NOT NULL,
+			run_id VARCHAR(64) DEFAULT NULL,
+			parent_run_id VARCHAR(64) DEFAULT NULL,
+			root_run_id VARCHAR(64) DEFAULT NULL,
 			user_id BIGINT(20) UNSIGNED NOT NULL,
 			message TEXT NOT NULL,
 			payload LONGTEXT DEFAULT NULL,
+			handoff_capsule LONGTEXT DEFAULT NULL,
 			reservation_id VARCHAR(64) NOT NULL DEFAULT '',
 			idempotency_key VARCHAR(128) DEFAULT NULL,
 			idempotency_active TINYINT(1) UNSIGNED DEFAULT NULL,
@@ -87,6 +91,9 @@ class PressArk_Task_Store {
 			PRIMARY KEY (id),
 			UNIQUE KEY idx_task_id (task_id),
 			UNIQUE KEY uniq_idempotency_active (idempotency_key, idempotency_active),
+			KEY idx_run_created (run_id, created_at),
+			KEY idx_parent_run_created (parent_run_id, created_at),
+			KEY idx_root_run_created (root_run_id, created_at),
 			KEY idx_user_status (user_id, status),
 			KEY idx_status_created (status, created_at),
 			KEY idx_expires_at (expires_at)
@@ -122,9 +129,23 @@ class PressArk_Task_Store {
 		global $wpdb;
 
 		$task_id         = $data['task_id'] ?? wp_generate_uuid4();
+		$run_id          = sanitize_text_field( (string) ( $data['run_id'] ?? '' ) );
+		$parent_run_id   = sanitize_text_field( (string) ( $data['parent_run_id'] ?? '' ) );
+		$root_run_id     = sanitize_text_field( (string) ( $data['root_run_id'] ?? '' ) );
 		$idempotency_key = ! empty( $data['idempotency_key'] )
 			? sanitize_text_field( $data['idempotency_key'] )
 			: null;
+		$handoff_capsule = ! empty( $data['handoff_capsule'] ) && is_array( $data['handoff_capsule'] )
+			? wp_json_encode( $data['handoff_capsule'] )
+			: '';
+
+		if ( '' === $root_run_id ) {
+			if ( '' !== $parent_run_id ) {
+				$root_run_id = $parent_run_id;
+			} elseif ( '' !== $run_id ) {
+				$root_run_id = $run_id;
+			}
+		}
 
 		// v4.2.0: Idempotency check — return existing in-flight task only.
 		// Previously this blocked reruns when a task was 'complete' but not yet
@@ -147,15 +168,19 @@ class PressArk_Task_Store {
 
 		$row = array(
 			'task_id'            => $task_id,
+			'run_id'             => $run_id,
+			'parent_run_id'      => $parent_run_id,
+			'root_run_id'        => $root_run_id,
 			'user_id'            => absint( $data['user_id'] ?? get_current_user_id() ),
 			'message'            => $data['message'] ?? '',
 			'payload'            => wp_json_encode( $data['payload'] ?? array() ),
+			'handoff_capsule'    => $handoff_capsule,
 			'reservation_id'     => sanitize_text_field( $data['reservation_id'] ?? '' ),
 			'idempotency_key'    => $idempotency_key,
 			'idempotency_active' => $idempotency_key ? 1 : null,
 			'max_retries'        => absint( $data['max_retries'] ?? 2 ),
 		);
-		$formats = array( '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%d' );
+		$formats = array( '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d' );
 
 		/**
 		 * Allow tests to simulate races immediately before the insert.
@@ -377,6 +402,32 @@ class PressArk_Task_Store {
 				     	ELSE 1
 				     END
 				 WHERE task_id = %s AND status = 'failed'",
+				$task_id
+			)
+		);
+
+		return $rows >= 1;
+	}
+
+	/**
+	 * Defer a running task back into the queue without incrementing retries.
+	 *
+	 * Used when a worker claimed the task successfully but needs to yield due
+	 * to temporary contention, such as an unavailable concurrency slot.
+	 */
+	public function defer( string $task_id ): bool {
+		global $wpdb;
+		$table = self::table_name();
+
+		$rows = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table}
+				 SET status = 'queued',
+				     started_at = NULL,
+				     completed_at = NULL,
+				     fail_reason = NULL
+				 WHERE task_id = %s
+				   AND status = 'running'",
 				$task_id
 			)
 		);
@@ -791,7 +842,7 @@ class PressArk_Task_Store {
 		}
 
 		// Mark as read on view.
-		if ( null === $task['read_at'] ) {
+		if ( null === $task['read_at'] && in_array( (string) ( $task['status'] ?? '' ), array( 'complete', 'delivered', 'undelivered' ), true ) ) {
 			$this->mark_read( $task_id );
 			$task['read_at'] = current_time( 'mysql', true );
 		}
@@ -928,6 +979,10 @@ class PressArk_Task_Store {
 	 * Decode JSON columns and cast types for a task row.
 	 */
 	private function decode_row( array $row ): array {
+		$row['run_id']          = (string) ( $row['run_id'] ?? '' );
+		$row['parent_run_id']   = (string) ( $row['parent_run_id'] ?? '' );
+		$row['root_run_id']     = (string) ( $row['root_run_id'] ?? '' );
+		$row['handoff_capsule'] = json_decode( $row['handoff_capsule'] ?? 'null', true );
 		$row['payload']     = json_decode( $row['payload'] ?? '{}', true ) ?: array();
 		$row['result']      = json_decode( $row['result'] ?? 'null', true );
 		$row['retries']     = (int) $row['retries'];

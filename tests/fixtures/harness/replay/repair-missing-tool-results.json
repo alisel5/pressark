@@ -1,0 +1,41 @@
+{
+  "kind": "repair_messages",
+  "name": "resume repair inserts placeholder tool results",
+  "input": {
+    "phase": "resume_boundary",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "toolu_missing",
+            "type": "function",
+            "function": {
+              "name": "read_content",
+              "arguments": "{}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "Waiting on the next step."
+      }
+    ]
+  },
+  "expect": {
+    "paths": {
+      "changed": true,
+      "event.inserted_missing_results": 1,
+      "messages.1.role": "tool",
+      "messages.1.tool_call_id": "toolu_missing",
+      "messages.2.role": "assistant"
+    },
+    "contains": {
+      "messages.1.content": [
+        "replay_placeholder"
+      ]
+    }
+  }
+}

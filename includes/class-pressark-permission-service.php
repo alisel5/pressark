@@ -215,6 +215,8 @@ class PressArk_Permission_Service {
 	 * @return array
 	 */
 	public static function build_surface_snapshot( array $visibility, array $requested_groups = array() ): array {
+		$requested_groups = array_values( array_unique( array_filter( array_map( 'sanitize_key', $requested_groups ) ) ) );
+		$visible_groups   = array_values( array_unique( array_filter( array_map( 'sanitize_key', (array) ( $visibility['visible_groups'] ?? array() ) ) ) ) );
 		$hidden_decisions = array();
 		foreach ( (array) ( $visibility['hidden_tool_names'] ?? array() ) as $tool_name ) {
 			if ( isset( $visibility['decisions'][ $tool_name ] ) ) {
@@ -226,9 +228,12 @@ class PressArk_Permission_Service {
 			'contract'            => 'effective_visible_tools',
 			'version'             => PressArk_Permission_Decision::VERSION,
 			'context'             => (string) ( $visibility['context'] ?? '' ),
-			'requested_groups'    => array_values( array_unique( array_filter( array_map( 'sanitize_key', $requested_groups ) ) ) ),
-			'visible_groups'      => array_values( array_unique( array_filter( array_map( 'sanitize_key', (array) ( $visibility['visible_groups'] ?? array() ) ) ) ) ),
+			'requested_groups'    => $requested_groups,
+			'visible_groups'      => $visible_groups,
+			'missing_requested_groups' => array_values( array_diff( $requested_groups, $visible_groups ) ),
+			'all_requested_groups_hidden' => ! empty( $requested_groups ) && empty( array_intersect( $requested_groups, $visible_groups ) ),
 			'visible_tools'       => array_values( array_filter( array_map( 'sanitize_key', (array) ( $visibility['visible_tool_names'] ?? array() ) ) ) ),
+			'visible_tool_count'  => count( (array) ( $visibility['visible_tool_names'] ?? array() ) ),
 			'hidden_tools'        => array_values( array_filter( array_map( 'sanitize_key', (array) ( $visibility['hidden_tool_names'] ?? array() ) ) ) ),
 			'hidden_tool_count'   => count( (array) ( $visibility['hidden_tool_names'] ?? array() ) ),
 			'hidden_summary'      => (array) ( $visibility['hidden_summary'] ?? array() ),
@@ -247,6 +252,10 @@ class PressArk_Permission_Service {
 	 * @return array
 	 */
 	public static function filter_discovery_results( array $results, string $context, array $meta = array() ): array {
+		if ( ! isset( $meta['decision_purpose'] ) ) {
+			$meta['decision_purpose'] = 'tool_discovery';
+		}
+
 		$filtered = array();
 
 		foreach ( $results as $result ) {

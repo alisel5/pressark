@@ -382,6 +382,16 @@ class PressArk_Resource_Registry {
 			'invalidate_on' => array( 'switch_theme', 'activated_plugin', 'deactivated_plugin' ),
 		) );
 
+		self::register( array(
+			'uri'           => 'pressark://site/harness-readiness',
+			'name'          => 'Harness Readiness',
+			'description'   => 'Canonical PressArk readiness across billing, providers, profiles, indexing, and background work',
+			'group'         => 'site',
+			'resolver'      => array( 'PressArk_Harness_Readiness', 'get_snapshot' ),
+			'ttl'           => MINUTE_IN_SECONDS,
+			'invalidate_on' => array(),
+		) );
+
 		// ── Design ──
 
 		self::register( array(

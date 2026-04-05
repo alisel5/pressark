@@ -127,7 +127,7 @@ class PressArk_Chat {
 			),
 		) );
 
-		// v4.4.0: SSE streaming endpoint — real-time token delivery.
+		// v4.4.0: SSE streaming endpoint ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â real-time token delivery.
 		register_rest_route( 'pressark/v1', '/chat-stream', array(
 			'methods'             => 'POST',
 			'callback'            => array( $this, 'handle_chat_stream' ),
@@ -273,7 +273,7 @@ class PressArk_Chat {
 			'permission_callback' => array( $this, 'check_permissions' ),
 		) );
 
-		// v4.2.0: Activity feed — fetch task result without requiring heartbeat.
+		// v4.2.0: Activity feed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â fetch task result without requiring heartbeat.
 		register_rest_route( 'pressark/v1', '/activity/task/(?P<task_id>[a-f0-9-]+)', array(
 			'methods'             => 'GET',
 			'callback'            => array( $this, 'handle_get_task_result' ),
@@ -387,9 +387,9 @@ class PressArk_Chat {
 	 * detection on the streaming path.
 	 *
 	 * Resolution order:
-	 *   1. `run_id` — direct, no ambiguity (preferred, from run_started SSE)
-	 *   2. `chat_id` — lookup most recent cancellable run for this chat
-	 *   3. user-level fallback — most recent cancellable run for the user
+	 *   1. `run_id` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â direct, no ambiguity (preferred, from run_started SSE)
+	 *   2. `chat_id` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â lookup most recent cancellable run for this chat
+	 *   3. user-level fallback ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â most recent cancellable run for the user
 	 *      (covers very-fast-cancel: user hit Stop before run_started arrived)
 	 */
 	public function handle_cancel( WP_REST_Request $request ): WP_REST_Response {
@@ -431,7 +431,7 @@ class PressArk_Chat {
 			}
 		}
 
-		// No matching run found — already settled, failed, or never created.
+		// No matching run found ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â already settled, failed, or never created.
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
@@ -487,10 +487,10 @@ class PressArk_Chat {
 	 * fails in Docker, firewalled hosts, and reverse proxies. This
 	 * detects two failure modes:
 	 *
-	 * 1. Stuck AS actions — pressark actions piling up in 'pending'
+	 * 1. Stuck AS actions ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â pressark actions piling up in 'pending'
 	 *    because AS's own runner never fires. Fix: kick AS inline.
 	 *
-	 * 2. Overdue queued tasks — tasks stuck in pressark_tasks because
+	 * 2. Overdue queued tasks ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tasks stuck in pressark_tasks because
 	 *    neither AS nor WP-Cron processed the cron event. Fix: process
 	 *    the task directly in a shutdown handler.
 	 *
@@ -606,7 +606,7 @@ class PressArk_Chat {
 	 * Can the current user access PressArk chat?
 	 *
 	 * Delegates to PressArk_Capabilities::current_user_can_use().
-	 * Kept as a static facade for backward compatibility — called from
+	 * Kept as a static facade for backward compatibility ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â called from
 	 * class-pressark.php, class-admin-activity.php, and third-party code.
 	 *
 	 * @since 4.2.0 Delegates to PressArk_Capabilities.
@@ -648,7 +648,7 @@ class PressArk_Chat {
 	/**
 	 * Sanitize the conversation array from the client.
 	 *
-	 * Only allow 'user' and 'assistant' roles. Content is plain text —
+	 * Only allow 'user' and 'assistant' roles. Content is plain text ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
 	 * strip all HTML since the client renders via its own markdown
 	 * renderer. Using sanitize_text_field instead of wp_kses_post
 	 * prevents stored HTML from surviving round-trips through chat
@@ -684,7 +684,7 @@ class PressArk_Chat {
 	/**
 	 * Sanitize conversation content preserving code/HTML.
 	 * Strips control characters and invalid UTF-8 but keeps angle brackets,
-	 * line breaks, and whitespace — same logic as the message input field.
+	 * line breaks, and whitespace ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â same logic as the message input field.
 	 */
 	private function sanitize_conversation_content( string $content ): string {
 		$content = wp_check_invalid_utf8( $content );
@@ -701,7 +701,7 @@ class PressArk_Chat {
 	 *
 	 * v3.5.0: Replaced unreliable pattern-matching heuristic with a direct
 	 * entitlement check. The AI can still perform reads regardless of write
-	 * quota — writes are gated at confirm/preview time. This pre-flight
+	 * quota ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â writes are gated at confirm/preview time. This pre-flight
 	 * blocks requests that pattern-match obvious write intent to save
 	 * token budget, but does NOT pretend to be a security gate.
 	 *
@@ -787,7 +787,7 @@ class PressArk_Chat {
 	 * Uses MySQL GET_LOCK for true mutual exclusion. Falls back to a transient-
 	 * based guard on environments where GET_LOCK is unavailable (e.g. Galera).
 	 *
-	 * @param int $user_id User ID (used when chat_id is 0 — new conversation).
+	 * @param int $user_id User ID (used when chat_id is 0 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â new conversation).
 	 * @param int $chat_id Chat ID (0 for new conversations).
 	 * @return bool True if lock acquired, false if another request holds it.
 	 */
@@ -822,7 +822,7 @@ class PressArk_Chat {
 	}
 
 	private function preflight( WP_REST_Request $request ): array|WP_REST_Response {
-		// ── [1] Sanitize ─────────────────────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [1] Sanitize ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$message      = $request->get_param( 'message' );
 		$conversation = $this->sanitize_conversation( $request->get_param( 'conversation' ) );
 		$screen       = $request->get_param( 'screen' );
@@ -880,7 +880,7 @@ class PressArk_Chat {
 			$cp                  = PressArk_Checkpoint::from_array( $checkpoint_data );
 
 			if ( ! empty( $pending_confirm ) ) {
-				// Active awaiting_confirm run — populate pending entries.
+				// Active awaiting_confirm run ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â populate pending entries.
 				$cp->clear_pending();
 				foreach ( $pending_confirm as $pa ) {
 					$name   = $pa['name'] ?? $pa['type'] ?? 'unknown_action';
@@ -891,11 +891,11 @@ class PressArk_Chat {
 					} elseif ( ! empty( $args['title'] ) ) {
 						$target = '"' . $args['title'] . '"';
 					}
-					$cp->add_pending( $name, $target ?: 'site', 'NOT YET APPLIED — awaiting user approval' );
+					$cp->add_pending( $name, $target ?: 'site', 'NOT YET APPLIED ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â awaiting user approval' );
 				}
 			} elseif ( $cp->has_unapplied_confirms() ) {
 				// No awaiting_confirm run but stale entries remain (user
-				// clicked Approve since last message) — clear them.
+				// clicked Approve since last message) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â clear them.
 				$cp->clear_pending();
 			}
 
@@ -938,7 +938,7 @@ class PressArk_Chat {
 
 		$post_id = $this->resolve_effective_post_id( (string) $message, $post_id, $checkpoint_data );
 
-		// ── [1b] Chat-level mutex ───────────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [1b] Chat-level mutex ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		// Prevents concurrent requests for the same chat from creating
 		// duplicate runs, double-reserving tokens, or corrupting state.
 		if ( ! $this->acquire_chat_lock( $user_id, $chat_id ) ) {
@@ -951,13 +951,13 @@ class PressArk_Chat {
 
 		$correlation_id = $this->begin_trace_context( $user_id, $chat_id );
 
-		// ── [2] Pre-flight write check ───────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [2] Pre-flight write check ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$write_block = $this->quick_write_check( $tier, $message, $tracker );
 		if ( $write_block ) {
 			return $write_block;
 		}
 
-		// ── [3] Throttle check ───────────────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [3] Throttle check ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$throttle  = new PressArk_Throttle();
 		$plan_info = PressArk_Entitlements::get_plan_info( $tier );
 
@@ -971,7 +971,7 @@ class PressArk_Chat {
 			), $error_data['status'] ?? 429 );
 		}
 
-		// ── [4] Estimate + reserve tokens ────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [4] Estimate + reserve tokens ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$reservation    = new PressArk_Reservation();
 		$reserve_model  = PressArk_Model_Policy::resolve( $tier, $deep_mode );
 		$estimated_raw  = $reservation->estimate_tokens( $message, $conversation, $tier );
@@ -1006,7 +1006,7 @@ class PressArk_Chat {
 			)
 		);
 
-		// ── [5] Unified routing ─────────────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [5] Unified routing ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$connector = new PressArk_AI_Connector( $tier );
 		$logger    = new PressArk_Action_Logger();
 		$engine    = new PressArk_Action_Engine( $logger );
@@ -1022,16 +1022,36 @@ class PressArk_Chat {
 
 		// [5a] Async early return.
 		if ( PressArk_Router::ROUTE_ASYNC === $routing['route'] ) {
-			$run_store = new PressArk_Run_Store();
-			$run_id    = $run_store->create( array(
-				'user_id'        => $user_id,
-				'chat_id'        => $chat_id,
-				'route'          => 'async',
-				'message'        => $message,
-				'reservation_id' => $reservation_id,
-				'correlation_id' => $correlation_id,
-				'tier'           => $tier,
-			) );
+			$queue            = new PressArk_Task_Queue();
+			$handoff_capsule  = PressArk_Task_Queue::build_handoff_capsule(
+				$message,
+				$conversation,
+				$loaded_groups,
+				$checkpoint_data ?: null,
+				array(
+					'screen'  => $screen,
+					'post_id' => $post_id,
+					'user_id' => $user_id,
+					'chat_id' => $chat_id,
+				),
+				'chat_async'
+			);
+			$run_store        = new PressArk_Run_Store();
+			$lineage          = $run_store->create_background_family(
+				'async',
+				array(
+					'user_id'         => $user_id,
+					'chat_id'         => $chat_id,
+					'message'         => $message,
+					'reservation_id'  => $reservation_id,
+					'correlation_id'  => $correlation_id,
+					'tier'            => $tier,
+					'handoff_capsule' => $handoff_capsule,
+				)
+			);
+			$parent_run_id    = (string) ( $lineage['parent_run_id'] ?? '' );
+			$run_id           = (string) ( $lineage['run_id'] ?? '' );
+
 			PressArk_Activity_Trace::set_current_context(
 				array(
 					'correlation_id' => $correlation_id,
@@ -1041,7 +1061,6 @@ class PressArk_Chat {
 				)
 			);
 
-			$queue  = new PressArk_Task_Queue();
 			$queued = $queue->enqueue(
 				$message,
 				$conversation,
@@ -1057,32 +1076,60 @@ class PressArk_Chat {
 					'post_id' => $post_id,
 					'user_id' => $user_id,
 					'chat_id' => $chat_id,
+				),
+				'',
+				array(
+					'parent_run_id'   => $parent_run_id,
+					'root_run_id'     => (string) ( $lineage['root_run_id'] ?? $run_id ),
+					'handoff_capsule' => $handoff_capsule,
 				)
 			);
 
 			if ( 'error' === ( $queued['type'] ?? '' ) ) {
 				$reservation->fail( $reservation_id, $queued['message'] ?? 'Async task queueing failed.' );
+				PressArk_Pipeline::fail_run( $parent_run_id, $queued['message'] ?? 'Async task queueing failed.' );
 				PressArk_Pipeline::fail_run( $run_id, $queued['message'] ?? 'Async task queueing failed.' );
 
 				return new WP_REST_Response( array_merge( $queued, array(
 					'usage'     => $tracker->get_usage_data(),
 					'plan_info' => $plan_info,
 					'run_id'    => $run_id,
+					'parent_run_id' => $parent_run_id,
 					'correlation_id' => $correlation_id,
 					'chat_id'   => $chat_id,
 				) ), 500 );
 			}
 
+			if ( ! empty( $queued['reused_existing'] ) && ! empty( $queued['run_id'] ) && (string) $queued['run_id'] !== $run_id ) {
+				PressArk_Pipeline::fail_run( $run_id, 'Background handoff reused an existing queued task.' );
+				$run_id = (string) $queued['run_id'];
+			}
+
+			PressArk_Pipeline::settle_run(
+				$parent_run_id,
+				array(
+					'type'           => 'handoff',
+					'message'        => ! empty( $queued['reused_existing'] )
+						? 'Background handoff reused an existing queued task.'
+						: 'Background handoff accepted and linked to a worker run.',
+					'task_id'        => (string) ( $queued['task_id'] ?? '' ),
+					'child_run_id'   => $run_id,
+					'root_run_id'    => (string) ( $queued['root_run_id'] ?? ( $lineage['root_run_id'] ?? $run_id ) ),
+					'handoff_capsule' => $handoff_capsule,
+				)
+			);
+
 			return new WP_REST_Response( array_merge( $queued, array(
 				'usage'     => $tracker->get_usage_data(),
 				'plan_info' => $plan_info,
 				'run_id'    => $run_id,
+				'parent_run_id' => $parent_run_id,
 				'correlation_id' => $correlation_id,
 				'chat_id'   => $chat_id,
 			) ) );
 		}
 
-		// ── [6] Acquire concurrency slot ─────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [6] Acquire concurrency slot ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$slot_id = $throttle->acquire_slot( $user_id, $tier );
 		if ( ! $slot_id ) {
 			$reservation->fail( $reservation_id, 'Concurrency limit reached' );
@@ -1093,7 +1140,7 @@ class PressArk_Chat {
 			), 429 );
 		}
 
-		// ── Build pipeline + run record ──────────────────────────────
+		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Build pipeline + run record ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 		$pipeline = new PressArk_Pipeline( $reservation, $tracker, $throttle, $tier, $plan_info );
 		$pipeline->register_resources( $reservation_id, $user_id, true, $slot_id );
 
@@ -1150,7 +1197,7 @@ class PressArk_Chat {
 		$preflight = $this->preflight( $request );
 
 		if ( $preflight instanceof WP_REST_Response ) {
-			// Preflight failed — send as JSON (headers not committed yet).
+			// Preflight failed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â send as JSON (headers not committed yet).
 			wp_send_json( $preflight->get_data(), $preflight->get_status() );
 			return;
 		}
@@ -1171,7 +1218,7 @@ class PressArk_Chat {
 			// Safety net: if the client disconnected and the run was not
 			// transitioned by process_chat_stream (e.g. exception path),
 			// ensure the run is not stuck in 'running'.  Transition guards
-			// in fail() make this idempotent — already-settled/failed runs
+			// in fail() make this idempotent ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â already-settled/failed runs
 			// are silently ignored.
 			if ( connection_aborted() ) {
 				PressArk_Pipeline::fail_run( $preflight['run_id'], 'Client disconnected' );
@@ -1266,7 +1313,7 @@ class PressArk_Chat {
 
 		try {
 			if ( PressArk_Router::ROUTE_AGENT === $routing['route'] ) {
-				// Agent path — full streaming support.
+				// Agent path ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â full streaming support.
 				$stream_connector = new PressArk_Stream_Connector( $ctx['connector'], $emitter, $run_cancel_check );
 				$agent = new PressArk_Agent( $ctx['connector'], $ctx['engine'], $ctx['tier'] );
 				$agent->set_run_context( $ctx['run_id'], (int) $ctx['chat_id'] );
@@ -1290,7 +1337,7 @@ class PressArk_Chat {
 					}
 				);
 			} else {
-				// Legacy path — no streaming, emit full result at end.
+				// Legacy path ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no streaming, emit full result at end.
 				$result = $this->run_legacy_raw(
 					$ctx['message'],
 					$ctx['conversation'],
@@ -1345,7 +1392,7 @@ class PressArk_Chat {
 			// Finalize (settle tokens, track, release slot).
 			$finalized = $ctx['pipeline']->finalize( $result, $routing['route'] );
 
-			// Determine run outcome — cancelled beats settled.
+			// Determine run outcome ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cancelled beats settled.
 			$cancelled = ! empty( $result['cancelled'] ) || connection_aborted();
 
 			if ( $cancelled ) {
@@ -1371,7 +1418,7 @@ class PressArk_Chat {
 	}
 
 	/**
-	 * Process chat message — delegates to preflight() then executes steps 7-12.
+	 * Process chat message ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â delegates to preflight() then executes steps 7-12.
 	 *
 	 * v4.4.0: Refactored to share preflight with process_chat_stream().
 	 */
@@ -1470,7 +1517,7 @@ class PressArk_Chat {
 	 *
 	 * Returns a raw result array (settlement/response handled by pipeline).
 	 *
-	 * @since 3.0.0 Refactored from run_legacy() — no longer settles or builds WP_REST_Response.
+	 * @since 3.0.0 Refactored from run_legacy() ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no longer settles or builds WP_REST_Response.
 	 */
 	private function run_legacy_raw(
 		string                $message,
@@ -1491,6 +1538,7 @@ class PressArk_Chat {
 		if ( PressArk_Agent::is_lightweight_chat_request( $message, $conversation ) ) {
 			$ai_result       = $connector->send_lightweight_chat( $message, $conversation, $deep_mode );
 			$usage_breakdown = $this->extract_usage_breakdown( $ai_result );
+			$routing_decision = (array) ( $ai_result['routing_decision'] ?? $connector->get_last_routing_decision() );
 
 			if ( ! empty( $ai_result['error'] ) ) {
 				return array(
@@ -1507,6 +1555,7 @@ class PressArk_Chat {
 					'usage'             => $ai_result['usage'] ?? array(),
 					'actions_performed' => array(),
 					'pending_actions'   => array(),
+					'routing_decision'  => $routing_decision,
 					'is_error'          => true,
 				);
 			}
@@ -1525,10 +1574,11 @@ class PressArk_Chat {
 				'usage'             => $ai_result['usage'] ?? array(),
 				'actions_performed' => array(),
 				'pending_actions'   => array(),
+				'routing_decision'  => $routing_decision,
 			);
 		}
 
-		// Build compact context — dynamic part only (cached part in connector).
+		// Build compact context ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â dynamic part only (cached part in connector).
 		$context      = new PressArk_Context();
 		$context_text = $context->build( $screen, $post_id );
 		$context_text .= PressArk_Handler_Discovery::format_site_notes_basic();
@@ -1544,6 +1594,7 @@ class PressArk_Chat {
 
 		$ai_result       = $connector->send_message( $message, $context_text, $compressed_history, $deep_mode );
 		$usage_breakdown = $this->extract_usage_breakdown( $ai_result );
+		$routing_decision = (array) ( $ai_result['routing_decision'] ?? $connector->get_last_routing_decision() );
 
 		if ( ! empty( $ai_result['error'] ) ) {
 			return array(
@@ -1560,6 +1611,7 @@ class PressArk_Chat {
 				'usage'             => $ai_result['usage'] ?? array(),
 				'actions_performed' => array(),
 				'pending_actions'   => array(),
+				'routing_decision'  => $routing_decision,
 				'is_error'          => true,
 			);
 		}
@@ -1635,7 +1687,7 @@ class PressArk_Chat {
 						'arguments' => $action['params'] ?? array(),
 					);
 				} else {
-					// Write actions — pending_actions raw format for pipeline.
+					// Write actions ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â pending_actions raw format for pipeline.
 					$pending[] = array(
 						'name'      => $action['type'] ?? '',
 						'arguments' => $action['params'] ?? array(),
@@ -1666,7 +1718,7 @@ class PressArk_Chat {
 			}
 		}
 
-		// Previewable writes → live preview session.
+		// Previewable writes ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ live preview session.
 		if ( ! empty( $preview_actions ) ) {
 			$preview = new PressArk_Preview();
 			$session = $preview->create_session( $preview_actions, $preview_actions[0]['arguments'] ?? array() );
@@ -1685,6 +1737,7 @@ class PressArk_Chat {
 				'usage'              => $ai_result['usage'] ?? array(),
 				'actions_performed'  => $performed,
 				'pending_actions'    => array(),
+				'routing_decision'   => $routing_decision,
 				'preview_session_id' => $session['session_id'],
 				'preview_url'        => $session['signed_url'],
 				'diff'               => $session['diff'],
@@ -1707,6 +1760,7 @@ class PressArk_Chat {
 			'usage'             => $ai_result['usage'] ?? array(),
 			'actions_performed' => $performed,
 			'pending_actions'   => $pending,
+			'routing_decision'  => $routing_decision,
 		);
 	}
 
@@ -1728,7 +1782,7 @@ class PressArk_Chat {
 			$run_id       = $request->get_param( 'run_id' );
 			$action_index = (int) $request->get_param( 'action_index' );
 
-			// ── Cancellation ──────────────────────────────────────
+			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Cancellation ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 			if ( ! $confirmed ) {
 				if ( ! empty( $run_id ) ) {
 					$run_store = new PressArk_Run_Store();
@@ -1746,7 +1800,7 @@ class PressArk_Chat {
 				) );
 			}
 
-			// ── v4.5.0: run_id is now mandatory ─────────────────
+			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ v4.5.0: run_id is now mandatory ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 			// Legacy path that accepted client-supplied action_data
 			// without a durable run_id has been removed. A malicious
 			// client could execute arbitrary actions the AI never
@@ -1774,7 +1828,7 @@ class PressArk_Chat {
 				) );
 			}
 
-			// ── v3.7.2: Server-authoritative action loading ──────
+			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ v3.7.2: Server-authoritative action loading ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 			// Load the action from the run's persisted pending_actions.
 			// Client-supplied action_data is never trusted.
 			$run_store = new PressArk_Run_Store();
@@ -1834,7 +1888,7 @@ class PressArk_Chat {
 				$tracker->increment_if_write( $action['type'] ?? '' );
 			}
 
-			// ── Settle durable run via pipeline authority ────────
+			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Settle durable run via pipeline authority ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 			$all_resolved = false;
 
 			if ( ! empty( $result['success'] ) ) {
@@ -1893,14 +1947,44 @@ class PressArk_Chat {
 							try {
 								$readback_result = $engine->execute_read( $readback_call['name'], $readback_call['arguments'] );
 								$eval = PressArk_Verification::evaluate( $policy, $action_args, $readback_result );
-								$checkpoint->record_verification( $tool_name, $readback_result, $eval['passed'], $eval['evidence'] );
+								$checkpoint->record_verification(
+									$tool_name,
+									$readback_result,
+									$eval['passed'],
+									$eval['evidence'],
+									array(
+										'policy'     => $policy,
+										'readback'   => array( 'tool' => $readback_call['name'] ?? '' ),
+										'mismatches' => $eval['mismatches'] ?? array(),
+									)
+								);
 								$result['verification'] = array(
 									'passed'   => $eval['passed'],
 									'evidence' => $eval['evidence'],
 									'status'   => $eval['passed'] ? 'verified' : 'uncertain',
 								);
 							} catch ( \Throwable $ve ) {
-								// Read-back failed — degrade gracefully; do not block the confirm.
+								$readback_error = 'Read-back failed: ' . sanitize_text_field( $ve->getMessage() );
+								$checkpoint->record_verification(
+									$tool_name,
+									array(
+										'success' => false,
+										'message' => $readback_error,
+									),
+									false,
+									$readback_error,
+									array(
+										'policy'          => $policy,
+										'readback'        => array( 'tool' => $readback_call['name'] ?? '' ),
+										'readback_failed' => true,
+									)
+								);
+								$result['verification'] = array(
+									'passed'   => false,
+									'evidence' => $readback_error,
+									'status'   => 'uncertain',
+								);
+								// Read-back failed - degrade gracefully; do not block the confirm.
 							}
 						}
 					}
@@ -1916,6 +2000,7 @@ class PressArk_Chat {
 			$this->persist_run_checkpoint( $run, $checkpoint );
 			$result['checkpoint'] = $checkpoint->to_array();
 			$result = $this->attach_continuation_context( $result, $run, $checkpoint );
+			$this->persist_run_detail_snapshot( $run, $result, $checkpoint );
 
 			// Include fresh usage data so the client can update display.
 			$result['usage']     = $tracker->get_usage_data();
@@ -1933,7 +2018,7 @@ class PressArk_Chat {
 	}
 
 	/**
-	 * Handle preview keep — promote staged changes to live.
+	 * Handle preview keep ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â promote staged changes to live.
 	 *
 	 * v3.1.0: Run-aware. Looks up the originating run by preview session ID,
 	 * restores the persisted pause snapshot, and executes the post-apply verify phase.
@@ -1962,7 +2047,7 @@ class PressArk_Chat {
 			$tracker = new PressArk_Usage_Tracker();
 			$tracker->increment_if_write( 'preview_apply' );
 
-			// ── v3.1.0: Settle durable run via pipeline authority ─
+			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ v3.1.0: Settle durable run via pipeline authority ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 			$run_store = new PressArk_Run_Store();
 			$run       = $run_store->get_by_preview_session( $session_id );
 
@@ -1997,7 +2082,17 @@ class PressArk_Chat {
 							try {
 								$readback_result_v = $engine_v->execute_read( $readback_call_v['name'], $readback_call_v['arguments'] );
 								$eval_v = PressArk_Verification::evaluate( $policy_v, $args_v, $readback_result_v );
-								$checkpoint->record_verification( $tool_name_v, $readback_result_v, $eval_v['passed'], $eval_v['evidence'] );
+								$checkpoint->record_verification(
+									$tool_name_v,
+									$readback_result_v,
+									$eval_v['passed'],
+									$eval_v['evidence'],
+									array(
+										'policy'     => $policy_v,
+										'readback'   => array( 'tool' => $readback_call_v['name'] ?? '' ),
+										'mismatches' => $eval_v['mismatches'] ?? array(),
+									)
+								);
 								if ( ! isset( $result['verification'] ) ) {
 									$result['verification'] = array();
 								}
@@ -2007,7 +2102,30 @@ class PressArk_Chat {
 									'status'   => $eval_v['passed'] ? 'verified' : 'uncertain',
 								);
 							} catch ( \Throwable $ve ) {
-								// Read-back failed — degrade gracefully.
+								$readback_error_v = 'Read-back failed: ' . sanitize_text_field( $ve->getMessage() );
+								$checkpoint->record_verification(
+									$tool_name_v,
+									array(
+										'success' => false,
+										'message' => $readback_error_v,
+									),
+									false,
+									$readback_error_v,
+									array(
+										'policy'          => $policy_v,
+										'readback'        => array( 'tool' => $readback_call_v['name'] ?? '' ),
+										'readback_failed' => true,
+									)
+								);
+								if ( ! isset( $result['verification'] ) ) {
+									$result['verification'] = array();
+								}
+								$result['verification'][ $tool_name_v ] = array(
+									'passed'   => false,
+									'evidence' => $readback_error_v,
+									'status'   => 'uncertain',
+								);
+								// Read-back failed - degrade gracefully.
 							}
 						}
 					}
@@ -2017,6 +2135,7 @@ class PressArk_Chat {
 				$this->persist_run_checkpoint( $run, $checkpoint );
 				$result['checkpoint'] = $checkpoint->to_array();
 				$result = $this->attach_continuation_context( $result, $run, $checkpoint );
+				$this->persist_run_detail_snapshot( $run, $result, $checkpoint );
 			}
 
 			$tier = ( new PressArk_License() )->get_tier();
@@ -2034,7 +2153,7 @@ class PressArk_Chat {
 	}
 
 	/**
-	 * Handle preview discard — delete staged changes.
+	 * Handle preview discard ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â delete staged changes.
 	 *
 	 * v3.1.0: Settles the originating run as discarded.
 	 */
@@ -2109,6 +2228,23 @@ class PressArk_Chat {
 		if ( $chat_id > 0 ) {
 			$checkpoint->save( $chat_id, $user_id );
 		}
+
+		if ( ! empty( $run['run_id'] ) ) {
+			$run_store = new PressArk_Run_Store();
+			$run_store->persist_detail_snapshot( (string) $run['run_id'], $checkpoint->to_array(), null );
+		}
+	}
+
+	/**
+	 * Persist the latest result plus checkpoint snapshot back onto the run row.
+	 */
+	private function persist_run_detail_snapshot( array $run, array $result, PressArk_Checkpoint $checkpoint ): void {
+		if ( empty( $run['run_id'] ) ) {
+			return;
+		}
+
+		$run_store = new PressArk_Run_Store();
+		$run_store->persist_detail_snapshot( (string) $run['run_id'], $checkpoint->to_array(), $result );
 	}
 
 	/**
@@ -2151,6 +2287,22 @@ class PressArk_Chat {
 				$result['continuation']['completion_message'] = 'All requested steps are complete. Do not continue automatically.';
 			} elseif ( ! empty( $blockers ) ) {
 				$result['continuation']['pause_message'] = 'Auto-resume paused because unresolved blockers remain.';
+			}
+
+			$v_summary = PressArk_Execution_Ledger::verification_summary( $execution );
+			if ( $v_summary['verified'] > 0 || $v_summary['uncertain'] > 0 || $v_summary['unverified'] > 0 ) {
+				$result['continuation']['verification_summary'] = $v_summary;
+			}
+			$evidence_receipts = PressArk_Execution_Ledger::evidence_receipts( $execution );
+			if ( ! empty( $evidence_receipts ) ) {
+				$result['continuation']['evidence_receipts'] = $evidence_receipts;
+			}
+			if ( class_exists( 'PressArk_Run_Trust_Surface' ) ) {
+				$result['trust_surface'] = PressArk_Run_Trust_Surface::build(
+					array_merge( $run, array( 'result' => $result ) ),
+					array(),
+					$execution
+				);
 			}
 		}
 
@@ -2273,7 +2425,7 @@ class PressArk_Chat {
 		return new WP_REST_Response( $result, 200 );
 	}
 
-	// ── Chat History Handlers ──────────────────────────────────────
+	// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Chat History Handlers ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 
 	/**
 	 * List all chats for the current user.

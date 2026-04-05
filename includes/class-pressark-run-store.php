@@ -41,6 +41,8 @@ class PressArk_Run_Store {
 		return "CREATE TABLE {$table} (
 			id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			run_id VARCHAR(64) NOT NULL,
+			parent_run_id VARCHAR(64) DEFAULT NULL,
+			root_run_id VARCHAR(64) DEFAULT NULL,
 			correlation_id VARCHAR(64) NOT NULL DEFAULT '',
 			user_id BIGINT(20) UNSIGNED NOT NULL,
 			chat_id BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
@@ -48,6 +50,7 @@ class PressArk_Run_Store {
 			route VARCHAR(20) NOT NULL DEFAULT 'agent',
 			status VARCHAR(30) NOT NULL DEFAULT 'running',
 			message TEXT NOT NULL,
+			handoff_capsule LONGTEXT DEFAULT NULL,
 			reservation_id VARCHAR(64) NOT NULL DEFAULT '',
 			workflow_class VARCHAR(100) DEFAULT NULL,
 			workflow_state LONGTEXT DEFAULT NULL,
@@ -61,6 +64,8 @@ class PressArk_Run_Store {
 			settled_at DATETIME DEFAULT NULL,
 			PRIMARY KEY (id),
 			UNIQUE KEY idx_run_id (run_id),
+			KEY idx_parent_run_created (parent_run_id, created_at),
+			KEY idx_root_run_created (root_run_id, created_at),
 			KEY idx_correlation_id (correlation_id),
 			KEY idx_user_status (user_id, status),
 			KEY idx_chat_id (chat_id),
@@ -82,24 +87,36 @@ class PressArk_Run_Store {
 		global $wpdb;
 
 		$run_id         = $data['run_id'] ?? wp_generate_uuid4();
+		$parent_run_id  = sanitize_text_field( (string) ( $data['parent_run_id'] ?? '' ) );
+		$root_run_id    = sanitize_text_field( (string) ( $data['root_run_id'] ?? '' ) );
 		$correlation_id = ! empty( $data['correlation_id'] )
 			? PressArk_Activity_Trace::normalize_correlation_id( (string) $data['correlation_id'] )
 			: PressArk_Activity_Trace::new_correlation_id();
+		$handoff_capsule = ! empty( $data['handoff_capsule'] ) && is_array( $data['handoff_capsule'] )
+			? wp_json_encode( $data['handoff_capsule'] )
+			: '';
+
+		if ( '' === $root_run_id ) {
+			$root_run_id = '' !== $parent_run_id ? $parent_run_id : $run_id;
+		}
 
 		$wpdb->insert(
 			self::table_name(),
 			array(
 				'run_id'         => $run_id,
+				'parent_run_id'  => $parent_run_id,
+				'root_run_id'    => $root_run_id,
 				'correlation_id' => $correlation_id,
 				'user_id'        => absint( $data['user_id'] ?? get_current_user_id() ),
 				'chat_id'        => absint( $data['chat_id'] ?? 0 ),
 				'route'          => sanitize_key( $data['route'] ?? 'agent' ),
 				'status'         => 'running',
 				'message'        => $data['message'] ?? '',
+				'handoff_capsule' => $handoff_capsule,
 				'reservation_id' => sanitize_text_field( $data['reservation_id'] ?? '' ),
 				'tier'           => sanitize_key( $data['tier'] ?? 'free' ),
 			),
-			array( '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		PressArk_Activity_Trace::publish(
@@ -110,9 +127,12 @@ class PressArk_Run_Store {
 				'reason'     => 'request_started',
 				'summary'    => 'Durable run created.',
 				'payload'    => array(
-					'route'   => sanitize_key( (string) ( $data['route'] ?? 'agent' ) ),
-					'chat_id' => absint( $data['chat_id'] ?? 0 ),
-					'tier'    => sanitize_key( (string) ( $data['tier'] ?? 'free' ) ),
+					'route'          => sanitize_key( (string) ( $data['route'] ?? 'agent' ) ),
+					'chat_id'        => absint( $data['chat_id'] ?? 0 ),
+					'tier'           => sanitize_key( (string) ( $data['tier'] ?? 'free' ) ),
+					'parent_run_id'  => $parent_run_id,
+					'root_run_id'    => $root_run_id,
+					'has_handoff'    => '' !== $handoff_capsule,
 				),
 			),
 			array(
@@ -126,6 +146,45 @@ class PressArk_Run_Store {
 		);
 
 		return $run_id;
+	}
+
+	/**
+	 * Create a queue-native parent/child run family for background work.
+	 *
+	 * The parent handoff run is intentionally lightweight and hidden from the
+	 * main activity list; the child run remains the durable execution unit that
+	 * the worker settles, pauses, or fails.
+	 *
+	 * @param string $worker_route Child worker route (for example async/automation).
+	 * @param array  $data         Shared run creation data.
+	 * @return array{parent_run_id: string, run_id: string, root_run_id: string}
+	 */
+	public function create_background_family( string $worker_route, array $data ): array {
+		$parent_run_id = $this->create(
+			array_merge(
+				$data,
+				array(
+					'route' => 'handoff',
+				)
+			)
+		);
+
+		$child_run_id = $this->create(
+			array_merge(
+				$data,
+				array(
+					'route'         => sanitize_key( $worker_route ),
+					'parent_run_id' => $parent_run_id,
+					'root_run_id'   => $parent_run_id,
+				)
+			)
+		);
+
+		return array(
+			'parent_run_id' => $parent_run_id,
+			'run_id'        => $child_run_id,
+			'root_run_id'   => $parent_run_id,
+		);
 	}
 
 	/**
@@ -325,6 +384,48 @@ class PressArk_Run_Store {
 		}
 
 		return $state;
+	}
+
+	/**
+	 * Persist an additive workflow/result snapshot for Activity detail surfaces.
+	 *
+	 * @param string     $run_id         Run ID.
+	 * @param array|null $workflow_state Latest checkpoint or workflow snapshot.
+	 * @param array|null $result         Latest result snapshot.
+	 * @return bool True when a row was updated.
+	 */
+	public function persist_detail_snapshot( string $run_id, ?array $workflow_state = null, ?array $result = null ): bool {
+		global $wpdb;
+
+		$run_id = sanitize_text_field( $run_id );
+		if ( '' === $run_id ) {
+			return false;
+		}
+
+		$data = array(
+			'updated_at' => current_time( 'mysql', true ),
+		);
+		$formats = array( '%s' );
+
+		if ( null !== $workflow_state ) {
+			$data['workflow_state'] = wp_json_encode( $workflow_state );
+			$formats[]              = '%s';
+		}
+
+		if ( null !== $result ) {
+			$data['result'] = wp_json_encode( $result );
+			$formats[]      = '%s';
+		}
+
+		$rows = $wpdb->update(
+			self::table_name(),
+			$data,
+			array( 'run_id' => $run_id ),
+			$formats,
+			array( '%s' )
+		);
+
+		return $rows >= 1;
 	}
 
 	// ── Lifecycle Transitions ────────────────────────────────────────
@@ -641,6 +742,50 @@ class PressArk_Run_Store {
 		return $rows !== false;
 	}
 
+	/**
+	 * Get the runs in a lineage family.
+	 *
+	 * @param string $root_run_id Root run ID for the family.
+	 * @param int    $limit       Max rows.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function get_family( string $root_run_id, int $limit = 20 ): array {
+		global $wpdb;
+		$table = self::table_name();
+
+		if ( '' === $root_run_id ) {
+			return array();
+		}
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT run_id, parent_run_id, root_run_id, task_id, route, status, message,
+				        created_at, updated_at, settled_at
+				 FROM {$table}
+				 WHERE root_run_id = %s OR run_id = %s
+				 ORDER BY created_at ASC
+				 LIMIT %d",
+				$root_run_id,
+				$root_run_id,
+				max( 1, $limit )
+			),
+			ARRAY_A
+		);
+
+		if ( ! $rows ) {
+			return array();
+		}
+
+		return array_map(
+			static function ( array $row ): array {
+				$row['parent_run_id'] = (string) ( $row['parent_run_id'] ?? '' );
+				$row['root_run_id']   = (string) ( $row['root_run_id'] ?? '' );
+				return $row;
+			},
+			$rows
+		);
+	}
+
 	// ── Activity Queries ────────────────────────────────────────────
 
 	/**
@@ -677,6 +822,8 @@ class PressArk_Run_Store {
 			$where[] = 'status = %s';
 			$args[]  = sanitize_key( $status_filter );
 		}
+
+		$where[] = "route <> 'handoff'";
 
 		$where_sql = ! empty( $where ) ? 'WHERE ' . implode( ' AND ', $where ) : '';
 
@@ -729,6 +876,8 @@ class PressArk_Run_Store {
 			$args[]  = sanitize_key( $status_filter );
 		}
 
+		$where[] = "route <> 'handoff'";
+
 		$where_sql = ! empty( $where ) ? 'WHERE ' . implode( ' AND ', $where ) : '';
 
 		if ( ! empty( $args ) ) {
@@ -751,9 +900,11 @@ class PressArk_Run_Store {
 		global $wpdb;
 		$table = self::table_name();
 
-		$where = $user_id > 0
-			? $wpdb->prepare( 'WHERE user_id = %d', $user_id )
-			: '';
+		$where_parts = array( "route <> 'handoff'" );
+		if ( $user_id > 0 ) {
+			$where_parts[] = $wpdb->prepare( 'user_id = %d', $user_id );
+		}
+		$where = 'WHERE ' . implode( ' AND ', $where_parts );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a hardcoded prefixed table name, $where is either empty or already prepared.
 		$rows = $wpdb->get_results(
@@ -822,6 +973,9 @@ class PressArk_Run_Store {
 	 * Decode JSON columns in a run row.
 	 */
 	private function decode_row( array $row ): array {
+		$row['parent_run_id']  = (string) ( $row['parent_run_id'] ?? '' );
+		$row['root_run_id']    = (string) ( $row['root_run_id'] ?? '' );
+		$row['handoff_capsule'] = json_decode( $row['handoff_capsule'] ?? 'null', true );
 		$row['workflow_state']  = json_decode( $row['workflow_state'] ?? 'null', true );
 		$row['pending_actions'] = json_decode( $row['pending_actions'] ?? 'null', true );
 		$row['result']          = json_decode( $row['result'] ?? 'null', true );
@@ -855,6 +1009,13 @@ class PressArk_Run_Store {
 		$run = $this->get( $run_id );
 		if ( ! $run ) {
 			return;
+		}
+
+		if ( ! empty( $run['parent_run_id'] ) && ! isset( $payload['parent_run_id'] ) ) {
+			$payload['parent_run_id'] = (string) $run['parent_run_id'];
+		}
+		if ( ! empty( $run['root_run_id'] ) && ! isset( $payload['root_run_id'] ) ) {
+			$payload['root_run_id'] = (string) $run['root_run_id'];
 		}
 
 		PressArk_Activity_Trace::publish(

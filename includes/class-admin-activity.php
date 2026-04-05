@@ -21,6 +21,7 @@ class PressArk_Admin_Activity {
 	private const PAGE_SLUG  = 'pressark-activity';
 	private const VIEW_RUNS  = 'runs';
 	private const VIEW_TASKS = 'tasks';
+	private const VIEW_POLICY = 'policy';
 	private const SCOPE_ALL  = 'all';
 
 	public function __construct() {
@@ -83,7 +84,11 @@ class PressArk_Admin_Activity {
 		$task_store     = new PressArk_Task_Store();
 		$unread         = $task_store->unread_count( $activity_user );
 		$requested_view = sanitize_key( wp_unslash( $_GET['view'] ?? '' ) );
-		$view           = in_array( $requested_view, array( self::VIEW_RUNS, self::VIEW_TASKS ), true )
+		$allowed_views  = array( self::VIEW_RUNS, self::VIEW_TASKS );
+		if ( $this->can_view_policy_diagnostics() ) {
+			$allowed_views[] = self::VIEW_POLICY;
+		}
+		$view           = in_array( $requested_view, $allowed_views, true )
 			? $requested_view
 			: ( $unread > 0 ? self::VIEW_TASKS : self::VIEW_RUNS );
 
@@ -129,10 +134,17 @@ class PressArk_Admin_Activity {
 		echo '<li><a href="' . esc_url( $this->activity_url( array( 'view' => self::VIEW_TASKS ), $support_mode ) ) . '"'
 			. ( self::VIEW_TASKS === $view ? ' class="current"' : '' ) . '>'
 			. esc_html__( 'Async Tasks', 'pressark' ) . '</a></li>';
+		if ( $this->can_view_policy_diagnostics() ) {
+			echo ' | <li><a href="' . esc_url( $this->activity_url( array( 'view' => self::VIEW_POLICY ), $support_mode ) ) . '"'
+				. ( self::VIEW_POLICY === $view ? ' class="current"' : '' ) . '>'
+				. esc_html__( 'Policy Diagnostics', 'pressark' ) . '</a></li>';
+		}
 		echo '</ul>';
 		echo '<br class="clear" />';
 
-		if ( self::VIEW_TASKS === $view ) {
+		if ( self::VIEW_POLICY === $view && $this->can_view_policy_diagnostics() ) {
+			$this->render_policy_diagnostics();
+		} elseif ( self::VIEW_TASKS === $view ) {
 			$this->render_tasks_table( $activity_user, $status_filter, $per_page, $offset, $page_num, $support_mode );
 		} else {
 			$this->render_runs_table( $activity_user, $status_filter, $per_page, $offset, $page_num, $support_mode );
@@ -273,29 +285,20 @@ class PressArk_Admin_Activity {
 				$message_short .= '...';
 			}
 
-			$has_result = in_array( $row['status'], array( 'complete', 'delivered', 'undelivered' ), true );
-			$detail_url = $has_result
-				? $this->activity_url(
-					array(
-						'view'    => self::VIEW_TASKS,
-						'task_id' => $row['task_id'],
-					),
-					$support_mode
-				)
-				: '';
+			$detail_url = $this->activity_url(
+				array(
+					'view'    => self::VIEW_TASKS,
+					'task_id' => $row['task_id'],
+				),
+				$support_mode
+			);
 
-			$unread = $has_result && empty( $row['read_at'] );
+			$unread = in_array( $row['status'], array( 'complete', 'delivered', 'undelivered' ), true ) && empty( $row['read_at'] );
 
 			echo '<tr' . ( $unread ? ' class="pressark-unread"' : '' ) . '>';
 			echo '<td><span class="pressark-status ' . esc_attr( $status_class ) . '">'
 				. esc_html( $row['status'] ) . '</span></td>';
-			echo '<td>';
-			if ( $detail_url ) {
-				echo '<a href="' . esc_url( $detail_url ) . '">' . esc_html( $message_short ) . '</a>';
-			} else {
-				echo esc_html( $message_short );
-			}
-			echo '</td>';
+			echo '<td><a href="' . esc_url( $detail_url ) . '">' . esc_html( $message_short ) . '</a></td>';
 			if ( $support_mode ) {
 				echo '<td>' . esc_html( $this->user_summary( (int) $row['user_id'] ) ) . '</td>';
 			}
@@ -319,6 +322,8 @@ class PressArk_Admin_Activity {
 	private function render_task_detail( string $task_id, int $viewer_user_id, bool $support_mode ): void {
 		$task_store = new PressArk_Task_Store();
 		$task       = $task_store->get_result_for_user( $task_id, $viewer_user_id, $support_mode );
+		$run_store  = new PressArk_Run_Store();
+		$event_store = new PressArk_Activity_Event_Store();
 		$back_url   = $this->activity_url( array( 'view' => self::VIEW_TASKS ), $support_mode );
 
 		echo '<div class="wrap pressark-activity">';
@@ -345,12 +350,42 @@ class PressArk_Admin_Activity {
 		$this->detail_row( __( 'Completed', 'pressark' ), $task['completed_at'] ?? '-' );
 		$this->detail_row( __( 'Read', 'pressark' ), $task['read_at'] ?? '-' );
 		$this->detail_row( __( 'Retries', 'pressark' ), $task['retries'] . '/' . $task['max_retries'] );
+		if ( ! empty( $task['run_id'] ) ) {
+			$this->detail_row_html(
+				__( 'Worker Run', 'pressark' ),
+				$this->run_link_html( (string) $task['run_id'], $support_mode )
+			);
+		}
+		if ( ! empty( $task['parent_run_id'] ) ) {
+			$this->detail_row_html(
+				__( 'Parent Handoff', 'pressark' ),
+				$this->run_link_html( (string) $task['parent_run_id'], $support_mode )
+			);
+		}
+		if ( ! empty( $task['root_run_id'] ) ) {
+			$this->detail_row_html(
+				__( 'Root Run', 'pressark' ),
+				$this->run_link_html( (string) $task['root_run_id'], $support_mode )
+			);
+		}
 
 		if ( ! empty( $task['fail_reason'] ) ) {
 			$this->detail_row( __( 'Failure Reason', 'pressark' ), $task['fail_reason'] );
 		}
 
 		echo '</table>';
+
+		if ( ! empty( $task['handoff_capsule'] ) && is_array( $task['handoff_capsule'] ) ) {
+			$this->render_json_block( __( 'Handoff Capsule', 'pressark' ), $task['handoff_capsule'] );
+		}
+
+		$family_root_id = (string) ( $task['root_run_id'] ?: $task['parent_run_id'] ?: $task['run_id'] );
+		$family         = '' !== $family_root_id ? $run_store->get_family( $family_root_id, 20 ) : array();
+		if ( count( $family ) > 1 ) {
+			echo '<h3>' . esc_html__( 'Related Runs', 'pressark' ) . '</h3>';
+			echo '<p class="description">' . esc_html__( 'Queue-native handoff and worker runs that share this lineage root.', 'pressark' ) . '</p>';
+			$this->render_lineage_family( $family, $support_mode );
+		}
 
 		if ( ! empty( $task['result'] ) && is_array( $task['result'] ) ) {
 			echo '<h3>' . esc_html__( 'Result', 'pressark' ) . '</h3>';
@@ -388,6 +423,13 @@ class PressArk_Admin_Activity {
 				echo '</tr>';
 			}
 			echo '</tbody></table>';
+		}
+
+		$worker_events = $event_store->get_by_task( $task_id, 120 );
+		if ( ! empty( $worker_events ) ) {
+			echo '<h3>' . esc_html__( 'Worker Events', 'pressark' ) . '</h3>';
+			echo '<p class="description">' . esc_html__( 'Queue claim, defer, retry, contention, completion, cancellation, and handoff events for this task.', 'pressark' ) . '</p>';
+			$this->render_trace_table( $worker_events );
 		}
 
 		echo '</div></div>';
@@ -453,6 +495,18 @@ class PressArk_Admin_Activity {
 		if ( ! empty( $run['correlation_id'] ) ) {
 			$this->detail_row( __( 'Correlation ID', 'pressark' ), $run['correlation_id'] );
 		}
+		if ( ! empty( $run['parent_run_id'] ) ) {
+			$this->detail_row_html(
+				__( 'Parent Handoff', 'pressark' ),
+				$this->run_link_html( (string) $run['parent_run_id'], $support_mode )
+			);
+		}
+		if ( ! empty( $run['root_run_id'] ) ) {
+			$this->detail_row_html(
+				__( 'Root Run', 'pressark' ),
+				$this->run_link_html( (string) $run['root_run_id'], $support_mode )
+			);
+		}
 
 		if ( 'failed' === $run['status'] ) {
 			$fail_reason = '';
@@ -465,6 +519,74 @@ class PressArk_Admin_Activity {
 		}
 
 		echo '</table>';
+
+		$local_trace  = PressArk_Activity_Trace::get_local_trace( $run, 80 );
+		$remote_trace = PressArk_Activity_Trace::fetch_bank_trace( $run, 80 );
+		$joined_trace = PressArk_Activity_Trace::merge_traces( $local_trace, $remote_trace );
+		if ( class_exists( 'PressArk_Run_Trust_Surface' ) ) {
+			$trust_surface = PressArk_Run_Trust_Surface::build( $run, $joined_trace );
+			$this->render_trust_surface( $trust_surface );
+		}
+
+		$result_budget = is_array( $run['result'] ?? null ) && is_array( $run['result']['budget'] ?? null )
+			? (array) $run['result']['budget']
+			: array();
+		$billing_state = is_array( $result_budget['billing_state'] ?? null ) ? (array) $result_budget['billing_state'] : array();
+		$settlement_delta = is_array( $result_budget['settlement_delta'] ?? null ) ? (array) $result_budget['settlement_delta'] : array();
+
+		if ( ! empty( $billing_state ) || ! empty( $settlement_delta ) ) {
+			echo '<h3>' . esc_html__( 'Billing Detail', 'pressark' ) . '</h3>';
+			echo '<table class="form-table">';
+
+			if ( ! empty( $billing_state ) ) {
+				$this->detail_row( __( 'Authority', 'pressark' ), (string) ( $billing_state['authority_label'] ?? $billing_state['authority_mode'] ?? '' ) );
+				$this->detail_row( __( 'Service State', 'pressark' ), (string) ( $billing_state['service_label'] ?? $billing_state['service_state'] ?? '' ) );
+				$this->detail_row( __( 'Spend Source', 'pressark' ), (string) ( $billing_state['spend_label'] ?? $billing_state['spend_source'] ?? '' ) );
+				$this->detail_row( __( 'Estimate Mode', 'pressark' ), (string) ( $billing_state['estimate_mode'] ?? '' ) );
+
+				if ( ! empty( $billing_state['authority_notice'] ) ) {
+					$this->detail_row( __( 'Authority Note', 'pressark' ), (string) $billing_state['authority_notice'] );
+				}
+				if ( ! empty( $billing_state['service_notice'] ) ) {
+					$this->detail_row( __( 'Service Note', 'pressark' ), (string) $billing_state['service_notice'] );
+				}
+				if ( ! empty( $billing_state['estimate_notice'] ) ) {
+					$this->detail_row( __( 'Estimate Note', 'pressark' ), (string) $billing_state['estimate_notice'] );
+				}
+			}
+
+			if ( ! empty( $settlement_delta ) ) {
+				$delta_icus = (int) ( $settlement_delta['delta_icus'] ?? 0 );
+				$delta_prefix = $delta_icus > 0 ? '+' : '';
+				$this->detail_row( __( 'Estimate Authority', 'pressark' ), (string) ( $settlement_delta['estimate_authority'] ?? '' ) );
+				$this->detail_row( __( 'Settlement Authority', 'pressark' ), (string) ( $settlement_delta['settlement_authority'] ?? '' ) );
+				$this->detail_row(
+					__( 'Estimated ICUs', 'pressark' ),
+					number_format_i18n( (int) ( $settlement_delta['estimated_icus'] ?? 0 ) )
+				);
+				$this->detail_row(
+					__( 'Settled ICUs', 'pressark' ),
+					number_format_i18n( (int) ( $settlement_delta['settled_icus'] ?? 0 ) )
+				);
+				$this->detail_row(
+					__( 'Settlement Delta', 'pressark' ),
+					$delta_prefix . number_format_i18n( $delta_icus ) . ' ICUs'
+				);
+				$this->detail_row(
+					__( 'Estimated Raw Tokens', 'pressark' ),
+					number_format_i18n( (int) ( $settlement_delta['estimated_raw_tokens'] ?? 0 ) )
+				);
+				$this->detail_row(
+					__( 'Actual Raw Tokens', 'pressark' ),
+					number_format_i18n( (int) ( $settlement_delta['actual_raw_tokens'] ?? 0 ) )
+				);
+				if ( ! empty( $settlement_delta['summary'] ) ) {
+					$this->detail_row( __( 'Settlement Summary', 'pressark' ), (string) $settlement_delta['summary'] );
+				}
+			}
+
+			echo '</table>';
+		}
 
 		if ( ! empty( $run['pending_actions'] ) && is_array( $run['pending_actions'] ) ) {
 			echo '<h3>' . esc_html__( 'Pending Actions', 'pressark' ) . '</h3>';
@@ -480,16 +602,35 @@ class PressArk_Admin_Activity {
 			$permission_surface = (array) $run['workflow_state']['permission_surface'];
 		}
 
-		if ( ! empty( $permission_surface ) ) {
+		$context_inspector = array();
+		if ( is_array( $run['result'] ?? null ) && ! empty( $run['result']['context_inspector'] ) ) {
+			$context_inspector = (array) $run['result']['context_inspector'];
+		}
+
+		if ( ! empty( $context_inspector ) ) {
+			$this->render_context_inspector( $context_inspector );
+		} elseif ( ! empty( $permission_surface ) ) {
 			echo '<h3>' . esc_html__( 'Permission Surface', 'pressark' ) . '</h3>';
 			echo '<pre class="pressark-json">'
 				. esc_html( wp_json_encode( $permission_surface, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) )
 				. '</pre>';
 		}
 
-		$local_trace  = PressArk_Activity_Trace::get_local_trace( $run, 80 );
-		$remote_trace = PressArk_Activity_Trace::fetch_bank_trace( $run, 80 );
-		$joined_trace = PressArk_Activity_Trace::merge_traces( $local_trace, $remote_trace );
+		if ( empty( $context_inspector ) && is_array( $run['result'] ?? null ) && ! empty( $run['result']['routing_decision'] ) ) {
+			$this->render_json_block( __( 'Routing Decision', 'pressark' ), (array) $run['result']['routing_decision'] );
+		}
+
+		if ( ! empty( $run['handoff_capsule'] ) && is_array( $run['handoff_capsule'] ) ) {
+			$this->render_json_block( __( 'Handoff Capsule', 'pressark' ), $run['handoff_capsule'] );
+		}
+
+		$family_root_id = (string) ( $run['root_run_id'] ?: $run['run_id'] );
+		$family         = '' !== $family_root_id ? $run_store->get_family( $family_root_id, 20 ) : array();
+		if ( count( $family ) > 1 ) {
+			echo '<h3>' . esc_html__( 'Related Runs', 'pressark' ) . '</h3>';
+			echo '<p class="description">' . esc_html__( 'Sibling and child runs grouped under the same queue-native lineage root.', 'pressark' ) . '</p>';
+			$this->render_lineage_family( $family, $support_mode );
+		}
 
 		if ( ! empty( $joined_trace ) ) {
 			echo '<h3>' . esc_html__( 'Joined Trace', 'pressark' ) . '</h3>';
@@ -500,7 +641,602 @@ class PressArk_Admin_Activity {
 		echo '</div></div>';
 	}
 
+	/**
+	 * Render the operator-facing Context Inspector surface.
+	 *
+	 * @param array<string,mixed> $inspector Normalized inspector payload.
+	 */
+	private function render_context_inspector( array $inspector ): void {
+		$prompt           = is_array( $inspector['prompt'] ?? null ) ? $inspector['prompt'] : array();
+		$tool_surface     = is_array( $inspector['tool_surface'] ?? null ) ? $inspector['tool_surface'] : array();
+		$reads            = is_array( $inspector['reads'] ?? null ) ? $inspector['reads'] : array();
+		$replay           = is_array( $inspector['replay'] ?? null ) ? $inspector['replay'] : array();
+		$messages         = is_array( $inspector['messages'] ?? null ) ? $inspector['messages'] : array();
+		$replacements     = is_array( $inspector['replacements'] ?? null ) ? $inspector['replacements'] : array();
+		$token_footprint  = is_array( $inspector['token_footprint'] ?? null ) ? $inspector['token_footprint'] : array();
+		$provider_request = is_array( $inspector['provider_request'] ?? null ) ? $inspector['provider_request'] : array();
+		$routing          = is_array( $inspector['routing'] ?? null ) ? $inspector['routing'] : array();
+
+		echo '<h3>' . esc_html__( 'Context Inspector', 'pressark' ) . '</h3>';
+		echo '<p class="description">' . esc_html__( 'Shows the composed context shape that reached the model, plus the replay/read sidecars that currently govern future rounds.', 'pressark' ) . '</p>';
+
+		$summary_rows = array(
+			array(
+				'label' => __( 'Round', 'pressark' ),
+				'value' => (string) ( $inspector['round'] ?? '-' ),
+			),
+			array(
+				'label' => __( 'Task Type', 'pressark' ),
+				'value' => (string) ( $inspector['task_type'] ?? '-' ),
+			),
+			array(
+				'label' => __( 'Provider Format', 'pressark' ),
+				'value' => (string) ( $provider_request['provider_format'] ?? '-' ),
+			),
+			array(
+				'label' => __( 'Transport', 'pressark' ),
+				'value' => (string) ( $provider_request['transport_provider'] ?? '-' ),
+			),
+			array(
+				'label' => __( 'Model', 'pressark' ),
+				'value' => (string) ( $provider_request['model'] ?? '-' ),
+			),
+			array(
+				'label' => __( 'Visible Tools', 'pressark' ),
+				'value' => number_format_i18n( count( (array) ( $tool_surface['visible_tools'] ?? array() ) ) ),
+			),
+			array(
+				'label' => __( 'Hidden Tools', 'pressark' ),
+				'value' => number_format_i18n( count( (array) ( $tool_surface['hidden_tools'] ?? array() ) ) ),
+			),
+			array(
+				'label' => __( 'Read Snapshots', 'pressark' ),
+				'value' => number_format_i18n( count( (array) ( $reads['snapshots'] ?? array() ) ) ),
+			),
+			array(
+				'label' => __( 'Replacement Entries', 'pressark' ),
+				'value' => number_format_i18n( count( $replacements ) ),
+			),
+			array(
+				'label' => __( 'Estimated Prompt Tokens', 'pressark' ),
+				'value' => isset( $token_footprint['estimated_prompt_tokens'] )
+					? number_format_i18n( (int) $token_footprint['estimated_prompt_tokens'] )
+					: '-',
+			),
+		);
+
+		echo '<div class="pressark-inspector-grid">';
+		foreach ( $summary_rows as $row ) {
+			echo '<div class="pressark-inspector-card">';
+			echo '<h4>' . esc_html( (string) $row['label'] ) . '</h4>';
+			echo '<p class="pressark-inspector-value">' . esc_html( (string) $row['value'] ) . '</p>';
+			echo '</div>';
+		}
+		echo '</div>';
+
+		echo '<details class="pressark-inspector-section" open><summary>' . esc_html__( 'Prompt Composition', 'pressark' ) . '</summary>';
+		$capability_variant = (string) ( $prompt['capability_map_variant'] ?? '' );
+		$site_notes         = is_array( $prompt['site_notes'] ?? null ) ? $prompt['site_notes'] : array();
+		$dynamic_skills     = array_values( array_filter( array_map( 'strval', (array) ( $prompt['dynamic_skill_names'] ?? array() ) ) ) );
+		$conditional_blocks = array_values( array_filter( array_map( 'strval', (array) ( $prompt['conditional_blocks'] ?? array() ) ) ) );
+		$site_profiles      = is_array( $prompt['site_profiles'] ?? null ) ? $prompt['site_profiles'] : array();
+		$stable_blocks      = is_array( $provider_request['cached_blocks'] ?? null ) ? $provider_request['cached_blocks'] : array();
+		$dynamic_blocks     = array();
+		foreach ( (array) ( $prompt['stable_blocks'] ?? array() ) as $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+			$block['bucket'] = 'stable_run_prefix';
+			$dynamic_blocks[] = $block;
+		}
+		foreach ( (array) ( $prompt['volatile_blocks'] ?? array() ) as $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+			$block['bucket'] = 'volatile_run_state';
+			$dynamic_blocks[] = $block;
+		}
+
+		echo '<div class="pressark-inspector-meta">';
+		echo '<p><strong>' . esc_html__( 'Capability map variant', 'pressark' ) . ':</strong> ' . esc_html( $capability_variant ?: '-' ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Dynamic skills', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $dynamic_skills ) ? implode( ', ', $dynamic_skills ) : '-' ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Conditional blocks', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $conditional_blocks ) ? implode( ', ', $conditional_blocks ) : '-' ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Site notes included', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $site_notes['included'] ) ? __( 'Yes', 'pressark' ) : __( 'No', 'pressark' ) ) . '</p>';
+		if ( ! empty( $site_notes['preview'] ) ) {
+			echo '<p class="pressark-inspector-subtle">' . esc_html( (string) $site_notes['preview'] ) . '</p>';
+		}
+		echo '</div>';
+
+		if ( ! empty( $stable_blocks ) ) {
+			echo '<h4>' . esc_html__( 'Stable Prompt Blocks', 'pressark' ) . '</h4>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Block', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Tokens', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Chars', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $stable_blocks as $block ) {
+				echo '<tr>';
+				echo '<td>' . esc_html( (string) ( $block['label'] ?? $block['id'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $block['tokens'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $block['chars'] ?? 0 ) ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
+		if ( ! empty( $dynamic_blocks ) ) {
+			echo '<h4>' . esc_html__( 'Run-Specific Prompt Blocks', 'pressark' ) . '</h4>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Block', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Bucket', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Tokens', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Lines', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Preview', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $dynamic_blocks as $block ) {
+				$bucket = 'stable_run_prefix' === ( $block['bucket'] ?? '' )
+					? __( 'Stable Run Prefix', 'pressark' )
+					: __( 'Volatile Run State', 'pressark' );
+				echo '<tr>';
+				echo '<td>' . esc_html( (string) ( $block['label'] ?? $block['id'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( $bucket ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $block['tokens'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $block['lines'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $block['preview'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
+		if ( ! empty( $site_profiles ) ) {
+			echo '<h4>' . esc_html__( 'Included Site Profiles', 'pressark' ) . '</h4>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Tool', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Summary', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Freshness', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Captured', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $site_profiles as $profile ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $profile['tool_name'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( (string) ( $profile['summary'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $profile['freshness'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $profile['captured_at'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</details>';
+
+		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Routing And Request Shape', 'pressark' ) . '</summary>';
+		$selection      = is_array( $routing['selection'] ?? null ) ? $routing['selection'] : array();
+		$fallback       = is_array( $routing['fallback'] ?? null ) ? $routing['fallback'] : array();
+		$request_shape  = is_array( $provider_request['request_shape'] ?? null ) ? $provider_request['request_shape'] : array();
+		$phase_addendum = is_array( $provider_request['phase_addendum'] ?? null ) ? $provider_request['phase_addendum'] : array();
+		$dynamic_prompt = is_array( $provider_request['dynamic_prompt'] ?? null ) ? $provider_request['dynamic_prompt'] : array();
+
+		if ( ! empty( $routing ) ) {
+			echo '<div class="pressark-inspector-meta">';
+			echo '<p><strong>' . esc_html__( 'Routing basis', 'pressark' ) . ':</strong> ' . esc_html( (string) ( $selection['basis'] ?? '-' ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Selection mode', 'pressark' ) . ':</strong> ' . esc_html( (string) ( $selection['mode'] ?? '-' ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Fallback used', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $fallback['used'] ) ? __( 'Yes', 'pressark' ) : __( 'No', 'pressark' ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Fallback attempts', 'pressark' ) . ':</strong> ' . esc_html( number_format_i18n( (int) ( $fallback['attempts'] ?? 0 ) ) ) . '</p>';
+			echo '</div>';
+		}
+
+		if ( ! empty( $dynamic_prompt ) ) {
+			echo '<p><strong>' . esc_html__( 'Dynamic prompt', 'pressark' ) . ':</strong> '
+				. esc_html(
+					sprintf(
+						'base=%d tok / augmented=%d tok',
+						(int) ( $dynamic_prompt['tokens'] ?? 0 ),
+						(int) ( $dynamic_prompt['augmented_tokens'] ?? 0 )
+					)
+				)
+				. '</p>';
+		}
+
+		if ( ! empty( $phase_addendum ) ) {
+			echo '<p><strong>' . esc_html__( 'Phase addendum', 'pressark' ) . ':</strong> '
+				. esc_html( $this->format_trace_value( $phase_addendum ) ) . '</p>';
+		}
+
+		if ( ! empty( $request_shape ) ) {
+			$message_roles = array();
+			foreach ( (array) ( $request_shape['message_roles'] ?? array() ) as $role => $count ) {
+				$message_roles[] = sanitize_key( (string) $role ) . ': ' . number_format_i18n( (int) $count );
+			}
+			echo '<div class="pressark-inspector-meta">';
+			echo '<p><strong>' . esc_html__( 'System blocks', 'pressark' ) . ':</strong> ' . esc_html( number_format_i18n( (int) ( $request_shape['system_block_count'] ?? 0 ) ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Messages', 'pressark' ) . ':</strong> ' . esc_html( number_format_i18n( (int) ( $request_shape['message_count'] ?? 0 ) ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Tool schemas', 'pressark' ) . ':</strong> ' . esc_html( number_format_i18n( (int) ( $request_shape['tool_schema_count'] ?? 0 ) ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Parallel tool calls', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $request_shape['parallel_tool_calls'] ) ? __( 'Yes', 'pressark' ) : __( 'No', 'pressark' ) ) . '</p>';
+			if ( ! empty( $message_roles ) ) {
+				echo '<p><strong>' . esc_html__( 'Message roles', 'pressark' ) . ':</strong> ' . esc_html( implode( ' | ', $message_roles ) ) . '</p>';
+			}
+			echo '</div>';
+		}
+
+		if ( ! empty( $provider_request['allowed_tools'] ) ) {
+			echo '<p><strong>' . esc_html__( 'Allowed tools', 'pressark' ) . ':</strong> '
+				. esc_html( implode( ', ', array_map( 'strval', (array) $provider_request['allowed_tools'] ) ) ) . '</p>';
+		}
+		echo '</details>';
+
+		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Tool Surface', 'pressark' ) . '</summary>';
+		echo '<p><strong>' . esc_html__( 'Visible tools', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $tool_surface['visible_tools'] ) ? implode( ', ', (array) $tool_surface['visible_tools'] ) : '-' ) . '</p>';
+		if ( ! empty( $tool_surface['hidden_summary'] ) ) {
+			$hidden_summary = array();
+			foreach ( (array) $tool_surface['hidden_summary'] as $reason => $count ) {
+				$hidden_summary[] = $reason . ': ' . number_format_i18n( (int) $count );
+			}
+			echo '<p><strong>' . esc_html__( 'Hidden summary', 'pressark' ) . ':</strong> ' . esc_html( implode( ' | ', $hidden_summary ) ) . '</p>';
+		}
+		$hidden_decisions = is_array( $tool_surface['hidden_decisions'] ?? null ) ? $tool_surface['hidden_decisions'] : array();
+		if ( ! empty( $hidden_decisions ) ) {
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Tool', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Verdict', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Reason Codes', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Reasons', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $hidden_decisions as $row ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $row['tool'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( (string) ( $row['verdict'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( implode( ', ', (array) ( $row['reason_codes'] ?? array() ) ) ) . '</td>';
+				echo '<td>' . esc_html( implode( ' | ', (array) ( $row['reasons'] ?? array() ) ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</details>';
+
+		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Read Snapshots', 'pressark' ) . '</summary>';
+		$read_summary = is_array( $reads['summary'] ?? null ) ? $reads['summary'] : array();
+		if ( ! empty( $read_summary ) ) {
+			echo '<p><strong>' . esc_html__( 'Trust summary', 'pressark' ) . ':</strong> '
+				. esc_html(
+					sprintf(
+						'trusted=%d | derived=%d | untrusted=%d | stale=%d',
+						(int) ( $read_summary['trusted_system'] ?? 0 ),
+						(int) ( $read_summary['derived_summary'] ?? 0 ),
+						(int) ( $read_summary['untrusted_content'] ?? 0 ),
+						(int) ( $read_summary['stale'] ?? 0 )
+					)
+				)
+				. '</p>';
+		}
+		$read_rows = is_array( $reads['snapshots'] ?? null ) ? $reads['snapshots'] : array();
+		if ( ! empty( $read_rows ) ) {
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Source', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Summary', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Freshness', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Completeness', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Trust', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Provenance', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $read_rows as $row ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $row['tool_name'] ?? ( $row['resource_uri'] ?? '' ) ) ) . '</code></td>';
+				echo '<td>' . esc_html( (string) ( $row['summary'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['freshness'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['completeness'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['trust_class'] ?? '' ) ) . '</td>';
+				echo '<td class="pressark-trace-details">' . esc_html( $this->format_trace_value( (array) ( $row['provenance'] ?? array() ) ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</details>';
+
+		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Replay And Compaction', 'pressark' ) . '</summary>';
+		$compaction = is_array( $replay['compaction'] ?? null ) ? $replay['compaction'] : array();
+		if ( ! empty( $compaction ) ) {
+			echo '<p><strong>' . esc_html__( 'Compaction', 'pressark' ) . ':</strong> '
+				. esc_html( $this->format_trace_value( $compaction ) ) . '</p>';
+		}
+		$replay_events = is_array( $replay['events'] ?? null ) ? $replay['events'] : array();
+		if ( ! empty( $replay_events ) ) {
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Type', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Phase', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Round', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Details', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $replay_events as $event ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $event['type'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( (string) ( $event['phase'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $event['round'] ?? 0 ) ) ) . '</td>';
+				echo '<td class="pressark-trace-details">' . esc_html( $this->format_trace_value( $event ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		$message_rows = is_array( $messages['items'] ?? null ) ? $messages['items'] : array();
+		if ( ! empty( $message_rows ) ) {
+			echo '<h4>' . esc_html__( 'Model-Facing Message Surface', 'pressark' ) . '</h4>';
+			echo '<p class="pressark-inspector-subtle">'
+				. esc_html(
+					sprintf(
+						'%d messages after replay repair and compaction.',
+						(int) ( $messages['total_messages'] ?? count( $message_rows ) )
+					)
+				)
+				. '</p>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Role', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Kind', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Preview', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $message_rows as $row ) {
+				echo '<tr>';
+				echo '<td>' . esc_html( (string) ( $row['role'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['kind'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['preview'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</details>';
+
+		if ( ! empty( $replacements ) ) {
+			echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Replacement Journal', 'pressark' ) . '</summary>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Tool', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Round', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Reason', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Artifact', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Inline Tokens', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $replacements as $entry ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $entry['tool_name'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $entry['round'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $entry['reason'] ?? '' ) ) . '</td>';
+				echo '<td class="pressark-trace-details">' . esc_html( (string) ( $entry['artifact_uri'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $entry['inline_tokens'] ?? 0 ) ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+			echo '</details>';
+		}
+
+		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Token Footprint', 'pressark' ) . '</summary>';
+		if ( ! empty( $token_footprint ) ) {
+			echo '<p><strong>' . esc_html__( 'Estimated prompt tokens', 'pressark' ) . ':</strong> '
+				. esc_html( number_format_i18n( (int) ( $token_footprint['estimated_prompt_tokens'] ?? 0 ) ) ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Remaining headroom', 'pressark' ) . ':</strong> '
+				. esc_html( number_format_i18n( (int) ( $token_footprint['remaining_tokens'] ?? 0 ) ) ) . '</p>';
+
+			$segments = is_array( $token_footprint['segments'] ?? null ) ? $token_footprint['segments'] : array();
+			if ( ! empty( $segments ) ) {
+				echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+				echo '<th>' . esc_html__( 'Segment', 'pressark' ) . '</th>';
+				echo '<th>' . esc_html__( 'Tokens', 'pressark' ) . '</th>';
+				echo '</tr></thead><tbody>';
+				foreach ( $segments as $segment ) {
+					if ( ! is_array( $segment ) ) {
+						continue;
+					}
+					echo '<tr>';
+					echo '<td>' . esc_html( (string) ( $segment['label'] ?? '' ) ) . '</td>';
+					echo '<td>' . esc_html( number_format_i18n( (int) ( $segment['tokens'] ?? 0 ) ) ) . '</td>';
+					echo '</tr>';
+				}
+				echo '</tbody></table>';
+			}
+		}
+		echo '</details>';
+	}
+
+	/**
+	 * Render the site-wide policy diagnostics view.
+	 */
+	private function render_policy_diagnostics(): void {
+		if ( ! class_exists( 'PressArk_Policy_Diagnostics' ) ) {
+			echo '<p>' . esc_html__( 'Policy diagnostics are not available.', 'pressark' ) . '</p>';
+			return;
+		}
+
+		$report = PressArk_Policy_Diagnostics::build_report( 14 );
+		$totals = is_array( $report['totals'] ?? null ) ? $report['totals'] : array();
+
+		echo '<div class="pressark-detail-card">';
+		echo '<h2>' . esc_html__( 'Policy Diagnostics', 'pressark' ) . '</h2>';
+		echo '<p class="description">' . esc_html__( 'Site-wide friction analytics built from recent hidden-tool surfaces, denied operations, and discovery dead-ends. Shadowed rules and dead automation surfaces are computed from the current live policy state.', 'pressark' ) . '</p>';
+
+		echo '<div class="pressark-inspector-grid">';
+		foreach ( array(
+			array(
+				'label' => __( 'Lookback', 'pressark' ),
+				'value' => sprintf( __( '%d days', 'pressark' ), (int) ( $report['lookback_days'] ?? 14 ) ),
+			),
+			array(
+				'label' => __( 'Hidden Surfaces', 'pressark' ),
+				'value' => number_format_i18n( (int) ( $totals['surface_events'] ?? 0 ) ),
+			),
+			array(
+				'label' => __( 'Execution Denials', 'pressark' ),
+				'value' => number_format_i18n( (int) ( $totals['denial_events'] ?? 0 ) ),
+			),
+			array(
+				'label' => __( 'Never-Visible Groups', 'pressark' ),
+				'value' => number_format_i18n( (int) ( $totals['requested_never_visible'] ?? 0 ) ),
+			),
+			array(
+				'label' => __( 'Shadowed Rules', 'pressark' ),
+				'value' => number_format_i18n( (int) ( $totals['shadowed_rules'] ?? 0 ) ),
+			),
+			array(
+				'label' => __( 'Dead Automation Surfaces', 'pressark' ),
+				'value' => number_format_i18n( (int) ( $totals['dead_group_combinations'] ?? 0 ) ),
+			),
+		) as $card ) {
+			echo '<div class="pressark-inspector-card">';
+			echo '<h4>' . esc_html( (string) $card['label'] ) . '</h4>';
+			echo '<p class="pressark-inspector-value">' . esc_html( (string) $card['value'] ) . '</p>';
+			echo '</div>';
+		}
+		echo '</div>';
+
+		$hidden_tools = is_array( $report['top_hidden_tools'] ?? null ) ? $report['top_hidden_tools'] : array();
+		if ( ! empty( $hidden_tools ) ) {
+			echo '<h3>' . esc_html__( 'Repeatedly Hidden Tools', 'pressark' ) . '</h3>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Tool', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Group', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Hidden', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Primary Reason', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Contexts', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $hidden_tools as $row ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $row['tool'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( (string) ( $row['group'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $row['count'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['primary_reason'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( implode( ', ', (array) ( $row['contexts'] ?? array() ) ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
+		$denied_operations = is_array( $report['top_denied_operations'] ?? null ) ? $report['top_denied_operations'] : array();
+		if ( ! empty( $denied_operations ) ) {
+			echo '<h3>' . esc_html__( 'Repeatedly Denied Operations', 'pressark' ) . '</h3>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Operation', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Group', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Denied', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Primary Source', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Primary Reason', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $denied_operations as $row ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $row['operation'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( (string) ( $row['group'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $row['count'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['primary_source'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['primary_reason'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
+		$never_visible = is_array( $report['requested_never_visible_groups'] ?? null ) ? $report['requested_never_visible_groups'] : array();
+		if ( ! empty( $never_visible ) ) {
+			echo '<h3>' . esc_html__( 'Groups Requested But Never Visible', 'pressark' ) . '</h3>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Group', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Requests', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Contexts', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $never_visible as $row ) {
+				echo '<tr>';
+				echo '<td><code>' . esc_html( (string) ( $row['group'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $row['requested_count'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( implode( ', ', (array) ( $row['contexts'] ?? array() ) ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
+		$dead_ends = is_array( $report['discovery_dead_ends'] ?? null ) ? $report['discovery_dead_ends'] : array();
+		if ( ! empty( $dead_ends ) ) {
+			echo '<h3>' . esc_html__( 'Discovery Dead Ends', 'pressark' ) . '</h3>';
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Query', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Misses', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Requested Families', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Primary Reason', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $dead_ends as $row ) {
+				echo '<tr>';
+				echo '<td>' . esc_html( (string) ( $row['query'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $row['count'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( implode( ', ', (array) ( $row['requested_families'] ?? array() ) ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['primary_reason'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+
+		$shadowed_rules = is_array( $report['shadowed_rules'] ?? null ) ? $report['shadowed_rules'] : array();
+		echo '<details class="pressark-inspector-section" open><summary>' . esc_html__( 'Shadowed Rule Diagnostics', 'pressark' ) . '</summary>';
+		if ( empty( $shadowed_rules ) ) {
+			echo '<p>' . esc_html__( 'No unreachable allow/ask rules detected in the current policy set.', 'pressark' ) . '</p>';
+		} else {
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Rule', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Shadow Type', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Shadowed By', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Reason', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Fix', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $shadowed_rules as $row ) {
+				$rule        = is_array( $row['rule'] ?? null ) ? $row['rule'] : array();
+				$shadowed_by = is_array( $row['shadowed_by'] ?? null ) ? $row['shadowed_by'] : array();
+				echo '<tr>';
+				echo '<td><code>' . esc_html( $this->format_policy_rule_label( $rule ) ) . '</code><div class="pressark-inspector-subtle">'
+					. esc_html( (string) ( $rule['source'] ?? '' ) ) . '</div></td>';
+				echo '<td>' . esc_html( (string) ( $row['shadow_type'] ?? '' ) ) . '</td>';
+				echo '<td><code>' . esc_html( $this->format_policy_rule_label( $shadowed_by ) ) . '</code><div class="pressark-inspector-subtle">'
+					. esc_html( (string) ( $shadowed_by['source'] ?? '' ) ) . '</div></td>';
+				echo '<td>' . esc_html( (string) ( $row['reason'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['fix'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</details>';
+
+		$dead_groups = is_array( $report['dead_group_combinations'] ?? null ) ? $report['dead_group_combinations'] : array();
+		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Dead Automation Surfaces', 'pressark' ) . '</summary>';
+		if ( empty( $dead_groups ) ) {
+			echo '<p>' . esc_html__( 'Every automation policy still exposes at least one tool in every group for the current tier.', 'pressark' ) . '</p>';
+		} else {
+			echo '<table class="wp-list-table widefat striped pressark-inspector-table"><thead><tr>';
+			echo '<th>' . esc_html__( 'Policy', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Tier', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Group', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Tools Hidden', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Primary Reason', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+			foreach ( $dead_groups as $row ) {
+				echo '<tr>';
+				echo '<td>' . esc_html( (string) ( $row['policy'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['tier'] ?? '' ) ) . '</td>';
+				echo '<td><code>' . esc_html( (string) ( $row['group'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( number_format_i18n( (int) ( $row['tool_count'] ?? 0 ) ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $row['primary_reason'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</details>';
+
+		echo '</div>';
+	}
+
+	private function format_policy_rule_label( array $rule ): string {
+		$match = (string) ( $rule['match'] ?? '' );
+		$value = (string) ( $rule['value'] ?? '' );
+
+		if ( '' === $match ) {
+			return $value;
+		}
+
+		return $match . '=' . ( '' !== $value ? $value : '{callable}' );
+	}
+
 	private function can_support_all(): bool {
+		return PressArk_Capabilities::current_user_can_manage_settings();
+	}
+
+	private function can_view_policy_diagnostics(): bool {
 		return PressArk_Capabilities::current_user_can_manage_settings();
 	}
 
@@ -540,6 +1276,198 @@ class PressArk_Admin_Activity {
 			. '<td>' . wp_kses_post( $html ) . '</td></tr>';
 	}
 
+	private function run_link_html( string $run_id, bool $support_mode, string $label = '' ): string {
+		if ( '' === $run_id ) {
+			return '-';
+		}
+
+		$display = '' !== $label ? $label : $run_id;
+		$url     = $this->activity_url(
+			array(
+				'view'   => self::VIEW_RUNS,
+				'run_id' => $run_id,
+			),
+			$support_mode
+		);
+
+		return '<a href="' . esc_url( $url ) . '"><code>' . esc_html( $display ) . '</code></a>';
+	}
+
+	private function task_link_html( string $task_id, bool $support_mode, string $label = '' ): string {
+		if ( '' === $task_id ) {
+			return '-';
+		}
+
+		$display = '' !== $label ? $label : $task_id;
+		$url     = $this->activity_url(
+			array(
+				'view'    => self::VIEW_TASKS,
+				'task_id' => $task_id,
+			),
+			$support_mode
+		);
+
+		return '<a href="' . esc_url( $url ) . '"><code>' . esc_html( $display ) . '</code></a>';
+	}
+
+	private function short_identifier( string $value ): string {
+		return '' === $value ? '' : substr( $value, 0, 8 );
+	}
+
+	private function render_json_block( string $title, array $data ): void {
+		echo '<h3>' . esc_html( $title ) . '</h3>';
+		echo '<pre class="pressark-json">'
+			. esc_html( wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) )
+			. '</pre>';
+	}
+
+	/**
+	 * Render the joined trust surface for one run.
+	 *
+	 * @param array<string,mixed> $surface Normalized trust surface.
+	 */
+	private function render_trust_surface( array $surface ): void {
+		if ( empty( $surface ) ) {
+			return;
+		}
+
+		$phase    = is_array( $surface['phase'] ?? null ) ? $surface['phase'] : array();
+		$evidence = is_array( $surface['evidence'] ?? null ) ? $surface['evidence'] : array();
+		$fallback = is_array( $surface['fallback'] ?? null ) ? $surface['fallback'] : array();
+		$billing  = is_array( $surface['billing'] ?? null ) ? $surface['billing'] : array();
+
+		echo '<h3>' . esc_html__( 'Trust Surface', 'pressark' ) . '</h3>';
+		echo '<p class="description">' . esc_html__( 'Evidence quality is plugin-local. Billing authority is shown separately so operators can see what was checked versus what settled spend.', 'pressark' ) . '</p>';
+
+		echo '<div class="pressark-trust-grid">';
+
+		echo '<div class="pressark-trust-card">';
+		echo '<h4>' . esc_html__( 'Phase', 'pressark' ) . '</h4>';
+		echo '<p class="pressark-trust-value">' . esc_html( (string) ( $phase['stage_label'] ?? $phase['run_label'] ?? 'Run' ) ) . '</p>';
+		echo '<p class="pressark-trust-detail">' . esc_html( (string) ( $phase['description'] ?? '' ) ) . '</p>';
+		echo '</div>';
+
+		echo '<div class="pressark-trust-card">';
+		echo '<h4>' . esc_html__( 'Confidence Ladder', 'pressark' ) . '</h4>';
+		echo '<p class="pressark-trust-value">' . esc_html( (string) ( $evidence['headline'] ?? __( 'No write evidence', 'pressark' ) ) ) . '</p>';
+		echo '<p class="pressark-trust-detail">' . esc_html( (string) ( $evidence['summary'] ?? '' ) ) . '</p>';
+		echo '</div>';
+
+		echo '<div class="pressark-trust-card">';
+		echo '<h4>' . esc_html__( 'Fallback Path', 'pressark' ) . '</h4>';
+		echo '<p class="pressark-trust-value">' . esc_html( (string) ( $fallback['headline'] ?? __( 'No fallback or degraded path', 'pressark' ) ) ) . '</p>';
+		echo '<p class="pressark-trust-detail">' . esc_html( (string) ( $fallback['summary'] ?? '' ) ) . '</p>';
+		echo '</div>';
+
+		echo '<div class="pressark-trust-card">';
+		echo '<h4>' . esc_html__( 'Billing Authority', 'pressark' ) . '</h4>';
+		echo '<p class="pressark-trust-value">' . esc_html( (string) ( $billing['authority_label'] ?? __( 'Not recorded', 'pressark' ) ) ) . '</p>';
+		echo '<p class="pressark-trust-detail">' . esc_html( implode( ' | ', array_filter( array(
+			(string) ( $billing['service_label'] ?? '' ),
+			(string) ( $billing['spend_label'] ?? '' ),
+			(string) ( $billing['settlement_authority'] ?? '' ),
+		) ) ) ) . '</p>';
+		echo '</div>';
+
+		echo '</div>';
+
+		if ( ! empty( $surface['authority_boundary_note'] ) ) {
+			echo '<p class="pressark-trust-note">' . esc_html( (string) $surface['authority_boundary_note'] ) . '</p>';
+		}
+
+		$receipts = is_array( $evidence['receipts'] ?? null ) ? $evidence['receipts'] : array();
+		if ( ! empty( $receipts ) ) {
+			echo '<h4>' . esc_html__( 'Evidence Receipts', 'pressark' ) . '</h4>';
+			echo '<table class="wp-list-table widefat striped pressark-trust-table">';
+			echo '<thead><tr>';
+			echo '<th>' . esc_html__( 'Write', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Status', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Confidence', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Evidence', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Checked', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+
+			foreach ( $receipts as $row ) {
+				$receipt = is_array( $row['evidence_receipt'] ?? null ) ? $row['evidence_receipt'] : array();
+				$status  = (string) ( $receipt['status_label'] ?? __( 'Not checked', 'pressark' ) );
+				$confidence = (string) ( $receipt['confidence_label'] ?? __( 'No evidence', 'pressark' ) );
+				$evidence_text = (string) ( $receipt['evidence'] ?? $row['summary'] ?? '' );
+				$target = (string) ( $row['post_title'] ?? '' );
+				if ( '' === $target && ! empty( $row['post_id'] ) ) {
+					$target = '#' . (int) $row['post_id'];
+				}
+
+				echo '<tr>';
+				echo '<td><strong>' . esc_html( (string) ( $row['tool'] ?? '' ) ) . '</strong>'
+					. ( $target ? '<div class="pressark-trust-subtle">' . esc_html( $target ) . '</div>' : '' )
+					. '</td>';
+				echo '<td>' . esc_html( $status ) . '</td>';
+				echo '<td>' . esc_html( $confidence ) . '</td>';
+				echo '<td>' . esc_html( $evidence_text ?: '-' ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $receipt['checked_at'] ?? '-' ) ) . '</td>';
+				echo '</tr>';
+			}
+
+			echo '</tbody></table>';
+		}
+
+		$fallback_events = is_array( $fallback['events'] ?? null ) ? $fallback['events'] : array();
+		if ( ! empty( $fallback_events ) ) {
+			echo '<h4>' . esc_html__( 'Fallback And Degraded Events', 'pressark' ) . '</h4>';
+			echo '<table class="wp-list-table widefat striped pressark-trust-table">';
+			echo '<thead><tr>';
+			echo '<th>' . esc_html__( 'When', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Source', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Reason', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Status', 'pressark' ) . '</th>';
+			echo '<th>' . esc_html__( 'Summary', 'pressark' ) . '</th>';
+			echo '</tr></thead><tbody>';
+
+			foreach ( $fallback_events as $event ) {
+				echo '<tr>';
+				echo '<td>' . esc_html( (string) ( $event['when'] ?? '' ) ) . '</td>';
+				echo '<td><code>' . esc_html( (string) ( $event['source'] ?? '' ) ) . '</code></td>';
+				echo '<td><code>' . esc_html( (string) ( $event['reason'] ?? '' ) ) . '</code>'
+					. '<div class="pressark-trust-subtle">' . esc_html( (string) ( $event['reason_label'] ?? '' ) ) . '</div></td>';
+				echo '<td>' . esc_html( (string) ( $event['status'] ?? '' ) ) . '</td>';
+				echo '<td>' . esc_html( (string) ( $event['summary'] ?? '' ) ) . '</td>';
+				echo '</tr>';
+			}
+
+			echo '</tbody></table>';
+		}
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $family Runs in one lineage group.
+	 */
+	private function render_lineage_family( array $family, bool $support_mode ): void {
+		echo '<table class="widefat fixed striped pressark-family-table">';
+		echo '<thead><tr>';
+		echo '<th>' . esc_html__( 'Run', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Parent', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Route', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Status', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Task', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Started', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Message', 'pressark' ) . '</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( $family as $row ) {
+			echo '<tr>';
+			echo '<td>' . wp_kses_post( $this->run_link_html( (string) $row['run_id'], $support_mode, $this->short_identifier( (string) $row['run_id'] ) ) ) . '</td>';
+			echo '<td>' . wp_kses_post( $this->run_link_html( (string) ( $row['parent_run_id'] ?? '' ), $support_mode, $this->short_identifier( (string) ( $row['parent_run_id'] ?? '' ) ) ) ) . '</td>';
+			echo '<td>' . esc_html( (string) ( $row['route'] ?? '' ) ) . '</td>';
+			echo '<td>' . esc_html( (string) ( $row['status'] ?? '' ) ) . '</td>';
+			echo '<td>' . wp_kses_post( $this->task_link_html( (string) ( $row['task_id'] ?? '' ), $support_mode, $this->short_identifier( (string) ( $row['task_id'] ?? '' ) ) ) ) . '</td>';
+			echo '<td>' . esc_html( $this->relative_time( (string) ( $row['created_at'] ?? '' ) ) ) . '</td>';
+			echo '<td>' . esc_html( mb_substr( (string) ( $row['message'] ?? '' ), 0, 80 ) ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+	}
+
 	/**
 	 * Render a compact joined trace table.
 	 *
@@ -554,6 +1482,7 @@ class PressArk_Admin_Activity {
 		echo '<th>' . esc_html__( 'Reason', 'pressark' ) . '</th>';
 		echo '<th>' . esc_html__( 'Status', 'pressark' ) . '</th>';
 		echo '<th>' . esc_html__( 'Summary', 'pressark' ) . '</th>';
+		echo '<th>' . esc_html__( 'Details', 'pressark' ) . '</th>';
 		echo '</tr></thead><tbody>';
 
 		foreach ( $events as $event ) {
@@ -563,6 +1492,8 @@ class PressArk_Admin_Activity {
 			$reason  = (string) ( $event['reason'] ?? '' );
 			$status  = (string) ( $event['status'] ?? '' );
 			$summary = (string) ( $event['summary'] ?? '' );
+			$payload = is_array( $event['payload'] ?? null ) ? (array) $event['payload'] : array();
+			$details = $this->format_trace_details( $payload );
 
 			echo '<tr>';
 			echo '<td>' . esc_html( $when ) . '</td>';
@@ -571,10 +1502,127 @@ class PressArk_Admin_Activity {
 			echo '<td><code>' . esc_html( $reason ) . '</code></td>';
 			echo '<td>' . esc_html( $status ) . '</td>';
 			echo '<td>' . esc_html( $summary ) . '</td>';
+			echo '<td class="pressark-trace-details">' . esc_html( $details ) . '</td>';
 			echo '</tr>';
 		}
 
 		echo '</tbody></table>';
+	}
+
+	private function format_trace_details( array $payload ): string {
+		if ( empty( $payload ) ) {
+			return '';
+		}
+
+		$details = array();
+		$map     = array(
+			'attempt'         => 'Attempt',
+			'delay_seconds'   => 'Delay',
+			'defer_count'     => 'Defers',
+			'active_slots'    => 'Slots',
+			'backend'         => 'Backend',
+			'provider'        => 'Provider',
+			'model'           => 'Model',
+			'routing_basis'   => 'Basis',
+			'failure_class'   => 'Failure',
+			'result_type'     => 'Result',
+			'workflow_stage'  => 'Stage',
+			'run_status'      => 'Run',
+			'handoff_summary' => 'Handoff',
+			'from'            => 'From',
+			'to'              => 'To',
+			'from_group'      => 'From Group',
+			'to_group'        => 'To Group',
+			'query'           => 'Query',
+			'zero_hit_count'  => 'Misses',
+			'discover_calls'  => 'Discover Calls',
+			'error'           => 'Error',
+		);
+
+		foreach ( $map as $key => $label ) {
+			if ( isset( $payload[ $key ] ) && '' !== (string) $payload[ $key ] ) {
+				$details[] = $label . ': ' . $this->format_trace_value( $payload[ $key ] );
+			}
+		}
+
+		foreach ( array( 'parent_run_id' => 'Parent', 'root_run_id' => 'Root', 'child_run_id' => 'Child', 'task_id' => 'Task' ) as $key => $label ) {
+			if ( ! empty( $payload[ $key ] ) ) {
+				$details[] = $label . ': ' . $this->short_identifier( (string) $payload[ $key ] );
+			}
+		}
+
+		foreach ( array(
+			'loaded_groups'      => 'Groups',
+			'bundle_ids'         => 'Bundles',
+			'fallback_candidates'=> 'Fallbacks',
+			'requested_families' => 'Families',
+		) as $key => $label ) {
+			if ( ! empty( $payload[ $key ] ) && is_array( $payload[ $key ] ) ) {
+				$details[] = $label . ': ' . $this->format_trace_value( $payload[ $key ] );
+			}
+		}
+
+		if ( empty( $details ) && ! empty( $payload['batch_provenance'] ) ) {
+			$details[] = 'Batch: ' . $this->format_trace_value( $payload['batch_provenance'] );
+		}
+
+		if ( empty( $details ) ) {
+			$json = wp_json_encode( $payload );
+			if ( ! is_string( $json ) ) {
+				return '';
+			}
+			return mb_strlen( $json ) > 180 ? mb_substr( $json, 0, 177 ) . '...' : $json;
+		}
+
+		return implode( ' | ', $details );
+	}
+
+	private function format_trace_value( $value ): string {
+		if ( is_array( $value ) ) {
+			$all_scalar = true;
+			foreach ( $value as $item ) {
+				if ( is_array( $item ) || is_object( $item ) ) {
+					$all_scalar = false;
+					break;
+				}
+			}
+
+			if ( $all_scalar ) {
+				$items = array_map(
+					static function ( $item ): string {
+						if ( is_bool( $item ) ) {
+							return $item ? 'true' : 'false';
+						}
+						return (string) $item;
+					},
+					$value
+				);
+				$text = implode(
+					', ',
+					array_filter(
+						$items,
+						static function ( string $item ): bool {
+							return '' !== $item;
+						}
+					)
+				);
+				return mb_strlen( $text ) > 120 ? mb_substr( $text, 0, 117 ) . '...' : $text;
+			}
+
+			$json = wp_json_encode( $value );
+			return is_string( $json ) && mb_strlen( $json ) > 120 ? mb_substr( $json, 0, 117 ) . '...' : (string) $json;
+		}
+
+		if ( is_bool( $value ) ) {
+			return $value ? 'true' : 'false';
+		}
+
+		$text = (string) $value;
+		if ( preg_match( '/^[a-f0-9-]{12,}$/', $text ) ) {
+			return $this->short_identifier( $text );
+		}
+
+		return mb_strlen( $text ) > 80 ? mb_substr( $text, 0, 77 ) . '...' : $text;
 	}
 
 	private function render_status_filters( array $counts, string $active, string $view, bool $support_mode ): void {
@@ -720,6 +1768,111 @@ class PressArk_Admin_Activity {
 			overflow-x: auto;
 			max-height: 300px;
 			font-size: 12px;
+		}
+		.pressark-family-table code,
+		.pressark-trace-table code {
+			font-size: 11px;
+		}
+		.pressark-trace-details {
+			color: #50575e;
+			font-size: 12px;
+		}
+		.pressark-trust-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+			gap: 12px;
+			margin: 12px 0 16px;
+		}
+		.pressark-trust-card {
+			background: #f6f7f7;
+			border: 1px solid #dcdcde;
+			border-radius: 4px;
+			padding: 12px;
+		}
+		.pressark-trust-card h4 {
+			margin: 0 0 6px;
+			font-size: 12px;
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+			color: #50575e;
+		}
+		.pressark-trust-value {
+			margin: 0 0 4px;
+			font-size: 16px;
+			font-weight: 600;
+			color: #1d2327;
+		}
+		.pressark-trust-detail,
+		.pressark-trust-note,
+		.pressark-trust-subtle {
+			color: #50575e;
+			font-size: 12px;
+		}
+		.pressark-trust-note {
+			margin: 0 0 16px;
+			padding: 10px 12px;
+			background: #fff8e5;
+			border-left: 4px solid #dba617;
+		}
+		.pressark-trust-table {
+			margin-bottom: 16px;
+		}
+		.pressark-inspector-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+			gap: 12px;
+			margin: 12px 0 16px;
+		}
+		.pressark-inspector-card {
+			background: #f6f7f7;
+			border: 1px solid #dcdcde;
+			border-radius: 4px;
+			padding: 12px;
+		}
+		.pressark-inspector-card h4 {
+			margin: 0 0 6px;
+			font-size: 12px;
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+			color: #50575e;
+		}
+		.pressark-inspector-value {
+			margin: 0;
+			font-size: 16px;
+			font-weight: 600;
+			color: #1d2327;
+		}
+		.pressark-inspector-section {
+			margin: 12px 0;
+			border: 1px solid #dcdcde;
+			border-radius: 4px;
+			background: #fff;
+		}
+		.pressark-inspector-section summary {
+			cursor: pointer;
+			padding: 12px 14px;
+			font-weight: 600;
+		}
+		.pressark-inspector-section > *:not(summary) {
+			margin-left: 14px;
+			margin-right: 14px;
+		}
+		.pressark-inspector-section > table,
+		.pressark-inspector-section > .wp-list-table {
+			margin-bottom: 14px;
+		}
+		.pressark-inspector-meta {
+			margin: 0 0 12px;
+		}
+		.pressark-inspector-meta p {
+			margin: 6px 0;
+		}
+		.pressark-inspector-subtle {
+			color: #50575e;
+			font-size: 12px;
+		}
+		.pressark-inspector-table {
+			margin-bottom: 14px;
 		}
 		.pressark-actions-list li {
 			padding: 2px 0;

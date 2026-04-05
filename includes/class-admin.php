@@ -364,11 +364,226 @@ class PressArk_Admin {
 				?>
 			</form>
 
+			<?php $this->render_harness_readiness_section(); ?>
 			<?php $this->render_site_profile_section(); ?>
 			<?php $this->render_content_index_section(); ?>
 			<?php $this->render_permissions_section(); ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Render harness readiness section on settings page.
+	 */
+	private function render_harness_readiness_section(): void {
+		$snapshot       = PressArk_Harness_Readiness::get_snapshot();
+		$facets         = (array) ( $snapshot['facets'] ?? array() );
+		$problem_groups = PressArk_Harness_Readiness::summarize_problem_groups( $snapshot, 6 );
+		$state          = sanitize_key( (string) ( $snapshot['state'] ?? 'degraded' ) );
+		$badge          = $this->get_harness_state_styles( $state );
+		$tier           = $this->format_harness_label( (string) ( $snapshot['tier'] ?? 'free' ) );
+		$transport      = $this->format_harness_label( (string) ( $snapshot['transport_mode'] ?? 'proxy' ) );
+		$rows           = array(
+			'ai_core'       => __( 'AI Core', 'pressark' ),
+			'billing'       => __( 'Billing', 'pressark' ),
+			'provider'      => __( 'Provider', 'pressark' ),
+			'site_profile'  => __( 'Site Profile', 'pressark' ),
+			'content_index' => __( 'Content Index', 'pressark' ),
+			'background'    => __( 'Background', 'pressark' ),
+		);
+		?>
+		<h2><?php esc_html_e( 'Harness Readiness', 'pressark' ); ?></h2>
+		<div style="background:#fff;border:1px solid rgba(226,232,240,0.8);border-radius:12px;padding:32px;margin:20px 0;box-shadow:0 4px 12px rgba(0,0,0,0.02);">
+			<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+				<div style="max-width:760px;">
+					<p style="margin:0 0 8px;color:#64748b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;"><?php esc_html_e( 'Canonical Operator Snapshot', 'pressark' ); ?></p>
+					<p style="margin:0;color:#0f172a;font-size:18px;font-weight:700;"><?php echo esc_html( (string) ( $snapshot['summary'] ?? __( 'PressArk readiness is being evaluated.', 'pressark' ) ) ); ?></p>
+					<p style="margin:12px 0 0;color:#64748b;font-size:14px;">
+						<?php
+						printf(
+							/* translators: 1: transport mode 2: plan tier 3: snapshot timestamp */
+							esc_html__( 'Transport: %1$s · Tier: %2$s · Snapshot: %3$s', 'pressark' ),
+							esc_html( $transport ),
+							esc_html( $tier ),
+							esc_html( $this->format_harness_timestamp( (string) ( $snapshot['generated_at'] ?? '' ) ) )
+						);
+						?>
+					</p>
+				</div>
+				<span style="display:inline-flex;align-items:center;border:1px solid <?php echo esc_attr( $badge['border'] ); ?>;background:<?php echo esc_attr( $badge['background'] ); ?>;color:<?php echo esc_attr( $badge['text'] ); ?>;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;">
+					<?php echo esc_html( $this->format_harness_label( $state ) ); ?>
+				</span>
+			</div>
+
+			<table style="width:100%;border-collapse:collapse;margin-top:24px;">
+				<thead>
+					<tr>
+						<th style="padding:10px 12px;border-bottom:2px solid #e2e8f0;text-align:left;color:#0f172a;font-size:13px;"><?php esc_html_e( 'Surface', 'pressark' ); ?></th>
+						<th style="padding:10px 12px;border-bottom:2px solid #e2e8f0;text-align:left;color:#0f172a;font-size:13px;"><?php esc_html_e( 'State', 'pressark' ); ?></th>
+						<th style="padding:10px 12px;border-bottom:2px solid #e2e8f0;text-align:left;color:#0f172a;font-size:13px;"><?php esc_html_e( 'Summary', 'pressark' ); ?></th>
+						<th style="padding:10px 12px;border-bottom:2px solid #e2e8f0;text-align:left;color:#0f172a;font-size:13px;"><?php esc_html_e( 'Signals', 'pressark' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $rows as $facet_key => $label ) : ?>
+						<?php $facet = is_array( $facets[ $facet_key ] ?? null ) ? (array) $facets[ $facet_key ] : array(); ?>
+						<?php $facet_state = sanitize_key( (string) ( $facet['state'] ?? 'degraded' ) ); ?>
+						<?php $facet_badge = $this->get_harness_state_styles( $facet_state ); ?>
+						<tr>
+							<td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a;font-size:14px;font-weight:600;"><?php echo esc_html( $label ); ?></td>
+							<td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;">
+								<span style="display:inline-flex;align-items:center;border:1px solid <?php echo esc_attr( $facet_badge['border'] ); ?>;background:<?php echo esc_attr( $facet_badge['background'] ); ?>;color:<?php echo esc_attr( $facet_badge['text'] ); ?>;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;">
+									<?php echo esc_html( $this->format_harness_label( $facet_state ) ); ?>
+								</span>
+							</td>
+							<td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;color:#475569;font-size:13px;line-height:1.5;"><?php echo esc_html( (string) ( $facet['summary'] ?? '' ) ); ?></td>
+							<td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;color:#64748b;font-size:13px;line-height:1.5;"><?php echo esc_html( $this->get_harness_facet_detail( $facet_key, $facet ) ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+
+			<?php if ( ! empty( $problem_groups ) ) : ?>
+				<div style="margin-top:24px;padding:16px 18px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;">
+					<p style="margin:0 0 10px;color:#0f172a;font-size:14px;font-weight:700;"><?php esc_html_e( 'Tool Group Dependency Gaps', 'pressark' ); ?></p>
+					<ul style="margin:0;padding-left:18px;color:#475569;font-size:13px;line-height:1.6;">
+						<?php foreach ( $problem_groups as $problem ) : ?>
+							<li>
+								<strong><?php echo esc_html( (string) ( $problem['label'] ?? '' ) ); ?>:</strong>
+								<?php echo esc_html( (string) ( $problem['summary'] ?? '' ) ); ?>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function get_harness_state_styles( string $state ): array {
+		return match ( $state ) {
+			'blocked'  => array(
+				'background' => '#fef2f2',
+				'border'     => '#fecaca',
+				'text'       => '#b91c1c',
+			),
+			'degraded' => array(
+				'background' => '#fffbeb',
+				'border'     => '#fde68a',
+				'text'       => '#b45309',
+			),
+			default    => array(
+				'background' => '#f0fdf4',
+				'border'     => '#86efac',
+				'text'       => '#166534',
+			),
+		};
+	}
+
+	private function format_harness_label( string $value ): string {
+		$value = trim( $value );
+		if ( '' === $value ) {
+			return __( 'Unknown', 'pressark' );
+		}
+
+		return ucwords( str_replace( array( '_', '-' ), ' ', $value ) );
+	}
+
+	private function format_harness_timestamp( string $value ): string {
+		$value = trim( $value );
+		if ( '' === $value ) {
+			return __( 'Never', 'pressark' );
+		}
+		if ( str_starts_with( $value, '1970-01-01' ) ) {
+			return __( 'Never', 'pressark' );
+		}
+		if ( in_array( $value, array( 'Never', 'Disabled' ), true ) ) {
+			return $value;
+		}
+
+		$timestamp = strtotime( $value );
+		if ( false === $timestamp ) {
+			return $value;
+		}
+
+		return wp_date( 'M j, Y g:i a', $timestamp );
+	}
+
+	private function get_harness_facet_detail( string $facet_key, array $facet ): string {
+		switch ( $facet_key ) {
+			case 'ai_core':
+				return sprintf(
+					/* translators: 1: transport mode 2: billing mode */
+					__( 'Transport: %1$s · Billing mode: %2$s', 'pressark' ),
+					$this->format_harness_label( (string) ( $facet['transport_mode'] ?? '' ) ),
+					$this->format_harness_label( (string) ( $facet['billing_mode'] ?? '' ) )
+				);
+
+			case 'billing':
+				return sprintf(
+					/* translators: 1: handshake state 2: service state 3: last bank contact */
+					__( 'Handshake: %1$s · Service: %2$s · Last bank contact: %3$s', 'pressark' ),
+					$this->format_harness_label( (string) ( $facet['handshake_state'] ?? '' ) ),
+					$this->format_harness_label( (string) ( $facet['service_state'] ?? '' ) ),
+					$this->format_harness_timestamp( (string) ( $facet['last_successful_contact_at'] ?? '' ) )
+				);
+
+			case 'provider':
+				if ( 'proxy' === (string) ( $facet['mode'] ?? '' ) ) {
+					return sprintf(
+						/* translators: 1: provider 2: model */
+						__( 'Provider: %1$s · Model: %2$s · Credentials: Managed by PressArk', 'pressark' ),
+						$this->format_harness_label( (string) ( $facet['provider'] ?? '' ) ),
+						(string) ( $facet['model'] ?? __( 'Auto', 'pressark' ) )
+					);
+				}
+
+				$key_status = ! empty( $facet['key_saved'] ) && ! empty( $facet['key_valid'] )
+					? __( 'Saved', 'pressark' )
+					: __( 'Needs attention', 'pressark' );
+
+				return sprintf(
+					/* translators: 1: provider 2: model 3: key status */
+					__( 'Provider: %1$s · Model: %2$s · Credentials: %3$s', 'pressark' ),
+					$this->format_harness_label( (string) ( $facet['provider'] ?? '' ) ),
+					(string) ( $facet['model'] ?? __( 'Auto', 'pressark' ) ),
+					$key_status
+				);
+
+			case 'site_profile':
+				return sprintf(
+					/* translators: 1: generation timestamp 2: age in hours */
+					__( 'Generated: %1$s · Age: %2$s hours', 'pressark' ),
+					$this->format_harness_timestamp( (string) ( $facet['generated_at'] ?? '' ) ),
+					number_format_i18n( (float) ( $facet['age_hours'] ?? 0 ), 1 )
+				);
+
+			case 'content_index':
+				return sprintf(
+					/* translators: 1: chunk count 2: last sync 3: stale percentage */
+					__( 'Chunks: %1$s · Last sync: %2$s · Stale: %3$s%%', 'pressark' ),
+					number_format_i18n( (int) ( $facet['total_chunks'] ?? 0 ) ),
+					$this->format_harness_timestamp( (string) ( $facet['last_sync_raw'] ?? $facet['last_sync'] ?? '' ) ),
+					number_format_i18n( (float) ( $facet['stale_percent'] ?? 0 ), 1 )
+				);
+
+			case 'background':
+				$missing_hooks = (array) ( $facet['missing_hooks'] ?? array() );
+				$hook_summary  = empty( $missing_hooks )
+					? __( 'None', 'pressark' )
+					: implode( ', ', array_map( array( $this, 'format_harness_label' ), array_map( 'strval', $missing_hooks ) ) );
+
+				return sprintf(
+					/* translators: 1: backend name 2: queued task count 3: running task count 4: missing hook summary */
+					__( 'Backend: %1$s · Queue: %2$s queued / %3$s running · Missing hooks: %4$s', 'pressark' ),
+					$this->format_harness_label( (string) ( $facet['backend'] ?? '' ) ),
+					number_format_i18n( (int) ( $facet['queued_tasks'] ?? 0 ) ),
+					number_format_i18n( (int) ( $facet['running_tasks'] ?? 0 ) ),
+					$hook_summary
+				);
+		}
+
+		return '';
 	}
 
 	/**
@@ -1315,12 +1530,15 @@ class PressArk_Admin {
 		$tier         = ( new PressArk_License() )->get_tier();
 		$plan_info    = PressArk_Entitlements::get_plan_info( $tier );
 		$is_byok      = ! empty( $plan_info['is_byok'] );
+		$billing_state = is_array( $plan_info['billing_state'] ?? null ) ? (array) $plan_info['billing_state'] : array();
 		$used         = (int) ( $plan_info['icus_used'] ?? 0 );
 		$monthly      = (int) ( $plan_info['monthly_included_icu_budget'] ?? $plan_info['monthly_icu_budget'] ?? 100000 );
 		$total        = (int) ( $plan_info['total_remaining'] ?? $plan_info['icus_remaining'] ?? $monthly );
 		$monthly_left = (int) ( $plan_info['monthly_included_remaining'] ?? $plan_info['monthly_remaining'] ?? max( 0, $monthly - $used ) );
 		$credits_left = (int) ( $plan_info['purchased_credits_remaining'] ?? $plan_info['credits_remaining'] ?? 0 );
 		$legacy_left  = (int) ( $plan_info['legacy_bonus_remaining'] ?? 0 );
+		$monthly_exhausted = ! empty( $plan_info['monthly_exhausted'] );
+		$raw_tokens_used = (int) ( $plan_info['raw_tokens_used'] ?? $used );
 		$at_limit     = $total <= 0;
 		$pct          = $monthly > 0 ? (int) min( 100, round( ( $used / $monthly ) * 100 ) ) : 0;
 		$warn         = 'normal' !== (string) ( $plan_info['budget_pressure_state'] ?? 'normal' );
@@ -1329,11 +1547,22 @@ class PressArk_Admin {
 		$upgrade_url  = pressark_get_upgrade_url();
 		$store_anchor = admin_url( 'admin.php?page=pressark#pressark-credit-store' );
 		$pressure_label = ucfirst( (string) ( $plan_info['budget_pressure_state'] ?? 'normal' ) );
+		$authority_label = (string) ( $billing_state['authority_label'] ?? 'Bank provisional' );
+		$service_state = (string) ( $billing_state['service_state'] ?? ( ! empty( $plan_info['offline'] ) ? 'offline_assisted' : 'normal' ) );
+		$service_label = (string) ( $billing_state['service_label'] ?? ucfirst( str_replace( '_', ' ', $service_state ) ) );
+		$spend_label = (string) ( $billing_state['spend_label'] ?? ( $is_byok ? 'BYOK' : 'Monthly included' ) );
+		$authority_notice = (string) ( $billing_state['authority_notice'] ?? '' );
+		$service_notice = (string) ( $billing_state['service_notice'] ?? '' );
+		$estimate_notice = (string) ( $billing_state['estimate_notice'] ?? '' );
+		$service_color = 'normal' === $service_state ? '#64748b' : ( 'degraded' === $service_state ? '#92400e' : '#2563eb' );
 
 		if ( $is_byok ) {
 			echo '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;margin-top:12px;">';
 			echo '<strong>' . esc_html__( 'BYOK Mode Active', 'pressark' ) . '</strong>';
-			echo '<p style="margin:4px 0 0;">' . esc_html__( 'Using your own API key. Bundled credits are bypassed, but plan entitlements still apply.', 'pressark' ) . '</p>';
+			echo '<p style="margin:4px 0 0;">' . esc_html( $authority_notice ?: 'Using your own API key. Bundled credits are bypassed, but plan entitlements still apply.' ) . '</p>';
+			if ( $estimate_notice ) {
+				echo '<p style="margin:8px 0 0;color:#166534;">' . esc_html( $estimate_notice ) . '</p>';
+			}
 			echo '</div>';
 			return;
 		}
@@ -1378,14 +1607,25 @@ class PressArk_Admin {
 				<?php
 				echo esc_html(
 					sprintf(
-						/* translators: 1: pressure label 2: billing authority */
-						__( 'Budget pressure: %1$s · Billing source: %2$s', 'pressark' ),
+						/* translators: 1: pressure label 2: billing authority label 3: service label 4: spend source label */
+						__( 'Budget pressure: %1$s · Authority: %2$s · Service: %3$s · Spend source: %4$s', 'pressark' ),
 						$pressure_label,
-						(string) ( $plan_info['billing_authority'] ?? 'token_bank' )
+						$authority_label,
+						$service_label,
+						$spend_label
 					)
 				);
 				?>
 			</p>
+			<?php if ( $authority_notice ) : ?>
+				<p style="margin:10px 0 0;color:#475569;"><?php echo esc_html( $authority_notice ); ?></p>
+			<?php endif; ?>
+			<?php if ( $estimate_notice ) : ?>
+				<p style="margin:10px 0 0;color:#475569;"><?php echo esc_html( $estimate_notice ); ?></p>
+			<?php endif; ?>
+			<?php if ( $service_notice ) : ?>
+				<p style="margin:10px 0 0;color:<?php echo esc_attr( $service_color ); ?>;"><?php echo esc_html( $service_notice ); ?></p>
+			<?php endif; ?>
 			<?php if ( ! empty( $plan_info['using_purchased_credits'] ) ) : ?>
 				<p style="margin:10px 0 0;color:#92400e;"><?php esc_html_e( 'Purchased credits are currently being used because the monthly included allowance is exhausted.', 'pressark' ); ?></p>
 			<?php elseif ( ! empty( $plan_info['using_legacy_bonus'] ) ) : ?>
@@ -1405,7 +1645,7 @@ class PressArk_Admin {
 					?>
 				</p>
 			<?php endif; ?>
-			<?php if ( ! empty( $status['monthly_exhausted'] ) && $credits_left > 0 ) : ?>
+			<?php if ( $monthly_exhausted && $credits_left > 0 ) : ?>
 				<p style="margin:10px 0 0;color:#2563eb;"><?php esc_html_e( 'Your billing-cycle credits are exhausted. PressArk is now using your purchased credits.', 'pressark' ); ?></p>
 			<?php elseif ( $at_limit && PressArk_Entitlements::is_paid_tier( ( new PressArk_License() )->get_tier() ) ) : ?>
 				<p style="margin:10px 0 0;"><a href="<?php echo esc_url( $store_anchor ); ?>" style="color:#2563EB;text-decoration:none;font-weight:600;"><?php esc_html_e( 'Buy more credits', 'pressark' ); ?></a></p>
@@ -1419,13 +1659,13 @@ class PressArk_Admin {
 					printf(
 						/* translators: 1: raw tokens used */
 						esc_html__( 'Raw provider tokens used this billing cycle: %s', 'pressark' ),
-						number_format( (int) ( $status['raw_tokens_used'] ?? $used ) )
+						number_format( $raw_tokens_used )
 					);
 					?>
 				</p>
 			</details>
-			<?php if ( ! empty( $status['offline'] ) ) : ?>
-				<p class="description" style="color:#f59e0b; margin-top:12px;"><?php esc_html_e( 'Token bank service unreachable. Showing cached data.', 'pressark' ); ?></p>
+			<?php if ( ! empty( $plan_info['offline'] ) ) : ?>
+				<p class="description" style="color:#f59e0b; margin-top:12px;"><?php esc_html_e( 'Token bank service unreachable. Showing cached data while preserving bank authority for final settlement.', 'pressark' ); ?></p>
 			<?php endif; ?>
 		</div>
 		<?php

@@ -1,0 +1,50 @@
+{
+  "kind": "visibility_parity",
+  "name": "automation hides dangerous plugin toggles without changing the deny result",
+  "input": {
+    "license_tier": "pro",
+    "limit_exhausted": false,
+    "loader": {
+      "message": "Run unattended maintenance",
+      "tier": "pro",
+      "groups": [
+        "plugins",
+        "core"
+      ],
+      "options": {
+        "permission_context": "automation",
+        "permission_meta": {
+          "tier": "pro",
+          "policy": "editorial"
+        }
+      }
+    },
+    "decision": {
+      "operation": "toggle_plugin",
+      "context": "automation",
+      "meta": {
+        "tier": "pro",
+        "policy": "editorial"
+      }
+    }
+  },
+  "expect": {
+    "paths": {
+      "decision.verdict": "deny",
+      "decision.visibility.visible_to_model": false
+    },
+    "contains": {
+      "permission_surface.hidden_tools": [
+        "toggle_plugin"
+      ],
+      "tool_names": [
+        "edit_content"
+      ]
+    },
+    "excludes": {
+      "tool_names": [
+        "toggle_plugin"
+      ]
+    }
+  }
+}

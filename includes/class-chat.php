@@ -63,6 +63,193 @@ class PressArk_Chat {
 	}
 
 	/**
+	 * Build a normalized approval outcome payload for settlement and checkpoint flows.
+	 *
+	 * @param string $status    Outcome status.
+	 * @param array  $overrides Extra outcome fields.
+	 * @return array<string,mixed>
+	 */
+	private function build_approval_outcome( string $status, array $overrides = array() ): array {
+		if ( class_exists( 'PressArk_Permission_Decision' ) ) {
+			return PressArk_Permission_Decision::approval_outcome( $status, $overrides );
+		}
+
+		$outcome = array(
+			'status'      => sanitize_key( $status ),
+			'recorded_at' => sanitize_text_field( (string) ( $overrides['recorded_at'] ?? gmdate( 'c' ) ) ),
+		);
+
+		foreach ( array( 'action', 'scope', 'source', 'actor', 'reason_code' ) as $field ) {
+			$value = sanitize_key( (string) ( $overrides[ $field ] ?? '' ) );
+			if ( '' !== $value ) {
+				$outcome[ $field ] = $value;
+			}
+		}
+
+		$message = sanitize_text_field( (string) ( $overrides['message'] ?? '' ) );
+		if ( '' !== $message ) {
+			$outcome['message'] = $message;
+		}
+		if ( is_array( $overrides['meta'] ?? null ) && ! empty( $overrides['meta'] ) ) {
+			$outcome['meta'] = $overrides['meta'];
+		}
+
+		return $outcome;
+	}
+
+	/**
+	 * Attach a typed approval outcome to a result while preserving legacy flags.
+	 *
+	 * @param array  $result    Result payload.
+	 * @param string $status    Outcome status.
+	 * @param array  $overrides Extra outcome fields.
+	 * @return array
+	 */
+	private function attach_approval_outcome( array $result, string $status, array $overrides = array() ): array {
+		$result['approval_outcome'] = $this->build_approval_outcome( $status, $overrides );
+		$normalized_status          = sanitize_key( (string) ( $result['approval_outcome']['status'] ?? $status ) );
+
+		if ( in_array( $normalized_status, array( 'cancelled', 'aborted' ), true ) ) {
+			$result['cancelled'] = true;
+		} else {
+			unset( $result['cancelled'] );
+		}
+
+		if ( 'discarded' === $normalized_status ) {
+			$result['discarded'] = true;
+		} else {
+			unset( $result['discarded'] );
+		}
+
+		return $this->hydrate_approval_receipt( $result );
+	}
+
+	/**
+	 * Attach the compact server acknowledgement receipt for the current approval outcome.
+	 *
+	 * @param array $result  Result payload.
+	 * @param array $context Extra settlement context.
+	 * @return array
+	 */
+	private function hydrate_approval_receipt( array $result, array $context = array() ): array {
+		if ( ! class_exists( 'PressArk_Permission_Decision' ) ) {
+			return $result;
+		}
+
+		$outcome = is_array( $result['approval_outcome'] ?? null ) ? $result['approval_outcome'] : array();
+		$receipt = PressArk_Permission_Decision::approval_receipt(
+			$outcome,
+			array_merge(
+				array(
+					'run_id'         => sanitize_text_field( (string) ( $result['run_id'] ?? '' ) ),
+					'correlation_id' => sanitize_text_field( (string) ( $result['correlation_id'] ?? '' ) ),
+					'message'        => sanitize_text_field( (string) ( $result['message'] ?? '' ) ),
+				),
+				array_key_exists( 'success', $result )
+					? array( 'execution_ok' => ! empty( $result['success'] ) )
+					: array(),
+				$context
+			)
+		);
+
+		if ( ! empty( $receipt ) ) {
+			$result['approval_receipt'] = $receipt;
+		} else {
+			unset( $result['approval_receipt'] );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Attach compact chat-facing surfaces derived from canonical backend state.
+	 *
+	 * @param array  $result Result payload.
+	 * @param string $route  Execution route.
+	 * @return array
+	 */
+	private function hydrate_chat_surfaces( array $result, string $route = '' ): array {
+		if ( ! class_exists( 'PressArk_Pipeline' ) ) {
+			return $result;
+		}
+
+		$route_key = sanitize_key( $route );
+		if ( '' === $route_key ) {
+			$route_key = sanitize_key( (string) ( $result['routing_decision']['route'] ?? '' ) );
+		}
+		if ( '' === $route_key ) {
+			$route_key = 'agent';
+		}
+
+		$activity_strip = PressArk_Pipeline::build_activity_strip( $result, $route_key );
+		if ( ! empty( $activity_strip ) ) {
+			$result['activity_strip'] = $activity_strip;
+		} else {
+			unset( $result['activity_strip'] );
+		}
+
+		$run_surface = PressArk_Pipeline::build_run_surface(
+			$result,
+			$route_key,
+			$activity_strip,
+			is_array( $result['budget'] ?? null ) ? (array) $result['budget'] : array()
+		);
+		if ( ! empty( $run_surface ) ) {
+			$result['run_surface'] = $run_surface;
+		} else {
+			unset( $result['run_surface'] );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Build a terminal result around a typed approval outcome.
+	 *
+	 * @param string $status            Outcome status.
+	 * @param string $message           User-facing message.
+	 * @param array  $result_overrides  Top-level result overrides.
+	 * @param array  $outcome_overrides Approval outcome overrides.
+	 * @return array
+	 */
+	private function build_terminal_outcome_result(
+		string $status,
+		string $message,
+		array $result_overrides = array(),
+		array $outcome_overrides = array()
+	): array {
+		$result = array_merge(
+			array(
+				'success' => true,
+				'type'    => 'final_response',
+				'message' => $message,
+			),
+			$result_overrides
+		);
+
+		return $this->attach_approval_outcome(
+			$result,
+			$status,
+			array_merge(
+				array(
+					'message' => $message,
+					'source'  => 'chat',
+				),
+				$outcome_overrides
+			)
+		);
+	}
+
+	/**
+	 * Persist an approval outcome into checkpoint memory when supported.
+	 */
+	private function remember_approval_outcome( PressArk_Checkpoint $checkpoint, string $action, string $status, array $meta = array() ): void {
+		if ( method_exists( $checkpoint, 'record_approval_outcome' ) ) {
+			$checkpoint->record_approval_outcome( $action, $status, $meta );
+		}
+	}
+
+	/**
 	 * Register REST routes.
 	 */
 	public function register_routes(): void {
@@ -407,7 +594,23 @@ class PressArk_Chat {
 		if ( $run_id_param ) {
 			$run = $run_store->get( $run_id_param );
 			if ( $run && (int) $run['user_id'] === $user_id ) {
-				$run_store->fail( $run_id_param, 'User cancelled' );
+				$run_store->fail(
+					$run_id_param,
+					'User cancelled',
+					$this->build_terminal_outcome_result(
+						'cancelled',
+						__( 'The request was cancelled before completion.', 'pressark' ),
+						array(
+							'success'  => false,
+							'is_error' => true,
+						),
+						array(
+							'actor'       => 'user',
+							'scope'       => 'run',
+							'reason_code' => 'user_cancelled',
+						)
+					)
+				);
 				return rest_ensure_response( array( 'ok' => true ) );
 			}
 		}
@@ -416,7 +619,23 @@ class PressArk_Chat {
 		if ( $chat_id ) {
 			$found_run_id = $run_store->find_latest_cancellable_run_id( $user_id, $chat_id );
 			if ( $found_run_id ) {
-				$run_store->fail( $found_run_id, 'User cancelled' );
+				$run_store->fail(
+					$found_run_id,
+					'User cancelled',
+					$this->build_terminal_outcome_result(
+						'cancelled',
+						__( 'The request was cancelled before completion.', 'pressark' ),
+						array(
+							'success'  => false,
+							'is_error' => true,
+						),
+						array(
+							'actor'       => 'user',
+							'scope'       => 'run',
+							'reason_code' => 'user_cancelled',
+						)
+					)
+				);
 				return rest_ensure_response( array( 'ok' => true ) );
 			}
 		}
@@ -426,7 +645,23 @@ class PressArk_Chat {
 		if ( ! $run_id_param && ! $chat_id ) {
 			$found_run_id = $run_store->find_latest_cancellable_run_id( $user_id );
 			if ( $found_run_id ) {
-				$run_store->fail( $found_run_id, 'User cancelled' );
+				$run_store->fail(
+					$found_run_id,
+					'User cancelled',
+					$this->build_terminal_outcome_result(
+						'cancelled',
+						__( 'The request was cancelled before completion.', 'pressark' ),
+						array(
+							'success'  => false,
+							'is_error' => true,
+						),
+						array(
+							'actor'       => 'user',
+							'scope'       => 'run',
+							'reason_code' => 'user_cancelled',
+						)
+					)
+				);
 				return rest_ensure_response( array( 'ok' => true ) );
 			}
 		}
@@ -1210,7 +1445,16 @@ class PressArk_Chat {
 			$this->process_chat_stream( $preflight, $emitter );
 		} catch ( \Throwable $e ) {
 			PressArk_Error_Tracker::error( 'Chat', 'Stream request failed', array( 'error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine() ) );
-			$emitter->emit( 'error', array( 'message' => 'Internal error. Please try again.' ) );
+			$emitter->emit(
+				'error',
+				array(
+					'message'        => __( 'PressArk hit an internal error before finishing this response. The reply above may be incomplete. Please try again.', 'pressark' ),
+					'run_id'         => (string) ( $preflight['run_id'] ?? '' ),
+					'correlation_id' => (string) ( $preflight['correlation_id'] ?? '' ),
+					'code'           => 'stream_internal_error',
+					'retryable'      => true,
+				)
+			);
 			PressArk_Pipeline::fail_run( $preflight['run_id'], $e->getMessage() );
 			$preflight['pipeline']->cleanup( $e->getMessage() );
 		} finally {
@@ -1275,7 +1519,7 @@ class PressArk_Chat {
 	 * @param array $result Partial or full execution result.
 	 * @return array
 	 */
-	private function mark_result_cancelled( array $result ): array {
+	private function mark_result_cancelled( array $result, string $status = 'cancelled', array $outcome_overrides = array() ): array {
 		unset(
 			$result['pending_actions'],
 			$result['preview_session_id'],
@@ -1284,9 +1528,23 @@ class PressArk_Chat {
 			$result['workflow_state']
 		);
 
-		$result['type']      = 'final_response';
-		$result['message']   = '';
-		$result['cancelled'] = true;
+		$message            = sanitize_text_field( (string) ( $outcome_overrides['message'] ?? $result['message'] ?? '' ) );
+		$result['success']  = false;
+		$result['is_error'] = true;
+		$result['type']     = 'final_response';
+		$result['message']  = $message;
+
+		$result = $this->attach_approval_outcome(
+			$result,
+			$status,
+			array_merge(
+				array(
+					'message' => $message,
+					'source'  => 'chat',
+				),
+				$outcome_overrides
+			)
+		);
 
 		return $result;
 	}
@@ -1350,7 +1608,15 @@ class PressArk_Chat {
 			}
 
 			if ( ! empty( $result['cancelled'] ) || $run_cancel_check() ) {
-				$result = $this->mark_result_cancelled( $result );
+				$result = $this->mark_result_cancelled(
+					$result,
+					'cancelled',
+					array(
+						'actor'       => 'user',
+						'scope'       => 'run',
+						'reason_code' => 'user_cancelled',
+					)
+				);
 			}
 
 			// Handle confirm_card pending actions.
@@ -1392,12 +1658,43 @@ class PressArk_Chat {
 
 			// Finalize (settle tokens, track, release slot).
 			$finalized = $ctx['pipeline']->finalize( $result, $routing['route'] );
+			$finalized_response_data = $finalized['response']->get_data();
+			if ( is_array( $finalized_response_data ) ) {
+				if ( ! empty( $finalized_response_data['budget'] ) ) {
+					$result['budget'] = $finalized_response_data['budget'];
+				}
+				if ( ! empty( $finalized_response_data['run_surface'] ) ) {
+					$result['run_surface'] = $finalized_response_data['run_surface'];
+				}
+				if ( ! empty( $finalized_response_data['activity_strip'] ) ) {
+					$result['activity_strip'] = $finalized_response_data['activity_strip'];
+				}
+				$result['token_status'] = $finalized['token_status'] ?? array();
+			}
 
 			// Determine run outcome ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cancelled beats settled.
-			$cancelled = ! empty( $result['cancelled'] ) || connection_aborted();
+			$user_cancelled = ! empty( $result['cancelled'] );
+			$client_aborted = ! $user_cancelled && connection_aborted();
+			$cancelled      = $user_cancelled || $client_aborted;
 
-			if ( $cancelled ) {
-				$run_store->fail( $ctx['run_id'], 'User cancelled' );
+			if ( $user_cancelled ) {
+				$run_store->fail( $ctx['run_id'], 'User cancelled', $result );
+			} elseif ( $client_aborted ) {
+				$run_store->fail(
+					$ctx['run_id'],
+					'Client disconnected',
+					$this->mark_result_cancelled(
+						$result,
+						'aborted',
+						array(
+							'actor'       => 'system',
+							'scope'       => 'run',
+							'source'      => 'stream',
+							'reason_code' => 'client_disconnected',
+							'message'     => __( 'The response ended before confirmation or completion could be recorded.', 'pressark' ),
+						)
+					)
+				);
 			} elseif ( ! in_array( $result_type, array( 'preview', 'confirm_card' ), true ) ) {
 				$run_store->settle( $ctx['run_id'], $result );
 			}
@@ -1450,7 +1747,15 @@ class PressArk_Chat {
 			};
 
 			if ( ! empty( $result['cancelled'] ) || $run_cancel_check() ) {
-				$result = $this->mark_result_cancelled( $result );
+				$result = $this->mark_result_cancelled(
+					$result,
+					'cancelled',
+					array(
+						'actor'       => 'user',
+						'scope'       => 'run',
+						'reason_code' => 'user_cancelled',
+					)
+				);
 			}
 
 			// Handle confirm_card pending actions (any path may produce these).
@@ -1493,9 +1798,22 @@ class PressArk_Chat {
 
 			// Finalize (settle tokens, track, release slot).
 			$finalized = $pipeline->finalize( $result, $routing['route'] );
+			$finalized_response_data = $finalized['response']->get_data();
+			if ( is_array( $finalized_response_data ) ) {
+				if ( ! empty( $finalized_response_data['budget'] ) ) {
+					$result['budget'] = $finalized_response_data['budget'];
+				}
+				if ( ! empty( $finalized_response_data['run_surface'] ) ) {
+					$result['run_surface'] = $finalized_response_data['run_surface'];
+				}
+				if ( ! empty( $finalized_response_data['activity_strip'] ) ) {
+					$result['activity_strip'] = $finalized_response_data['activity_strip'];
+				}
+				$result['token_status'] = $finalized['token_status'] ?? array();
+			}
 
 			if ( ! empty( $result['cancelled'] ) ) {
-				$run_store->fail( $run_id, 'User cancelled' );
+				$run_store->fail( $run_id, 'User cancelled', $result );
 			} elseif ( ! in_array( $result_type, array( 'preview', 'confirm_card' ), true ) ) {
 				$run_store->settle( $run_id, $result );
 			}
@@ -1702,14 +2020,27 @@ class PressArk_Chat {
 
 		$reply_text = $ai_result['message'] ?? '';
 
-		// Follow-up call: interpret scan/analysis results.
-		if ( ! empty( $read_supplements ) && ! empty( $scanner_types ) ) {
-			$scan_label      = implode( ' and ', array_unique( $scanner_types ) );
-			$followup_result = $connector->send_scanner_followup(
-				trim( $read_supplements ),
-				$scan_label,
-				$compressed_history
-			);
+		// When legacy execution gathered read results but the first pass produced
+		// no user-facing reply, run a lightweight follow-up synthesis step.
+		if ( ! empty( $read_supplements ) ) {
+			$followup_result = array();
+
+			if ( ! empty( $scanner_types ) ) {
+				$scan_label      = implode( ' and ', array_unique( $scanner_types ) );
+				$followup_result = $connector->send_scanner_followup(
+					trim( $read_supplements ),
+					$scan_label,
+					$compressed_history
+				);
+			}
+
+			if ( '' === trim( $reply_text ) && ( empty( $followup_result['message'] ) || ! empty( $followup_result['error'] ) ) ) {
+				$followup_result = $connector->send_read_followup(
+					$message,
+					trim( $read_supplements ),
+					$compressed_history
+				);
+			}
 
 			if ( empty( $followup_result['error'] ) && ! empty( $followup_result['message'] ) ) {
 				$reply_text         = $followup_result['message'];
@@ -1742,6 +2073,7 @@ class PressArk_Chat {
 				'actions_performed'  => $performed,
 				'pending_actions'    => array(),
 				'routing_decision'   => $routing_decision,
+				'preview_actions'    => $preview_actions,
 				'preview_session_id' => $session['session_id'],
 				'preview_url'        => $session['signed_url'],
 				'diff'               => $session['diff'],
@@ -1785,23 +2117,80 @@ class PressArk_Chat {
 			$confirmed    = (bool) $request->get_param( 'confirmed' );
 			$run_id       = $request->get_param( 'run_id' );
 			$action_index = (int) $request->get_param( 'action_index' );
+			$run          = null;
 
 			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Cancellation ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 			if ( ! $confirmed ) {
+				$declined_action = 'confirmed_action';
+				$declined_result = $this->build_terminal_outcome_result(
+					'declined',
+					__( 'No changes were made. You declined the confirmation.', 'pressark' ),
+					array(),
+					array(
+						'actor'       => 'user',
+						'scope'       => 'confirm',
+						'source'      => 'approval',
+						'reason_code' => 'user_declined',
+					)
+				);
+
 				if ( ! empty( $run_id ) ) {
 					$run_store = new PressArk_Run_Store();
 					$run       = $run_store->get( $run_id );
 					if ( $run && (int) $run['user_id'] === get_current_user_id() ) {
 						$this->hydrate_trace_context_from_run( $run );
-						$run_store->settle( $run_id, array( 'cancelled' => true ) );
+						$pending = $run['pending_actions'] ?? array();
+						if ( isset( $pending[ $action_index ] ) ) {
+							$pending_action   = $pending[ $action_index ]['action'] ?? $pending[ $action_index ];
+							$declined_action = (string) ( $pending_action['type'] ?? 'confirmed_action' );
+						}
+
+						$checkpoint = $this->load_or_bootstrap_run_checkpoint( $run );
+						$this->remember_approval_outcome(
+							$checkpoint,
+							$declined_action,
+							'declined',
+							array(
+								'scope'       => 'confirm',
+								'source'      => 'approval',
+								'actor'       => 'user',
+								'reason_code' => 'user_declined',
+							)
+						);
+						$checkpoint->clear_plan_state();
+						$this->persist_run_checkpoint( $run, $checkpoint );
+
+						$declined_result = $this->build_terminal_outcome_result(
+							'declined',
+							__( 'No changes were made. You declined the confirmation.', 'pressark' ),
+							array(
+								'run_id'          => (string) ( $run['run_id'] ?? '' ),
+								'checkpoint'     => $checkpoint->to_array(),
+								'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
+							),
+							array(
+								'action'      => $declined_action,
+								'actor'       => 'user',
+								'scope'       => 'confirm',
+								'source'      => 'approval',
+								'reason_code' => 'user_declined',
+							)
+						);
+						$declined_result = $this->hydrate_approval_receipt(
+							$declined_result,
+							array(
+								'run_status' => 'settled',
+							)
+						);
+
+						$run_store->settle( $run_id, $declined_result );
+						$this->persist_run_detail_snapshot( $run, $declined_result, $checkpoint );
 					}
 				}
-				return rest_ensure_response( array(
-					'success'        => true,
-					'message'        => __( 'No changes were made. The action was cancelled.', 'pressark' ),
-					'cancelled'      => true,
-					'correlation_id' => (string) ( $run['correlation_id'] ?? '' ),
-				) );
+
+				$declined_route  = is_array( $run ) ? (string) ( $run['route'] ?? 'agent' ) : 'agent';
+				$declined_result = $this->hydrate_chat_surfaces( $declined_result, $declined_route );
+				return rest_ensure_response( $declined_result );
 			}
 
 			// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ v4.5.0: run_id is now mandatory ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
@@ -1881,11 +2270,34 @@ class PressArk_Chat {
 
 			// Load the action from server-persisted pending_actions.
 			$action = $pending[ $action_index ]['action'] ?? $pending[ $action_index ];
+			$action_meta = is_array( $action['meta'] ?? null ) ? $action['meta'] : array();
+			$permission_meta = is_array( $action_meta['permission_meta'] ?? null ) ? $action_meta['permission_meta'] : array();
+			$permission_meta['run_id']       = sanitize_text_field( (string) $run_id );
+			$permission_meta['action_index'] = $action_index;
+			$permission_meta['source']       = 'confirm';
+			$action_meta['approval_granted'] = true;
+			$action_meta['permission_meta']  = $permission_meta;
+			if ( empty( $action_meta['permission_context'] ) ) {
+				$action_meta['permission_context'] = 'interactive';
+			}
+			$action['meta'] = $action_meta;
+			$action_name    = (string) ( $action['type'] ?? 'confirmed_action' );
 
 			// Execute the action.
 			$logger = new PressArk_Action_Logger();
 			$engine = new PressArk_Action_Engine( $logger );
 			$result = $engine->execute_single( $action );
+			$result = $this->attach_approval_outcome(
+				$result,
+				'approved',
+				array(
+					'action'      => $action_name,
+					'actor'       => 'user',
+					'scope'       => 'confirm',
+					'source'      => 'approval',
+					'reason_code' => 'user_confirmed',
+				)
+			);
 
 			// Increment usage if successful.
 			if ( ! empty( $result['success'] ) ) {
@@ -1929,16 +2341,28 @@ class PressArk_Chat {
 			$action_args = is_array( $action['params'] ?? null ) ? $action['params'] : array();
 			if ( empty( $action_args ) ) {
 				$action_args = $action;
-				unset( $action_args['type'], $action_args['description'] );
+				unset( $action_args['type'], $action_args['description'], $action_args['meta'] );
 			}
 
 			$checkpoint = $this->load_or_bootstrap_run_checkpoint( $run );
+			$this->remember_approval_outcome(
+				$checkpoint,
+				$action_name,
+				'approved',
+				array(
+					'scope'       => 'confirm',
+					'source'      => 'approval',
+					'actor'       => 'user',
+					'reason_code' => 'user_confirmed',
+				)
+			);
 			$checkpoint->record_execution_write( (string) ( $action['type'] ?? '' ), $action_args, $result );
 			if ( ! empty( $result['success'] ) ) {
 				$checkpoint->clear_blockers();
-				$checkpoint->add_approval( (string) ( $action['type'] ?? 'confirmed_action' ) );
+				$checkpoint->add_approval( $action_name );
 				if ( $all_resolved ) {
 					$checkpoint->set_workflow_stage( 'settled' );
+					$checkpoint->clear_plan_state();
 				}
 
 				// v5.4.0: Evidence-based verification for confirmed actions.
@@ -2009,6 +2433,13 @@ class PressArk_Chat {
 			// Include fresh usage data so the client can update display.
 			$result['usage']     = $tracker->get_usage_data();
 			$result['plan_info'] = PressArk_Entitlements::get_plan_info( $tier );
+			$result              = $this->hydrate_approval_receipt(
+				$result,
+				array(
+					'run_status' => sanitize_key( (string) ( $run['status'] ?? '' ) ),
+				)
+			);
+			$result              = $this->hydrate_chat_surfaces( $result, (string) ( $run['route'] ?? 'agent' ) );
 
 			return rest_ensure_response( $result );
 
@@ -2047,6 +2478,21 @@ class PressArk_Chat {
 				return rest_ensure_response( $result );
 			}
 
+			$result = $this->attach_approval_outcome(
+				$result,
+				'approved',
+				array(
+					'action'      => 'preview_apply',
+					'actor'       => 'user',
+					'scope'       => 'preview',
+					'source'      => 'approval',
+					'reason_code' => 'preview_kept',
+					'meta'        => array(
+						'call_count' => is_array( $session_calls ) ? count( $session_calls ) : 0,
+					),
+				)
+			);
+
 			// Track write usage.
 			$tracker = new PressArk_Usage_Tracker();
 			$tracker->increment_if_write( 'preview_apply' );
@@ -2058,15 +2504,44 @@ class PressArk_Chat {
 			if ( $run && (int) $run['user_id'] === get_current_user_id() ) {
 				$this->hydrate_trace_context_from_run( $run );
 				$result = PressArk_Pipeline::settle_run( $run['run_id'], $result );
+				$run['status'] = 'settled';
 
 				$checkpoint = $this->load_or_bootstrap_run_checkpoint( $run );
 				$checkpoint->record_execution_preview( $session_calls, $result );
-				foreach ( $session_calls as $call ) {
-					$checkpoint->add_approval( (string) ( $call['name'] ?? $call['type'] ?? 'preview_apply' ) );
+				if ( ! empty( $session_calls ) ) {
+					foreach ( $session_calls as $call ) {
+						$call_name = (string) ( $call['name'] ?? $call['type'] ?? 'preview_apply' );
+						$this->remember_approval_outcome(
+							$checkpoint,
+							$call_name,
+							'approved',
+							array(
+								'scope'       => 'preview',
+								'source'      => 'approval',
+								'actor'       => 'user',
+								'reason_code' => 'preview_kept',
+							)
+						);
+						$checkpoint->add_approval( $call_name );
+					}
+				} else {
+					$this->remember_approval_outcome(
+						$checkpoint,
+						'preview_apply',
+						'approved',
+						array(
+							'scope'       => 'preview',
+							'source'      => 'approval',
+							'actor'       => 'user',
+							'reason_code' => 'preview_kept',
+						)
+					);
+					$checkpoint->add_approval( 'preview_apply' );
 				}
 				if ( ! empty( $result['success'] ) ) {
 					$checkpoint->clear_blockers();
 					$checkpoint->set_workflow_stage( 'settled' );
+					$checkpoint->clear_plan_state();
 
 					// v5.4.0: Evidence-based verification for preview-applied writes.
 					if ( class_exists( 'PressArk_Verification' ) && ! empty( $session_calls ) ) {
@@ -2145,6 +2620,13 @@ class PressArk_Chat {
 			$tier = ( new PressArk_License() )->get_tier();
 			$result['usage']     = $tracker->get_usage_data();
 			$result['plan_info'] = PressArk_Entitlements::get_plan_info( $tier );
+			$result              = $this->hydrate_approval_receipt(
+				$result,
+				array(
+					'run_status' => sanitize_key( (string) ( $run['status'] ?? '' ) ),
+				)
+			);
+			$result              = $this->hydrate_chat_surfaces( $result, (string) ( $run['route'] ?? 'agent' ) );
 			return rest_ensure_response( $result );
 
 		} catch ( \Throwable $e ) {
@@ -2172,18 +2654,80 @@ class PressArk_Chat {
 				) );
 			}
 
-			$preview = new PressArk_Preview();
-			$result  = $preview->discard( $session_id );
+			$preview       = new PressArk_Preview();
+			$session_calls = $preview->get_session_tool_calls( $session_id );
+			$result        = $preview->discard( $session_id );
+			$discarded_message = sanitize_text_field( (string) ( $result['message'] ?? __( 'No changes were applied. The preview was discarded.', 'pressark' ) ) );
+			if ( '' === $discarded_message ) {
+				$discarded_message = __( 'No changes were applied. The preview was discarded.', 'pressark' );
+			}
+			$result['message'] = $discarded_message;
+			if ( empty( $result['success'] ) ) {
+				return rest_ensure_response( $result );
+			}
+			$result            = $this->attach_approval_outcome(
+				$result,
+				'discarded',
+				array(
+					'action'      => 'preview_apply',
+					'actor'       => 'user',
+					'scope'       => 'preview',
+					'source'      => 'approval',
+					'reason_code' => 'preview_discarded',
+					'message'     => $discarded_message,
+				)
+			);
 
 			// v3.1.0: Settle the run as discarded.
 			$run_store = new PressArk_Run_Store();
 			$run       = $run_store->get_by_preview_session( $session_id );
 			if ( $run && (int) $run['user_id'] === get_current_user_id() ) {
 				$this->hydrate_trace_context_from_run( $run );
-				$run_store->settle( $run['run_id'], array( 'discarded' => true ) );
+				$checkpoint = $this->load_or_bootstrap_run_checkpoint( $run );
+				if ( ! empty( $session_calls ) ) {
+					foreach ( $session_calls as $call ) {
+						$this->remember_approval_outcome(
+							$checkpoint,
+							(string) ( $call['name'] ?? $call['type'] ?? 'preview_apply' ),
+							'discarded',
+							array(
+								'scope'       => 'preview',
+								'source'      => 'approval',
+								'actor'       => 'user',
+								'reason_code' => 'preview_discarded',
+							)
+						);
+					}
+				} else {
+					$this->remember_approval_outcome(
+						$checkpoint,
+						'preview_apply',
+						'discarded',
+						array(
+							'scope'       => 'preview',
+							'source'      => 'approval',
+							'actor'       => 'user',
+							'reason_code' => 'preview_discarded',
+						)
+					);
+				}
+				$checkpoint->clear_plan_state();
+				$this->persist_run_checkpoint( $run, $checkpoint );
+				$result['checkpoint'] = $checkpoint->to_array();
+				$result['run_id'] = (string) ( $run['run_id'] ?? '' );
 				$result['correlation_id'] = (string) ( $run['correlation_id'] ?? '' );
+				$run['status'] = 'settled';
+				$run_store->settle( $run['run_id'], $result );
+				$this->persist_run_detail_snapshot( $run, $result, $checkpoint );
 			}
 
+			$result = $this->hydrate_approval_receipt(
+				$result,
+				array(
+					'run_status' => sanitize_key( (string) ( $run['status'] ?? '' ) ),
+				)
+			);
+			$result = $this->hydrate_chat_surfaces( $result, is_array( $run ) ? (string) ( $run['route'] ?? 'agent' ) : 'agent' );
 			return rest_ensure_response( $result );
 
 		} catch ( \Throwable $e ) {

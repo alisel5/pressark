@@ -38,12 +38,19 @@ class PressArk_Verification {
 			return null;
 		}
 
-		$op = PressArk_Operation_Registry::resolve( $tool_name );
-		if ( ! $op || ! $op->has_verification() ) {
+		if ( ! empty( $result['dry_run'] ) || ! empty( $result['preview_only'] ) || ! empty( $result['skipped_duplicate'] ) ) {
 			return null;
 		}
 
-		$policy = $op->get_verification();
+		$op = PressArk_Operation_Registry::resolve( $tool_name );
+		if ( ! $op || ! $op->has_verification_policy() ) {
+			return null;
+		}
+
+		$policy = is_array( $op->verification ) ? $op->verification : array();
+		if ( empty( $policy['strategy'] ) ) {
+			return null;
+		}
 
 		// Strategy 'none' with nudge=true means: no automated read-back, but
 		// the model should be reminded to verify manually.
@@ -93,17 +100,9 @@ class PressArk_Verification {
 
 		$args = $policy['read_args'] ?? array();
 
-		// Extract the target identifier from the write result.
-		$post_id    = absint( $write_result['post_id'] ?? $write_result['data']['id'] ?? 0 );
-		$order_id   = absint( $write_result['order_id'] ?? 0 );
-		$product_id = absint( $write_result['product_id'] ?? 0 );
-
-		// Fallback to write args if result doesn't carry the ID.
-		if ( ! $post_id && ! $order_id && ! $product_id ) {
-			$post_id    = absint( $write_args['post_id'] ?? $write_args['id'] ?? 0 );
-			$order_id   = absint( $write_args['order_id'] ?? 0 );
-			$product_id = absint( $write_args['product_id'] ?? 0 );
-		}
+		$post_id    = self::first_id_candidate( array( $write_result, $write_result['data'] ?? array(), $write_args ), array( 'post_id', 'id', 'post_ids', 'attachment_ids' ) );
+		$order_id   = self::first_id_candidate( array( $write_result, $write_result['data'] ?? array(), $write_args ), array( 'order_id', 'order_ids', 'id' ) );
+		$product_id = self::first_id_candidate( array( $write_result, $write_result['data'] ?? array(), $write_args ), array( 'product_id', 'product_ids', 'post_id', 'id' ) );
 
 		// Route by read tool type.
 		switch ( $read_tool ) {
@@ -180,7 +179,7 @@ class PressArk_Verification {
 	 */
 	public static function evaluate( array $policy, array $write_args, array $readback_result ): array {
 		$strategy     = $policy['strategy'] ?? 'none';
-		$check_fields = $policy['check_fields'] ?? array();
+		$check_fields = self::verification_check_fields( $policy, $write_args );
 		$mismatches   = array();
 
 		// Basic success check — did the read-back itself succeed?
@@ -359,5 +358,88 @@ class PressArk_Verification {
 			return $text;
 		}
 		return mb_substr( $text, 0, $max - 3 ) . '...';
+	}
+
+	/**
+	 * Pick the first usable ID from a sequence of result/arg payloads.
+	 *
+	 * @since 5.5.0
+	 * @param array<int, mixed> $sources Candidate payloads.
+	 * @param string[]          $keys    Preferred key order.
+	 */
+	private static function first_id_candidate( array $sources, array $keys ): int {
+		foreach ( $sources as $source ) {
+			if ( ! is_array( $source ) ) {
+				continue;
+			}
+
+			foreach ( $keys as $key ) {
+				if ( ! array_key_exists( $key, $source ) ) {
+					continue;
+				}
+
+				$value = $source[ $key ];
+				if ( is_array( $value ) ) {
+					foreach ( $value as $candidate ) {
+						$id = absint( $candidate );
+						if ( $id > 0 ) {
+							return $id;
+						}
+					}
+					continue;
+				}
+
+				$id = absint( $value );
+				if ( $id > 0 ) {
+					return $id;
+				}
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Resolve the actual comparison field set for a verification run.
+	 *
+	 * Empty check_fields on a field_check policy means "derive the direct
+	 * fields from the changes payload when the read tool can evaluate them".
+	 *
+	 * @since 5.5.0
+	 * @param array $policy     Verification policy.
+	 * @param array $write_args Original write arguments.
+	 * @return string[]
+	 */
+	private static function verification_check_fields( array $policy, array $write_args ): array {
+		$declared = array_values( array_filter( array_map( 'strval', (array) ( $policy['check_fields'] ?? array() ) ) ) );
+		if ( ! empty( $declared ) ) {
+			return $declared;
+		}
+
+		$changes = is_array( $write_args['changes'] ?? null ) ? array_keys( $write_args['changes'] ) : array();
+		if ( empty( $changes ) ) {
+			return array();
+		}
+
+		$read_tool = sanitize_key( (string) ( $policy['read_tool'] ?? '' ) );
+		if ( 'get_site_settings' === $read_tool ) {
+			return array_values( array_filter( array_map( 'strval', $changes ) ) );
+		}
+
+		$allowed = match ( $read_tool ) {
+			'get_product' => array(
+				'name', 'description', 'short_description', 'status', 'regular_price',
+				'sale_price', 'sku', 'manage_stock', 'stock_quantity', 'stock_status',
+				'featured', 'virtual', 'downloadable', 'weight',
+			),
+			'get_order' => array( 'status', 'customer_note', 'payment_method' ),
+			default => array(),
+		};
+
+		if ( empty( $allowed ) ) {
+			return array();
+		}
+
+		return array_values( array_intersect( array_map( 'strval', $changes ), $allowed ) );
 	}
 }

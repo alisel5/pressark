@@ -18,6 +18,7 @@ class PressArk_Permission_Decision {
 
 	public const CONTRACT = 'permission_decision';
 	public const VERSION  = 1;
+	public const RECEIPT_CONTRACT = 'approval_receipt';
 
 	public const ALLOW = 'allow';
 	public const ASK   = 'ask';
@@ -28,6 +29,13 @@ class PressArk_Permission_Decision {
 	public const APPROVAL_CONFIRM     = 'confirm';
 	public const APPROVAL_HUMAN       = 'human_confirmation';
 	public const APPROVAL_UNAVAILABLE = 'unavailable';
+
+	public const OUTCOME_APPROVED  = 'approved';
+	public const OUTCOME_DECLINED  = 'declined';
+	public const OUTCOME_DISCARDED = 'discarded';
+	public const OUTCOME_ABORTED   = 'aborted';
+	public const OUTCOME_CANCELLED = 'cancelled';
+	public const OUTCOME_EXPIRED   = 'expired';
 
 	/**
 	 * Build a normalized permission decision array.
@@ -223,5 +231,132 @@ class PressArk_Permission_Decision {
 	public static function is_visible_to_model( array $decision ): bool {
 		$normalized = self::normalize( $decision );
 		return ! empty( $normalized['visibility']['visible_to_model'] );
+	}
+
+	/**
+	 * Build a normalized approval outcome payload.
+	 *
+	 * @param string $status    Outcome status.
+	 * @param array  $overrides Optional extra fields.
+	 * @return array
+	 */
+	public static function approval_outcome( string $status, array $overrides = array() ): array {
+		return self::normalize_approval_outcome(
+			array_merge(
+				array(
+					'status'      => $status,
+					'recorded_at' => gmdate( 'c' ),
+				),
+				$overrides
+			)
+		);
+	}
+
+	/**
+	 * Build a compact server acknowledgement receipt for an approval outcome.
+	 *
+	 * @param array $outcome Raw approval outcome payload.
+	 * @param array $context Optional settlement context.
+	 * @return array
+	 */
+	public static function approval_receipt( array $outcome, array $context = array() ): array {
+		$normalized = self::normalize_approval_outcome( $outcome );
+		if ( empty( $normalized ) ) {
+			return array();
+		}
+
+		$receipt = array(
+			'contract'       => self::RECEIPT_CONTRACT,
+			'version'        => self::VERSION,
+			'status'         => $normalized['status'],
+			'action'         => sanitize_key( (string) ( $normalized['action'] ?? '' ) ),
+			'scope'          => sanitize_key( (string) ( $normalized['scope'] ?? '' ) ),
+			'source'         => sanitize_key( (string) ( $normalized['source'] ?? '' ) ),
+			'actor'          => sanitize_key( (string) ( $normalized['actor'] ?? '' ) ),
+			'reason_code'    => sanitize_key( (string) ( $normalized['reason_code'] ?? '' ) ),
+			'message'        => sanitize_text_field( (string) ( $context['message'] ?? $normalized['message'] ?? '' ) ),
+			'recorded_at'    => sanitize_text_field( (string) ( $normalized['recorded_at'] ?? '' ) ),
+			'acknowledged'   => true,
+			'settled'        => true,
+			'acknowledged_at'=> sanitize_text_field( (string) ( $context['acknowledged_at'] ?? $normalized['recorded_at'] ?? gmdate( 'c' ) ) ),
+			'run_id'         => sanitize_text_field( (string) ( $context['run_id'] ?? '' ) ),
+			'correlation_id' => sanitize_text_field( (string) ( $context['correlation_id'] ?? '' ) ),
+			'run_status'     => sanitize_key( (string) ( $context['run_status'] ?? '' ) ),
+			'execution_ok'   => array_key_exists( 'execution_ok', $context ) ? (bool) $context['execution_ok'] : null,
+			'meta'           => is_array( $normalized['meta'] ?? null ) ? $normalized['meta'] : array(),
+		);
+
+		return array_filter(
+			$receipt,
+			static function ( $value, $key ) {
+				if ( in_array( $key, array( 'acknowledged', 'settled' ), true ) ) {
+					return true;
+				}
+
+				if ( 'execution_ok' === $key ) {
+					return null !== $value;
+				}
+
+				if ( 'meta' === $key ) {
+					return ! empty( $value );
+				}
+
+				return '' !== (string) $value;
+			},
+			ARRAY_FILTER_USE_BOTH
+		);
+	}
+
+	/**
+	 * Normalize an approval outcome payload used by settlement and checkpoint flows.
+	 *
+	 * @param array $outcome Raw outcome payload.
+	 * @return array
+	 */
+	public static function normalize_approval_outcome( array $outcome ): array {
+		$status = sanitize_key( (string) ( $outcome['status'] ?? $outcome['outcome'] ?? '' ) );
+		if ( ! in_array( $status, self::approval_outcome_statuses(), true ) ) {
+			return array();
+		}
+
+		$clean = array(
+			'status'      => $status,
+			'action'      => sanitize_key( (string) ( $outcome['action'] ?? '' ) ),
+			'scope'       => sanitize_key( (string) ( $outcome['scope'] ?? '' ) ),
+			'source'      => sanitize_key( (string) ( $outcome['source'] ?? '' ) ),
+			'actor'       => sanitize_key( (string) ( $outcome['actor'] ?? '' ) ),
+			'reason_code' => sanitize_key( (string) ( $outcome['reason_code'] ?? '' ) ),
+			'message'     => sanitize_text_field( (string) ( $outcome['message'] ?? '' ) ),
+			'recorded_at' => sanitize_text_field( (string) ( $outcome['recorded_at'] ?? $outcome['at'] ?? '' ) ),
+			'meta'        => is_array( $outcome['meta'] ?? null ) ? $outcome['meta'] : array(),
+		);
+
+		return array_filter(
+			$clean,
+			static function ( $value, $key ) {
+				if ( 'meta' === $key ) {
+					return ! empty( $value );
+				}
+
+				return '' !== (string) $value;
+			},
+			ARRAY_FILTER_USE_BOTH
+		);
+	}
+
+	/**
+	 * Allowed approval outcome statuses.
+	 *
+	 * @return string[]
+	 */
+	public static function approval_outcome_statuses(): array {
+		return array(
+			self::OUTCOME_APPROVED,
+			self::OUTCOME_DECLINED,
+			self::OUTCOME_DISCARDED,
+			self::OUTCOME_ABORTED,
+			self::OUTCOME_CANCELLED,
+			self::OUTCOME_EXPIRED,
+		);
 	}
 }

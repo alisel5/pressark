@@ -281,6 +281,10 @@ class PressArk_Tools {
 
 		foreach ( $tools as $i => $tool ) {
 			$num = $i + 1;
+			$description = self::get_tool_description( $tool );
+			$params      = self::get_tool_prompt_params( $tool );
+			$tool['description'] = $description;
+			$tool['params']      = $params;
 			$lines[] = '';
 			$lines[] = sprintf( '%d. %s — %s', $num, $tool['name'], $tool['description'] );
 
@@ -501,6 +505,8 @@ class PressArk_Tools {
 		// Build compact format.
 		$lines = array( 'AVAILABLE TOOLS:' );
 		foreach ( $filtered as $tool ) {
+			$tool['description'] = self::get_tool_description( $tool );
+			$tool['params']      = self::get_tool_prompt_params( $tool );
 			$params_str = '';
 			if ( ! empty( $tool['params'] ) ) {
 				$param_parts = array();
@@ -591,43 +597,701 @@ class PressArk_Tools {
 	 * Convert a PressArk tool definition to an OpenAI function-calling schema.
 	 */
 	public static function tool_to_schema( array $tool ): array {
-		$properties = array();
-		$required   = array();
-
-		foreach ( $tool['params'] ?? array() as $param ) {
-			$name = $param['name'];
-			$type = self::infer_param_type( $name, $param['desc'] ?? '' );
-
-			$prop = array(
-				'type'        => $type,
-				'description' => $param['desc'] ?? $name,
-			);
-
-			$properties[ $name ] = $prop;
-
-			if ( ! empty( $param['required'] ) ) {
-				$required[] = $name;
-			}
-		}
-
-		$parameters = array(
-			'type'       => 'object',
-			'properties' => empty( $properties ) ? new \stdClass() : $properties,
-			'required'   => $required, // Always include as array (even if empty) for Anthropic compatibility.
-		);
+		$parameters = self::build_parameter_schema( $tool );
 
 		return array(
 			'type'     => 'function',
 			'function' => array(
 				'name'        => $tool['name'],
-				'description' => $tool['description'] ?? '',
+				'description' => self::get_tool_description( $tool ),
 				'parameters'  => $parameters,
 			),
 		);
 	}
 
 	/**
+	 * Get the authoritative prompt description for a tool.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function get_tool_description( array $tool ): string {
+		$description = trim( (string) ( $tool['description'] ?? '' ) );
+		$name        = (string) ( $tool['name'] ?? '' );
+
+		if ( '' === $description && class_exists( 'PressArk_Operation_Registry' ) ) {
+			$contract = PressArk_Operation_Registry::get_contract( $name );
+			$description = trim( (string) ( $contract['description'] ?? '' ) );
+		}
+
+		$guidance = array();
+		$contract = self::get_tool_parameter_contract( $tool );
+		if ( is_array( $contract ) ) {
+			$guidance = array_merge( $guidance, self::summarize_contract_rules( $contract ) );
+		}
+		if ( class_exists( 'PressArk_Operation_Registry' ) ) {
+			$guidance = array_merge( $guidance, PressArk_Operation_Registry::get_model_guidance( $name ) );
+		}
+
+		$guidance = array_values( array_unique( array_filter( array_map(
+			array( self::class, 'normalize_tool_guidance' ),
+			$guidance
+		) ) ) );
+
+		if ( empty( $guidance ) ) {
+			return $description;
+		}
+
+		return trim( $description . ' Guidance: ' . implode( ' ', array_slice( $guidance, 0, 3 ) ) );
+	}
+
+	/**
+	 * Get prompt-facing parameters for a tool.
+	 *
+	 * @since 5.5.0
+	 * @return array<int, array{name: string, required: bool, desc: string}>
+	 */
+	private static function get_tool_prompt_params( array $tool ): array {
+		$contract = self::get_tool_parameter_contract( $tool );
+		if ( is_array( $contract ) && is_array( $contract['properties'] ?? null ) ) {
+			$required = array_values( array_filter( array_map(
+				'strval',
+				(array) ( $contract['required'] ?? array() )
+			) ) );
+			$params = array();
+
+			foreach ( $contract['properties'] as $name => $schema ) {
+				$name = (string) $name;
+				if ( '' === $name ) {
+					continue;
+				}
+
+				$params[] = array(
+					'name'     => $name,
+					'required' => in_array( $name, $required, true ),
+					'desc'     => self::describe_contract_param( $name, is_array( $schema ) ? $schema : array() ),
+				);
+			}
+
+			return $params;
+		}
+
+		$params = array();
+		foreach ( (array) ( $tool['params'] ?? array() ) as $param ) {
+			if ( ! is_array( $param ) || empty( $param['name'] ) ) {
+				continue;
+			}
+
+			$desc = (string) ( $param['desc'] ?? $param['description'] ?? $param['name'] );
+			$params[] = array(
+				'name'     => (string) $param['name'],
+				'required' => ! empty( $param['required'] ),
+				'desc'     => $desc,
+			);
+		}
+
+		return $params;
+	}
+
+	/**
+	 * Build the provider-facing parameter schema for a tool.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function build_parameter_schema( array $tool ): array {
+		$contract = self::get_tool_parameter_contract( $tool );
+		if ( is_array( $contract ) ) {
+			return self::compile_contract_schema( $contract );
+		}
+
+		return self::compile_legacy_parameter_schema( (array) ( $tool['params'] ?? array() ) );
+	}
+
+	/**
+	 * Resolve the authoritative operation parameter contract for a tool.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function get_tool_parameter_contract( array $tool ): ?array {
+		if ( ! class_exists( 'PressArk_Operation_Registry' ) ) {
+			return null;
+		}
+
+		$name = (string) ( $tool['name'] ?? '' );
+		if ( '' === $name ) {
+			return null;
+		}
+
+		$contract = PressArk_Operation_Registry::get_parameter_contract( $name );
+		return is_array( $contract ) ? $contract : null;
+	}
+
+	/**
+	 * Build a contract coverage inventory for the current tool set.
+	 *
+	 * This keeps authoritative contracts distinct from legacy flat schemas,
+	 * and further separates legacy typed params from params that still rely on
+	 * inferred JSON Schema types.
+	 *
+	 * @since 5.5.0
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function contract_inventory( bool $has_woo = false, bool $has_elementor = false ): array {
+		$rows = array();
+
+		foreach ( self::get_all( $has_woo, $has_elementor ) as $tool ) {
+			$name   = (string) ( $tool['name'] ?? '' );
+			$source = self::parameter_schema_source( $tool );
+			$op     = class_exists( 'PressArk_Operation_Registry' )
+				? PressArk_Operation_Registry::resolve( $name )
+				: null;
+
+			$rows[] = array(
+				'name'                    => $name,
+				'group'                   => $op ? $op->group : '',
+				'capability'              => $op ? $op->capability : '',
+				'parameter_source'        => $source,
+				'authoritative_params'    => 'authoritative' === $source,
+				'legacy_inferred_params'  => 'legacy_inferred' === $source,
+				'verification_policy'     => $op ? $op->has_verification_policy() : false,
+				'automated_verification'  => $op ? $op->has_verification() : false,
+				'read_invalidation'       => $op ? $op->has_read_invalidation_policy() : false,
+				'model_guidance_count'    => $op ? count( $op->get_model_guidance() ) : 0,
+			);
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Describe whether a tool uses authoritative or legacy parameter schemas.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function parameter_schema_source( array $tool ): string {
+		if ( is_array( self::get_tool_parameter_contract( $tool ) ) ) {
+			return 'authoritative';
+		}
+
+		$params = (array) ( $tool['params'] ?? array() );
+		if ( empty( $params ) ) {
+			return 'legacy_empty';
+		}
+
+		foreach ( $params as $param ) {
+			if ( ! is_array( $param ) ) {
+				return 'legacy_inferred';
+			}
+
+			if ( self::legacy_fragment_uses_inference( $param, (string) ( $param['name'] ?? '' ) ) ) {
+				return 'legacy_inferred';
+			}
+		}
+
+		return 'legacy_typed';
+	}
+
+	/**
+	 * Whether a legacy param fragment still depends on inferred typing.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function legacy_fragment_uses_inference( array $fragment, string $name = '' ): bool {
+		if ( ! array_key_exists( 'type', $fragment ) ) {
+			return true;
+		}
+
+		if ( is_array( $fragment['items'] ?? null ) && self::legacy_fragment_uses_inference( $fragment['items'], $name . '_item' ) ) {
+			return true;
+		}
+
+		if ( is_array( $fragment['properties'] ?? null ) ) {
+			foreach ( $fragment['properties'] as $property_name => $property_schema ) {
+				if ( self::legacy_fragment_uses_inference(
+					is_array( $property_schema ) ? $property_schema : array(),
+					(string) $property_name
+				) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Compile an authoritative parameter contract into provider JSON Schema.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function compile_contract_schema( array $contract ): array {
+		$schema = self::compile_contract_node( $contract, true );
+		if ( empty( $schema['properties'] ) ) {
+			$schema['properties'] = new \stdClass();
+		}
+		if ( ! isset( $schema['required'] ) ) {
+			$schema['required'] = array();
+		}
+
+		// OpenRouter-backed tool transports can reject top-level oneOf/allOf/anyOf
+		// clauses on custom input schemas. Keep those rules in runtime validation
+		// and in the tool description guidance, but omit them from the provider-
+		// facing root schema for broad transport compatibility.
+		foreach ( array( 'oneOf', 'allOf', 'anyOf' ) as $keyword ) {
+			unset( $schema[ $keyword ] );
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Compile one contract node into JSON Schema.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function compile_contract_node( array $node, bool $is_root = false ): array {
+		$schema = array();
+		$type   = $node['type'] ?? null;
+
+		if ( null === $type && ( $is_root || isset( $node['properties'] ) ) ) {
+			$type = 'object';
+		}
+		if ( null === $type ) {
+			$type = 'string';
+		}
+
+		$schema['type'] = $type;
+
+		foreach ( array( 'description', 'enum', 'default', 'format', 'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minProperties', 'maxProperties', 'pattern' ) as $key ) {
+			if ( array_key_exists( $key, $node ) ) {
+				$schema[ $key ] = $node[ $key ];
+			}
+		}
+
+		if ( is_array( $node['properties'] ?? null ) ) {
+			$properties = array();
+			foreach ( $node['properties'] as $property_name => $property_schema ) {
+				$property_name = (string) $property_name;
+				if ( '' === $property_name ) {
+					continue;
+				}
+
+				$properties[ $property_name ] = self::compile_contract_node(
+					is_array( $property_schema ) ? $property_schema : array(),
+					false
+				);
+			}
+			$schema['properties'] = empty( $properties ) ? new \stdClass() : $properties;
+		}
+
+		if ( is_array( $node['items'] ?? null ) ) {
+			$schema['items'] = self::compile_contract_node( $node['items'], false );
+		}
+
+		if ( isset( $node['required'] ) && is_array( $node['required'] ) ) {
+			$schema['required'] = array_values( array_filter( array_map( 'strval', $node['required'] ) ) );
+		}
+
+		if ( array_key_exists( 'additionalProperties', $node ) ) {
+			$schema['additionalProperties'] = $node['additionalProperties'];
+		} elseif ( ! empty( $node['strict'] ) && self::schema_allows_type( $type, 'object' ) ) {
+			$schema['additionalProperties'] = false;
+		}
+
+		foreach ( (array) ( $node['one_of'] ?? array() ) as $group ) {
+			$compiled = self::compile_contract_group( is_array( $group ) ? $group : array() );
+			if ( empty( $compiled['keyword'] ) || empty( $compiled['clauses'] ) ) {
+				continue;
+			}
+
+			foreach ( $compiled['clauses'] as $clause ) {
+				self::append_schema_clause( $schema, $compiled['keyword'], $clause );
+			}
+		}
+
+		foreach ( (array) ( $node['dependencies'] ?? array() ) as $rule ) {
+			$clause = self::compile_contract_dependency( is_array( $rule ) ? $rule : array() );
+			if ( null === $clause ) {
+				continue;
+			}
+
+			self::append_schema_clause( $schema, 'allOf', $clause );
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Compile top-level one-of style groups into JSON Schema clauses.
+	 *
+	 * @since 5.5.0
+	 * @return array{keyword?: string, clauses?: array}
+	 */
+	private static function compile_contract_group( array $group ): array {
+		$fields = array_values( array_filter( array_map( 'strval', (array) ( $group['fields'] ?? array() ) ) ) );
+		if ( empty( $fields ) || ! self::provider_paths_are_top_level( $fields ) ) {
+			return array();
+		}
+
+		$mode = sanitize_key( (string) ( $group['mode'] ?? 'exactly_one' ) );
+
+		if ( 'at_least_one' === $mode ) {
+			return array(
+				'keyword' => 'anyOf',
+				'clauses' => array_map(
+					static fn( string $field ): array => array( 'required' => array( $field ) ),
+					$fields
+				),
+			);
+		}
+
+		if ( in_array( $mode, array( 'at_most_one', 'mutually_exclusive' ), true ) ) {
+			$clauses = array();
+			$field_count = count( $fields );
+			for ( $i = 0; $i < $field_count; $i++ ) {
+				for ( $j = $i + 1; $j < $field_count; $j++ ) {
+					$clauses[] = array(
+						'not' => array(
+							'allOf' => array(
+								array( 'required' => array( $fields[ $i ] ) ),
+								array( 'required' => array( $fields[ $j ] ) ),
+							),
+						),
+					);
+				}
+			}
+
+			return array(
+				'keyword' => 'allOf',
+				'clauses' => $clauses,
+			);
+		}
+
+		$alternatives = array();
+		foreach ( $fields as $field ) {
+			$others = array_values( array_diff( $fields, array( $field ) ) );
+			$branch = array(
+				'required' => array( $field ),
+			);
+			if ( ! empty( $others ) ) {
+				$branch['not'] = array(
+					'anyOf' => array_map(
+						static fn( string $other ): array => array( 'required' => array( $other ) ),
+						$others
+					),
+				);
+			}
+			$alternatives[] = $branch;
+		}
+
+		return array(
+			'keyword' => 'oneOf',
+			'clauses' => $alternatives,
+		);
+	}
+
+	/**
+	 * Compile dependency-style rules into JSON Schema conditionals.
+	 *
+	 * Dot-path rules still validate at runtime, but provider schemas only
+	 * receive direct field conditionals they can express structurally.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function compile_contract_dependency( array $rule ): ?array {
+		$field = (string) ( $rule['field'] ?? '' );
+		if ( '' === $field || ! self::provider_paths_are_top_level( array( $field ) ) ) {
+			return null;
+		}
+
+		$condition = array(
+			'required' => array( $field ),
+		);
+		$values = array_values( (array) ( $rule['values'] ?? array() ) );
+		if ( ! empty( $values ) ) {
+			$condition['properties'] = array(
+				$field => array( 'enum' => $values ),
+			);
+		}
+
+		$then = array();
+		$requires = array_values( array_filter( array_map( 'strval', (array) ( $rule['requires'] ?? array() ) ) ) );
+		$requires = array_values( array_filter(
+			$requires,
+			static fn( string $path ): bool => false === str_contains( $path, '.' )
+		) );
+		if ( ! empty( $requires ) ) {
+			$then['required'] = $requires;
+		}
+
+		foreach ( (array) ( $rule['field_values'] ?? array() ) as $other_field => $allowed_values ) {
+			$other_field = (string) $other_field;
+			if ( '' === $other_field || ! self::provider_paths_are_top_level( array( $other_field ) ) ) {
+				continue;
+			}
+
+			$then['required'][] = $other_field;
+			$then['properties'][ $other_field ] = array(
+				'enum' => array_values( (array) $allowed_values ),
+			);
+		}
+
+		if ( empty( $then ) ) {
+			return null;
+		}
+
+		if ( isset( $then['required'] ) ) {
+			$then['required'] = array_values( array_unique( $then['required'] ) );
+		}
+
+		return array(
+			'if'   => $condition,
+			'then' => $then,
+		);
+	}
+
+	/**
+	 * Append a JSON Schema composite clause.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function append_schema_clause( array &$schema, string $keyword, array $clause ): void {
+		if ( empty( $clause ) ) {
+			return;
+		}
+		if ( ! isset( $schema[ $keyword ] ) || ! is_array( $schema[ $keyword ] ) ) {
+			$schema[ $keyword ] = array();
+		}
+
+		$schema[ $keyword ][] = $clause;
+	}
+
+	/**
+	 * Compile legacy flat params into JSON Schema.
+	 *
+	 * This is now the compatibility fallback only.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function compile_legacy_parameter_schema( array $params ): array {
+		$properties = array();
+		$required   = array();
+
+		foreach ( $params as $param ) {
+			if ( ! is_array( $param ) ) {
+				continue;
+			}
+
+			$name = (string) ( $param['name'] ?? '' );
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$properties[ $name ] = self::compile_legacy_schema_fragment( $param, $name );
+			if ( ! empty( $param['required'] ) ) {
+				$required[] = $name;
+			}
+		}
+
+		return array(
+			'type'       => 'object',
+			'properties' => empty( $properties ) ? new \stdClass() : $properties,
+			'required'   => $required,
+		);
+	}
+
+	/**
+	 * Compile one legacy schema fragment.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function compile_legacy_schema_fragment( array $fragment, string $name = '' ): array {
+		$description = (string) ( $fragment['desc'] ?? $fragment['description'] ?? $name );
+		$type        = $fragment['type'] ?? self::infer_param_type( $name, $description );
+		$schema      = array(
+			'type'        => $type,
+			'description' => $description,
+		);
+
+		foreach ( array( 'enum', 'default', 'format', 'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minProperties', 'maxProperties', 'pattern', 'additionalProperties' ) as $key ) {
+			if ( array_key_exists( $key, $fragment ) ) {
+				$schema[ $key ] = $fragment[ $key ];
+			}
+		}
+
+		if ( is_array( $fragment['items'] ?? null ) ) {
+			$schema['items'] = self::compile_legacy_schema_fragment( $fragment['items'], $name . '_item' );
+		}
+
+		if ( is_array( $fragment['properties'] ?? null ) ) {
+			$properties = array();
+			foreach ( $fragment['properties'] as $property_name => $property_schema ) {
+				$property_name = (string) $property_name;
+				if ( '' === $property_name ) {
+					continue;
+				}
+
+				$properties[ $property_name ] = self::compile_legacy_schema_fragment(
+					is_array( $property_schema ) ? $property_schema : array(),
+					$property_name
+				);
+			}
+
+			$schema['properties'] = empty( $properties ) ? new \stdClass() : $properties;
+		}
+
+		if ( isset( $fragment['required'] ) && is_array( $fragment['required'] ) ) {
+			$schema['required'] = array_values( array_filter( array_map( 'strval', $fragment['required'] ) ) );
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Summarize contract rules as short model-facing sentences.
+	 *
+	 * @since 5.5.0
+	 * @return string[]
+	 */
+	private static function summarize_contract_rules( array $contract ): array {
+		$lines = array();
+
+		foreach ( (array) ( $contract['one_of'] ?? array() ) as $group ) {
+			$message = sanitize_text_field( (string) ( $group['message'] ?? '' ) );
+			if ( '' !== $message ) {
+				$lines[] = $message;
+			}
+		}
+
+		foreach ( (array) ( $contract['dependencies'] ?? array() ) as $rule ) {
+			$message = sanitize_text_field( (string) ( $rule['message'] ?? '' ) );
+			if ( '' !== $message ) {
+				$lines[] = $message;
+			}
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Normalize one tool guidance line into a sentence.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function normalize_tool_guidance( string $line ): string {
+		$line = sanitize_text_field( $line );
+		if ( '' === $line ) {
+			return '';
+		}
+
+		if ( ! preg_match( '/[.!?]$/', $line ) ) {
+			$line .= '.';
+		}
+
+		return $line;
+	}
+
+	/**
+	 * Build a prompt-friendly description for one contract parameter.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function describe_contract_param( string $name, array $schema ): string {
+		$description = sanitize_text_field( (string) ( $schema['description'] ?? $name ) );
+		$details     = array();
+
+		if ( ! empty( $schema['enum'] ) && is_array( $schema['enum'] ) ) {
+			$details[] = implode( '|', array_map( 'strval', $schema['enum'] ) );
+		}
+		if ( array_key_exists( 'default', $schema ) ) {
+			$details[] = 'default: ' . self::format_schema_value( $schema['default'] );
+		}
+		if ( is_array( $schema['properties'] ?? null ) && ! empty( $schema['properties'] ) ) {
+			$details[] = 'keys: ' . implode( ', ', array_keys( $schema['properties'] ) );
+		}
+		if ( is_array( $schema['items'] ?? null ) ) {
+			$item_summary = self::summarize_schema_items( $schema['items'] );
+			if ( '' !== $item_summary ) {
+				$details[] = 'items: ' . $item_summary;
+			}
+		}
+
+		return empty( $details )
+			? $description
+			: $description . ' (' . implode( '; ', $details ) . ')';
+	}
+
+	/**
+	 * Summarize an array item schema for prompt display.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function summarize_schema_items( array $schema ): string {
+		if ( ! empty( $schema['enum'] ) && is_array( $schema['enum'] ) ) {
+			return implode( '|', array_map( 'strval', $schema['enum'] ) );
+		}
+
+		if ( is_array( $schema['properties'] ?? null ) && ! empty( $schema['properties'] ) ) {
+			return 'objects with keys: ' . implode( ', ', array_keys( $schema['properties'] ) );
+		}
+
+		$type = $schema['type'] ?? '';
+		if ( is_array( $type ) ) {
+			return implode( '|', array_map( 'strval', $type ) );
+		}
+
+		return (string) $type;
+	}
+
+	/**
+	 * Render a schema value for prompt descriptions.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function format_schema_value( mixed $value ): string {
+		if ( is_bool( $value ) ) {
+			return $value ? 'true' : 'false';
+		}
+		if ( is_array( $value ) ) {
+			return wp_json_encode( $value );
+		}
+
+		return (string) $value;
+	}
+
+	/**
+	 * Whether a schema type allows a specific JSON type.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function schema_allows_type( mixed $schema_type, string $type ): bool {
+		if ( is_array( $schema_type ) ) {
+			return in_array( $type, $schema_type, true );
+		}
+
+		return $schema_type === $type;
+	}
+
+	/**
+	 * Check whether all provider-facing paths are top-level fields.
+	 *
+	 * @since 5.5.0
+	 * @param string[] $paths Paths to inspect.
+	 */
+	private static function provider_paths_are_top_level( array $paths ): bool {
+		foreach ( $paths as $path ) {
+			if ( str_contains( $path, '.' ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Infer JSON Schema type from parameter name and description.
+	 *
+	 * Legacy compatibility fallback only. New authoritative schemas come from
+	 * operation-level parameter contracts.
 	 */
 	private static function infer_param_type( string $name, string $desc ): string {
 		// Integer params.
@@ -1649,7 +2313,7 @@ class PressArk_Tools {
 	private static function elementor_add_widget(): array {
 		return array(
 			'name'        => 'elementor_add_widget',
-			'description' => 'Add a widget to an Elementor page. Types: heading, text-editor, button, image, spacer, divider, video, etc.',
+			'description' => 'Add a widget to an Elementor page. Types: heading, text-editor, button, image, spacer, divider, video, etc. Prefer sending final settings in this call instead of relying on a later edit.',
 			'params'      => array(
 				array( 'name' => 'post_id', 'required' => true ),
 				array( 'name' => 'widget_type', 'required' => true ),
@@ -1752,7 +2416,7 @@ class PressArk_Tools {
 	private static function elementor_create_page(): array {
 		return array(
 			'name'        => 'elementor_create_page',
-			'description' => 'Create an Elementor page or post with widgets. Set post_type to "post" for blog posts/articles, "page" for pages. Always include widgets array.',
+			'description' => 'Create an Elementor page or post with widgets. Set post_type to "post" for blog posts/articles, "page" for pages. Prefer including a fully populated widgets array so content is written in one pass.',
 			'params'      => array(
 				array( 'name' => 'title', 'required' => true ),
 				array( 'name' => 'post_type', 'required' => false, 'desc' => 'page|post (default: page)' ),

@@ -165,6 +165,7 @@ if ( ! function_exists( 'wp_generate_uuid4' ) ) {
 require_once __DIR__ . '/../includes/class-pressark-read-metadata.php';
 require_once __DIR__ . '/../includes/class-pressark-operation.php';
 require_once __DIR__ . '/../includes/class-pressark-operation-registry.php';
+require_once __DIR__ . '/../includes/class-pressark-verification.php';
 require_once __DIR__ . '/../includes/class-pressark-evidence-receipt.php';
 require_once __DIR__ . '/../includes/class-pressark-execution-ledger.php';
 require_once __DIR__ . '/../includes/class-pressark-checkpoint.php';
@@ -422,6 +423,53 @@ assert_true_rmt( 'Invalidation log captures matched handles', count( $invalidati
 assert_contains_rmt( 'Checkpoint header reports read state', 'READ STATE:', $header );
 assert_contains_rmt( 'Checkpoint header reports stale reads', 'STALE READS:', $header );
 
+$dry_run_invalidation = PressArk_Read_Metadata::build_invalidation_from_write(
+	'find_and_replace',
+	array( 'dry_run' => true ),
+	array( 'success' => true, 'dry_run' => true )
+);
+assert_eq_rmt( 'Dry-run writes do not emit read invalidation descriptors', array(), $dry_run_invalidation );
+
+$bulk_delete_invalidation = PressArk_Read_Metadata::build_invalidation_from_write(
+	'bulk_delete',
+	array( 'post_ids' => array( 42, 84 ) ),
+	array( 'success' => true )
+);
+assert_eq_rmt(
+	'Bulk delete invalidation keeps explicit target post ids',
+	array( 42, 84 ),
+	$bulk_delete_invalidation['post_ids'] ?? array()
+);
+
+$toggle_policy = PressArk_Verification::get_policy( 'toggle_plugin', array( 'success' => true ) );
+assert_eq_rmt(
+	'Explicit nudge-only verification policy is surfaced for toggle_plugin',
+	'none',
+	$toggle_policy['strategy'] ?? ''
+);
+assert_true_rmt(
+	'Nudge-only verification policy keeps the manual verification reminder',
+	! empty( $toggle_policy['nudge'] )
+);
+
+$bulk_product_readback = PressArk_Verification::build_readback(
+	array(
+		'strategy'  => 'field_check',
+		'read_tool' => 'get_product',
+		'read_args' => array(),
+	),
+	array(
+		'success'     => true,
+		'product_ids' => array( 311, 312 ),
+	),
+	array()
+);
+assert_eq_rmt(
+	'Bulk product verification reads back the first updated product',
+	311,
+	(int) ( $bulk_product_readback['arguments']['product_id'] ?? 0 )
+);
+
 $prompt_checkpoint = new PressArk_Checkpoint();
 $prompt_checkpoint->record_read_snapshot(
 	PressArk_Read_Metadata::snapshot_from_tool_result(
@@ -504,6 +552,8 @@ $sections_method = new ReflectionMethod( PressArk_Agent::class, 'build_round_pro
 $sections_method->setAccessible( true );
 $compose_method = new ReflectionMethod( PressArk_Agent::class, 'compose_round_prompt_sections' );
 $compose_method->setAccessible( true );
+$assembly_method = new ReflectionMethod( PressArk_Agent::class, 'describe_round_prompt_assembly' );
+$assembly_method->setAccessible( true );
 
 $sections = $sections_method->invoke(
 	$agent,
@@ -515,6 +565,7 @@ $sections = $sections_method->invoke(
 	$prompt_checkpoint
 );
 $prompt = $compose_method->invoke( $agent, $sections );
+$assembly = $assembly_method->invoke( $agent, $sections );
 
 $trusted_pos   = strpos( $prompt, '## Trusted System Facts' );
 $verified_pos  = strpos( $prompt, '## Verified Evidence' );
@@ -561,6 +612,25 @@ assert_eq_rmt(
 	'Prompt inspector exposes selected Site Playbook title',
 	'Brand guardrails',
 	$sections['inspector']['site_playbook_titles'][0] ?? ''
+);
+assert_true_rmt(
+	'Prompt assembly snapshot keeps stable and volatile section ids separate',
+	in_array( 'site_playbook', (array) ( $assembly['stable_sections'] ?? array() ), true )
+		&& in_array( 'trusted_system_facts', (array) ( $assembly['volatile_sections'] ?? array() ), true )
+);
+assert_true_rmt(
+	'Prompt assembly snapshot describes blocks with token and char counts',
+	! empty( $assembly['stable_blocks'][0]['tokens'] )
+		&& ! empty( $assembly['stable_blocks'][0]['chars'] )
+		&& ! empty( $assembly['volatile_blocks'][0]['tokens'] )
+		&& ! empty( $assembly['volatile_blocks'][0]['chars'] )
+);
+assert_true_rmt(
+	'Prompt assembly snapshot stays lighter than the full composed prompt',
+	array_sum( array_map( static fn( array $block ): int => (int) ( $block['chars'] ?? 0 ), (array) ( $assembly['stable_blocks'] ?? array() ) ) )
+		+ array_sum( array_map( static fn( array $block ): int => (int) ( $block['chars'] ?? 0 ), (array) ( $assembly['volatile_blocks'] ?? array() ) ) )
+		<= strlen( $prompt ),
+	'Assembly: ' . var_export( $assembly, true )
 );
 
 $evidence_ledger = PressArk_Execution_Ledger::record_write(

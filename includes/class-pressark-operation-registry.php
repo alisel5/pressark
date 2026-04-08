@@ -329,6 +329,38 @@ class PressArk_Operation_Registry {
 	}
 
 	/**
+	 * Get the authoritative parameter contract for a tool when available.
+	 *
+	 * @since 5.5.0
+	 * @param string $name Tool name (or alias).
+	 * @return array|null
+	 */
+	public static function get_parameter_contract( string $name ): ?array {
+		$op = self::resolve( $name );
+		if ( ! $op ) {
+			return null;
+		}
+
+		return $op->get_parameter_contract();
+	}
+
+	/**
+	 * Get compact model guidance lines attached to a tool.
+	 *
+	 * @since 5.5.0
+	 * @param string $name Tool name (or alias).
+	 * @return string[]
+	 */
+	public static function get_model_guidance( string $name ): array {
+		$op = self::resolve( $name );
+		if ( ! $op ) {
+			return array();
+		}
+
+		return $op->get_model_guidance();
+	}
+
+	/**
 	 * Run pre-permission validation for a tool.
 	 *
 	 * If the operation has a validate callable, it runs BEFORE the
@@ -965,6 +997,7 @@ class PressArk_Operation_Registry {
 
 		$contracts = array(
 
+
 			// ── Destructive / high-risk operations ──────────────────
 
 			'delete_content' => array(
@@ -984,6 +1017,19 @@ class PressArk_Operation_Registry {
 				'output_policy' => 'compact',
 				'tags'          => array( 'destructive', 'bulk', 'content' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::bulk_delete_parameter_contract(),
+				'verification'  => array(
+					'strategy'     => 'none',
+					'read_tool'    => '',
+					'read_args'    => array(),
+					'check_fields' => array(),
+					'intensity'    => 'light',
+					'nudge'        => true,
+				),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Bulk deletions stale prior reads of the affected posts and any searches that included them.',
+				),
 				'policy_hooks'  => array(
 					'pre_execute'  => 'pressark_before_bulk_delete',
 					'post_execute' => 'pressark_after_bulk_delete',
@@ -1007,6 +1053,19 @@ class PressArk_Operation_Registry {
 				'resumable'     => true,
 				'tags'          => array( 'destructive', 'bulk', 'media', 'irreversible' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::bulk_delete_media_parameter_contract(),
+				'verification'  => array(
+					'strategy'     => 'none',
+					'read_tool'    => '',
+					'read_args'    => array(),
+					'check_fields' => array(),
+					'intensity'    => 'light',
+					'nudge'        => true,
+				),
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'Media deletions can stale media library reads and any site snapshots that referenced those assets.',
+				),
 			),
 
 			'find_and_replace' => array(
@@ -1016,6 +1075,22 @@ class PressArk_Operation_Registry {
 				'output_policy' => 'large',
 				'tags'          => array( 'bulk', 'content', 'dangerous' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::find_and_replace_parameter_contract(),
+				'model_guidance'     => array(
+					'Use dry_run=true first when the exact match set has not already been confirmed.',
+				),
+				'verification'  => array(
+					'strategy'     => 'none',
+					'read_tool'    => '',
+					'read_args'    => array(),
+					'check_fields' => array(),
+					'intensity'    => 'light',
+					'nudge'        => true,
+				),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Find-and-replace edits stale prior reads of every post that was changed.',
+				),
 				'policy_hooks'  => array(
 					'pre_execute' => 'pressark_before_find_replace',
 				),
@@ -1058,6 +1133,12 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'update post meta seo fields custom',
 				'interrupt'     => 'block',
 				'tags'          => array( 'content', 'meta', 'write' ),
+				'parameter_contract' => self::update_meta_parameter_contract(),
+				'model_guidance'     => array(
+					'Use the bulk changes object for multiple fields in one write.',
+					'Prefer semantic SEO keys like meta_title or og_description over raw storage keys.',
+					'Update only the fields the user asked to change.',
+				),
 				'read_invalidation' => array(
 					'scope'  => 'target_posts',
 					'reason' => 'Meta updates stale prior reads of the affected content.',
@@ -1095,17 +1176,21 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'update theme customizer setting',
 				'interrupt'     => 'block',
 				'tags'          => array( 'themes', 'design', 'system' ),
+				'parameter_contract' => self::update_theme_setting_parameter_contract(),
+				'model_guidance'     => array(
+					'Use get_customizer_schema for classic themes or get_theme_settings for block themes when the setting id is unclear.',
+				),
 				'read_invalidation' => array(
 					'scope'           => 'resource',
 					'resource_groups' => array( 'design' ),
 					'reason'          => 'Theme setting changes stale design resource snapshots.',
 				),
 				'verification'  => array(
-					'strategy'     => 'field_check',
-					'read_tool'    => 'get_theme_settings',
+					'strategy'     => 'none',
+					'read_tool'    => '',
 					'read_args'    => array(),
 					'check_fields' => array(),
-					'intensity'    => 'thorough',
+					'intensity'    => 'light',
 					'nudge'        => true,
 				),
 			),
@@ -1132,15 +1217,23 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'cancel',
 				'tags'          => array( 'woocommerce', 'financial', 'irreversible' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::create_refund_parameter_contract(),
+				'model_guidance'     => array(
+					'Omit amount for a full refund; set process_payment only when the gateway should be asked to refund immediately.',
+				),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Refunds stale prior reads of that order and any derived order summaries.',
+				),
 				'policy_hooks'  => array(
 					'pre_approve' => 'pressark_confirm_refund',
 				),
 				'verification'  => array(
-					'strategy'     => 'read_back',
-					'read_tool'    => 'get_order',
+					'strategy'     => 'none',
+					'read_tool'    => '',
 					'read_args'    => array(),
-					'check_fields' => array( 'status', 'total', 'refunds' ),
-					'intensity'    => 'thorough',
+					'check_fields' => array(),
+					'intensity'    => 'light',
 					'nudge'        => true,
 				),
 			),
@@ -1182,11 +1275,19 @@ class PressArk_Operation_Registry {
 				'output_policy' => 'compact',
 				'tags'          => array( 'woocommerce', 'bulk', 'products' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::bulk_edit_products_parameter_contract(),
+				'model_guidance'     => array(
+					'Use the products array when each product needs different changes; use scope plus one shared changes object only when every match gets the same update.',
+				),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Bulk product edits stale prior reads of the affected products and any lists that contained them.',
+				),
 				'verification'  => array(
-					'strategy'     => 'read_back',
+					'strategy'     => 'field_check',
 					'read_tool'    => 'get_product',
 					'read_args'    => array(),
-					'check_fields' => array(),
+					'check_fields' => array( 'name', 'regular_price', 'sale_price', 'stock_quantity', 'stock_status', 'status', 'manage_stock' ),
 					'intensity'    => 'thorough',
 					'nudge'        => true,
 				),
@@ -1196,11 +1297,16 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'edit update product price stock description',
 				'interrupt'     => 'block',
 				'tags'          => array( 'woocommerce', 'products', 'write' ),
+				'parameter_contract' => self::edit_product_parameter_contract(),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Product edits stale prior reads of the affected product and any lists that contained it.',
+				),
 				'verification'  => array(
-					'strategy'     => 'read_back',
+					'strategy'     => 'field_check',
 					'read_tool'    => 'get_product',
 					'read_args'    => array(),
-					'check_fields' => array( 'name', 'regular_price', 'stock_quantity', 'status' ),
+					'check_fields' => array( 'name', 'regular_price', 'sale_price', 'stock_quantity', 'stock_status', 'status', 'manage_stock' ),
 					'intensity'    => 'thorough',
 					'nudge'        => true,
 				),
@@ -1211,6 +1317,11 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'block',
 				'tags'          => array( 'woocommerce', 'products', 'write' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::create_product_parameter_contract(),
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'New products can stale prior catalog reads, store summaries, and site snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'existence_check',
 					'read_tool'    => 'get_product',
@@ -1221,11 +1332,41 @@ class PressArk_Operation_Registry {
 				),
 			),
 
+			'update_order' => array(
+				'search_hint'   => 'update order status or add a note',
+				'interrupt'     => 'cancel',
+				'tags'          => array( 'woocommerce', 'orders', 'financial' ),
+				'parameter_contract' => self::update_order_parameter_contract(),
+				'model_guidance'     => array(
+					'Set customer_note=true only when the note should be visible to the customer.',
+				),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Order updates stale prior reads of that order and any derived order summaries.',
+				),
+				'verification'  => array(
+					'strategy'     => 'field_check',
+					'read_tool'    => 'get_order',
+					'read_args'    => array(),
+					'check_fields' => array( 'status' ),
+					'intensity'    => 'thorough',
+					'nudge'        => true,
+				),
+			),
+
 			'create_order' => array(
 				'search_hint'   => 'create manual order billing shipping',
 				'interrupt'     => 'cancel',
 				'tags'          => array( 'woocommerce', 'orders', 'financial' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::create_order_parameter_contract(),
+				'model_guidance'     => array(
+					'Use products with concrete product IDs; keep billing and shipping narrow instead of inventing optional fields.',
+				),
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'New orders can stale order lists, store analytics summaries, and commerce snapshots.',
+				),
 				'verification'  => array(
 					'strategy'     => 'existence_check',
 					'read_tool'    => 'get_order',
@@ -1242,6 +1383,12 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'edit update post page title content excerpt',
 				'interrupt'     => 'block',
 				'tags'          => array( 'content', 'write' ),
+				'parameter_contract' => self::edit_content_parameter_contract(),
+				'model_guidance'     => array(
+					'Prefer read_content first when the target or current state is unclear.',
+					'Put only the fields that should change inside changes.',
+					'Use one decisive read instead of stacking overlapping reads before an edit.',
+				),
 				'read_invalidation' => array(
 					'scope'           => 'target_posts',
 					'resource_groups' => array( 'site' ),
@@ -1262,6 +1409,12 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'block',
 				'tags'          => array( 'content', 'write' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::create_post_parameter_contract(),
+				'model_guidance'     => array(
+					'Use status=future together with scheduled_date to schedule publication.',
+					'Only send SEO or social metadata when the user asked for it.',
+					'Keep the creation payload narrow instead of filling optional fields speculatively.',
+				),
 				'read_invalidation' => array(
 					'scope'           => 'site_content',
 					'resource_groups' => array( 'site' ),
@@ -1294,6 +1447,24 @@ class PressArk_Operation_Registry {
 				'resumable'     => true,
 				'tags'          => array( 'bulk', 'content' ),
 				'idempotent'    => false,
+				'parameter_contract' => self::bulk_edit_parameter_contract(),
+				'model_guidance'     => array(
+					'Use bulk_edit only when every target gets the same changes.',
+					'Use edit_content instead when each post needs different edits.',
+					'Confirm the target set first when the affected posts are not already explicit.',
+				),
+				'verification'  => array(
+					'strategy'     => 'none',
+					'read_tool'    => '',
+					'read_args'    => array(),
+					'check_fields' => array(),
+					'intensity'    => 'light',
+					'nudge'        => true,
+				),
+				'read_invalidation' => array(
+					'scope'  => 'target_posts',
+					'reason' => 'Bulk content edits stale prior reads of the affected posts and any searches that included them.',
+				),
 			),
 
 			// ── System mutations ────────────────────────────────────
@@ -1302,6 +1473,10 @@ class PressArk_Operation_Registry {
 				'search_hint'   => 'update site settings name url timezone',
 				'interrupt'     => 'block',
 				'tags'          => array( 'settings', 'system' ),
+				'parameter_contract' => self::update_site_settings_parameter_contract(),
+				'model_guidance'     => array(
+					'Only include writable setting keys inside changes; readonly site URL and admin email values stay read-only here.',
+				),
 				'read_invalidation' => array(
 					'scope'  => 'site',
 					'reason' => 'Site setting changes can stale broad site context.',
@@ -1321,16 +1496,20 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'cancel',
 				'tags'          => array( 'themes', 'system', 'dangerous' ),
 				'idempotent'    => true,
+				'parameter_contract' => self::switch_theme_parameter_contract(),
+				'model_guidance'     => array(
+					'Use list_themes first when the theme slug is unclear.',
+				),
 				'read_invalidation' => array(
 					'scope'  => 'site',
 					'reason' => 'Theme switches stale all previously captured site state.',
 				),
 				'verification'  => array(
-					'strategy'     => 'field_check',
-					'read_tool'    => 'list_themes',
+					'strategy'     => 'none',
+					'read_tool'    => '',
 					'read_args'    => array(),
-					'check_fields' => array( 'active' ),
-					'intensity'    => 'thorough',
+					'check_fields' => array(),
+					'intensity'    => 'light',
 					'nudge'        => true,
 				),
 			),
@@ -1340,16 +1519,20 @@ class PressArk_Operation_Registry {
 				'interrupt'     => 'cancel',
 				'tags'          => array( 'plugins', 'system' ),
 				'idempotent'    => true,
+				'parameter_contract' => self::toggle_plugin_parameter_contract(),
+				'model_guidance'     => array(
+					'Use list_plugins first when the plugin file path is unclear.',
+				),
 				'read_invalidation' => array(
 					'scope'  => 'site',
 					'reason' => 'Plugin changes can stale broad site context and resources.',
 				),
 				'verification'  => array(
-					'strategy'     => 'field_check',
-					'read_tool'    => 'list_plugins',
+					'strategy'     => 'none',
+					'read_tool'    => '',
 					'read_args'    => array(),
-					'check_fields' => array( 'status' ),
-					'intensity'    => 'standard',
+					'check_fields' => array(),
+					'intensity'    => 'light',
 					'nudge'        => true,
 				),
 			),
@@ -1374,6 +1557,12 @@ class PressArk_Operation_Registry {
 				'cache_ttl'     => 300,
 				'tags'          => array( 'content', 'read' ),
 				'defer'         => 'always_load',
+				'parameter_contract' => self::read_content_parameter_contract(),
+				'model_guidance'     => array(
+					'Default to summary/detail unless raw HTML is specifically needed.',
+					'When using slug resolution, set post_type if the target could be ambiguous.',
+					'Prefer one targeted read that answers the next question over repeated broad reads.',
+				),
 			),
 
 			'search_content' => array(
@@ -1381,6 +1570,12 @@ class PressArk_Operation_Registry {
 				'cache_ttl'     => 120,
 				'tags'          => array( 'content', 'search', 'read' ),
 				'defer'         => 'always_load',
+				'parameter_contract' => self::search_content_parameter_contract(),
+				'model_guidance'     => array(
+					'Use offset for pagination when _pagination.has_more is true.',
+					'Only add meta filters when the user asked for a specific field constraint.',
+					'Start narrow and widen the search only when the first pass is insufficient.',
+				),
 			),
 
 			'list_posts' => array(
@@ -1436,6 +1631,10 @@ class PressArk_Operation_Registry {
 				'cache_ttl'     => 0,
 				'defer'         => 'always_load',
 				'tags'          => array( 'meta', 'discovery' ),
+				'model_guidance' => array(
+					'Use capability-focused queries when the right tool family is unclear.',
+					'Discover first instead of guessing tool names that are not already visible.',
+				),
 			),
 
 			'load_tools' => array(
@@ -1443,6 +1642,10 @@ class PressArk_Operation_Registry {
 				'cache_ttl'     => 0,
 				'defer'         => 'always_load',
 				'tags'          => array( 'meta', 'discovery' ),
+				'model_guidance' => array(
+					'Load only the narrowest set of tools or groups needed for the next step.',
+					'Do not reload tools that are already visible or already loaded.',
+				),
 			),
 
 			'load_tool_group' => array(
@@ -1450,6 +1653,10 @@ class PressArk_Operation_Registry {
 				'cache_ttl'     => 0,
 				'defer'         => 'always_load',
 				'tags'          => array( 'meta', 'discovery' ),
+				'model_guidance' => array(
+					'Load the smallest group that unblocks the next deterministic step.',
+					'Prefer named tool loads when the exact tool is already known.',
+				),
 			),
 
 			// ── WooCommerce analytics (large output, cacheable) ─────
@@ -1569,7 +1776,7 @@ class PressArk_Operation_Registry {
 				),
 				'verification'  => array(
 					'strategy'     => 'existence_check',
-					'read_tool'    => 'read_content',
+			'read_tool'    => 'read_content',
 					'read_args'    => array( 'mode' => 'structured' ),
 					'check_fields' => array( 'title', 'status' ),
 					'intensity'    => 'thorough',
@@ -1616,6 +1823,28 @@ class PressArk_Operation_Registry {
 					'nudge'        => true,
 				),
 			),
+
+			'call_rest_endpoint' => array(
+				'search_hint'        => 'call invoke WordPress REST API route internally',
+				'parameter_contract' => self::call_rest_endpoint_parameter_contract(),
+				'model_guidance'     => array(
+					'Use discover_rest_routes first when the route or namespace is unclear.',
+					'Prefer GET for reads; non-GET methods mutate site state and may require confirmation.',
+					'Call the narrowest route that proves the point instead of broad diagnostic sweeps.',
+				),
+				'verification'  => array(
+					'strategy'     => 'none',
+					'read_tool'    => '',
+					'read_args'    => array(),
+					'check_fields' => array(),
+					'intensity'    => 'light',
+					'nudge'        => true,
+				),
+				'read_invalidation' => array(
+					'scope'  => 'site',
+					'reason' => 'Arbitrary REST writes can stale broad site state and any previously captured snapshots.',
+				),
+			),
 		);
 
 		foreach ( $contracts as $name => $contract ) {
@@ -1623,6 +1852,1237 @@ class PressArk_Operation_Registry {
 				self::$operations[ $name ]->apply_contract( $contract );
 			}
 		}
+	}
+
+	/**
+	 * Authoritative contract for read_content.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function read_content_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'post_id'    => array(
+					'type'        => 'integer',
+					'description' => 'WordPress post ID.',
+					'minimum'     => 1,
+				),
+				'url'        => array(
+					'type'        => 'string',
+					'description' => 'Canonical post URL.',
+					'format'      => 'uri',
+				),
+				'slug'       => array(
+					'type'        => 'string',
+					'description' => 'Post or page slug.',
+					'minLength'   => 1,
+				),
+				'post_type'  => array(
+					'type'        => 'string',
+					'description' => 'Post type to use when resolving a slug.',
+					'enum'        => array( 'post', 'page' ),
+					'default'     => 'page',
+				),
+				'mode'       => array(
+					'type'        => 'string',
+					'description' => 'Read mode.',
+					'enum'        => array( 'summary', 'detail', 'raw', 'light', 'structured', 'full' ),
+					'default'     => 'summary',
+				),
+				'section'    => array(
+					'type'        => 'string',
+					'description' => 'Trim raw or full content to a subsection.',
+					'enum'        => array( 'head', 'tail', 'first_n_paragraphs' ),
+				),
+				'paragraphs' => array(
+					'type'        => 'integer',
+					'description' => 'Paragraph count when section is first_n_paragraphs.',
+					'default'     => 5,
+					'minimum'     => 1,
+					'maximum'     => 20,
+				),
+			),
+			'one_of'     => array(
+				array(
+					'fields'  => array( 'post_id', 'url', 'slug' ),
+					'mode'    => 'exactly_one',
+					'message' => 'Provide exactly one target identifier: post_id, url, or slug.',
+				),
+			),
+			'dependencies' => array(
+				array(
+					'field'        => 'section',
+					'requires'     => array( 'mode' ),
+					'field_values' => array(
+						'mode' => array( 'raw', 'full' ),
+					),
+					'message'      => 'section only works with raw/full reads.',
+				),
+				array(
+					'field'        => 'paragraphs',
+					'field_values' => array(
+						'section' => array( 'first_n_paragraphs' ),
+					),
+					'message'      => 'paragraphs only applies when section is first_n_paragraphs.',
+				),
+			),
+			'compatibility_aliases' => array(
+				'post_id' => array( 'id' ),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for search_content.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function search_content_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'query'        => array(
+					'type'        => 'string',
+					'description' => 'Search phrase or keyword.',
+					'minLength'   => 1,
+				),
+				'post_type'    => array(
+					'type'        => 'string',
+					'description' => 'Content type filter.',
+					'enum'        => array( 'post', 'page', 'any' ),
+					'default'     => 'any',
+				),
+				'limit'        => array(
+					'type'        => 'integer',
+					'description' => 'Maximum results to return.',
+					'default'     => 20,
+					'minimum'     => 1,
+					'maximum'     => 100,
+				),
+				'offset'       => array(
+					'type'        => 'integer',
+					'description' => 'Pagination offset.',
+					'default'     => 0,
+					'minimum'     => 0,
+				),
+				'after'        => array(
+					'type'        => 'string',
+					'description' => 'Published-after bound (strtotime-compatible).',
+				),
+				'before'       => array(
+					'type'        => 'string',
+					'description' => 'Published-before bound (strtotime-compatible).',
+				),
+				'meta_key'     => array(
+					'type'        => 'string',
+					'description' => 'Meta key to filter on.',
+				),
+				'meta_value'   => array(
+					'type'        => array( 'string', 'integer', 'number', 'boolean', 'array' ),
+					'description' => 'Meta value for compares that use one.',
+					'items'       => array(
+						'type' => array( 'string', 'integer', 'number' ),
+					),
+				),
+				'meta_compare' => array(
+					'type'        => 'string',
+					'description' => 'Meta comparison operator.',
+					'enum'        => array( '=', '!=', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'EXISTS', 'NOT EXISTS', 'BETWEEN' ),
+					'default'     => 'EXISTS',
+				),
+			),
+			'required'   => array( 'query' ),
+			'dependencies' => array(
+				array(
+					'field'   => 'meta_compare',
+					'requires'=> array( 'meta_key' ),
+					'message' => 'meta_compare requires meta_key.',
+				),
+				array(
+					'field'   => 'meta_value',
+					'requires'=> array( 'meta_key' ),
+					'message' => 'meta_value requires meta_key.',
+				),
+				array(
+					'field'   => 'meta_compare',
+					'values'  => array( '=', '!=', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'BETWEEN' ),
+					'requires'=> array( 'meta_value' ),
+					'message' => 'This meta_compare requires meta_value.',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for edit_content.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function edit_content_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'post_id'   => array(
+					'type'        => 'integer',
+					'description' => 'WordPress post ID.',
+					'minimum'     => 1,
+				),
+				'url'       => array(
+					'type'        => 'string',
+					'description' => 'Canonical post URL.',
+					'format'      => 'uri',
+				),
+				'slug'      => array(
+					'type'        => 'string',
+					'description' => 'Post or page slug.',
+					'minLength'   => 1,
+				),
+				'post_type' => array(
+					'type'        => 'string',
+					'description' => 'Post type to use when resolving a slug.',
+					'enum'        => array( 'post', 'page' ),
+					'default'     => 'page',
+				),
+				'changes'   => array(
+					'type'          => 'object',
+					'description'   => 'Fields to update.',
+					'minProperties' => 1,
+					'strict'        => true,
+					'properties'    => array(
+						'content'        => array(
+							'type'        => 'string',
+							'description' => 'Replacement post_content HTML.',
+						),
+						'title'          => array(
+							'type'        => 'string',
+							'description' => 'Replacement post title.',
+						),
+						'excerpt'        => array(
+							'type'        => 'string',
+							'description' => 'Replacement manual excerpt.',
+						),
+						'slug'           => array(
+							'type'        => 'string',
+							'description' => 'Replacement URL slug.',
+						),
+						'status'         => array(
+							'type'        => 'string',
+							'description' => 'New post status.',
+							'enum'        => array( 'publish', 'draft', 'private', 'pending', 'future' ),
+						),
+						'scheduled_date' => array(
+							'type'        => 'string',
+							'description' => 'Publish timestamp when status is future.',
+						),
+						'sticky'         => array(
+							'type'        => 'boolean',
+							'description' => 'Whether the post should be sticky.',
+						),
+						'post_format'    => array(
+							'type'        => 'string',
+							'description' => 'New post format.',
+							'enum'        => array( 'standard', 'aside', 'gallery', 'link', 'image', 'quote', 'status', 'video', 'audio', 'chat' ),
+						),
+					),
+				),
+			),
+			'required'   => array( 'changes' ),
+			'one_of'     => array(
+				array(
+					'fields'  => array( 'post_id', 'url', 'slug' ),
+					'mode'    => 'exactly_one',
+					'message' => 'Provide exactly one target identifier: post_id, url, or slug.',
+				),
+			),
+			'dependencies' => array(
+				array(
+					'field'        => 'changes.scheduled_date',
+					'field_values' => array(
+						'changes.status' => array( 'future' ),
+					),
+					'message'      => 'changes.scheduled_date only applies when changes.status is future.',
+				),
+			),
+			'compatibility_aliases' => array(
+				'post_id' => array( 'changes.post_id' ),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for update_meta.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function update_meta_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'post_id'    => array(
+					'type'        => 'integer',
+					'description' => 'WordPress post ID.',
+					'minimum'     => 1,
+				),
+				'changes'    => array(
+					'type'          => 'object',
+					'description'   => 'Meta keys and values to update in one write.',
+					'minProperties' => 1,
+				),
+				'meta_key'   => array(
+					'type'        => 'string',
+					'description' => 'Single meta key to update.',
+				),
+				'meta_value' => array(
+					'type'        => 'string',
+					'description' => 'Single meta value to write.',
+				),
+			),
+			'required'   => array( 'post_id' ),
+			'one_of'     => array(
+				array(
+					'fields'  => array( 'changes', 'meta_key' ),
+					'mode'    => 'exactly_one',
+					'message' => 'Provide either changes or a single meta_key/meta_value pair.',
+				),
+			),
+			'dependencies' => array(
+				array(
+					'field'   => 'meta_key',
+					'requires'=> array( 'meta_value' ),
+					'message' => 'meta_key requires meta_value.',
+				),
+				array(
+					'field'   => 'meta_value',
+					'requires'=> array( 'meta_key' ),
+					'message' => 'meta_value requires meta_key.',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for create_post.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function create_post_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'title'            => array(
+					'type'        => 'string',
+					'description' => 'Post or page title.',
+					'minLength'   => 1,
+				),
+				'content'          => array(
+					'type'        => 'string',
+					'description' => 'Initial HTML content.',
+				),
+				'post_type'        => array(
+					'type'        => 'string',
+					'description' => 'Content type to create.',
+					'enum'        => array( 'post', 'page' ),
+					'default'     => 'post',
+				),
+				'status'           => array(
+					'type'        => 'string',
+					'description' => 'Initial publication status.',
+					'enum'        => array( 'draft', 'publish', 'future' ),
+					'default'     => 'draft',
+				),
+				'scheduled_date'   => array(
+					'type'        => 'string',
+					'description' => 'Publish timestamp when status is future.',
+				),
+				'slug'             => array(
+					'type'        => 'string',
+					'description' => 'Clean URL slug.',
+				),
+				'excerpt'          => array(
+					'type'        => 'string',
+					'description' => 'Manual excerpt or summary.',
+				),
+				'meta_title'       => array(
+					'type'        => 'string',
+					'description' => 'SEO title.',
+				),
+				'meta_description' => array(
+					'type'        => 'string',
+					'description' => 'SEO meta description.',
+				),
+				'og_title'         => array(
+					'type'        => 'string',
+					'description' => 'Open Graph title.',
+				),
+				'og_description'   => array(
+					'type'        => 'string',
+					'description' => 'Open Graph description.',
+				),
+				'og_image'         => array(
+					'type'        => 'string',
+					'description' => 'Open Graph image URL.',
+					'format'      => 'uri',
+				),
+				'focus_keyword'    => array(
+					'type'        => 'string',
+					'description' => 'Primary SEO keyword.',
+				),
+				'page_template'    => array(
+					'type'        => 'string',
+					'description' => 'Page template filename.',
+				),
+			),
+			'required'   => array( 'title' ),
+			'dependencies' => array(
+				array(
+					'field'   => 'status',
+					'values'  => array( 'future' ),
+					'requires'=> array( 'scheduled_date' ),
+					'message' => 'status=future requires scheduled_date.',
+				),
+				array(
+					'field'        => 'scheduled_date',
+					'field_values' => array(
+						'status' => array( 'future' ),
+					),
+					'message'      => 'scheduled_date only applies when status is future.',
+				),
+				array(
+					'field'        => 'page_template',
+					'field_values' => array(
+						'post_type' => array( 'page' ),
+					),
+					'message'      => 'page_template only applies when post_type is page.',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for bulk_edit.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function bulk_edit_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'post_ids' => array(
+					'type'        => 'array',
+					'description' => 'Post IDs to update.',
+					'minItems'    => 1,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+					),
+				),
+				'changes'  => array(
+					'type'          => 'object',
+					'description'   => 'Shared updates applied to every target.',
+					'minProperties' => 1,
+					'strict'        => true,
+					'properties'    => array(
+						'status'     => array(
+							'type'        => 'string',
+							'description' => 'New post status.',
+							'enum'        => array( 'publish', 'draft', 'private', 'pending', 'future' ),
+						),
+						'author'     => array(
+							'type'        => 'integer',
+							'description' => 'Replacement author user ID.',
+							'minimum'     => 1,
+						),
+						'categories' => array(
+							'type'        => 'array',
+							'description' => 'Categories to append by term ID or slug/name.',
+							'minItems'    => 1,
+							'items'       => array(
+								'type' => array( 'integer', 'string' ),
+							),
+						),
+						'tags'       => array(
+							'type'        => 'array',
+							'description' => 'Tags to append by name.',
+							'minItems'    => 1,
+							'items'       => array(
+								'type' => 'string',
+							),
+						),
+					),
+				),
+			),
+			'required'   => array( 'post_ids', 'changes' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for bulk_delete.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function bulk_delete_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'post_ids' => array(
+					'type'        => 'array',
+					'description' => 'Post or page IDs to move to trash.',
+					'minItems'    => 1,
+					'maxItems'    => 50,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+					),
+				),
+			),
+			'required'   => array( 'post_ids' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for bulk_delete_media.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function bulk_delete_media_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'attachment_ids' => array(
+					'type'        => 'array',
+					'description' => 'Attachment IDs to permanently delete.',
+					'minItems'    => 1,
+					'maxItems'    => 50,
+					'items'       => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+					),
+				),
+			),
+			'required'   => array( 'attachment_ids' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for find_and_replace.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function find_and_replace_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'find'      => array(
+					'type'        => 'string',
+					'description' => 'Text to search for.',
+					'minLength'   => 1,
+				),
+				'replace'   => array(
+					'type'        => 'string',
+					'description' => 'Replacement text. Can be empty to remove the match.',
+				),
+				'post_type' => array(
+					'type'        => 'string',
+					'description' => 'Content type scope.',
+					'enum'        => array( 'post', 'page', 'product', 'any' ),
+					'default'     => 'any',
+				),
+				'search_in' => array(
+					'type'        => 'string',
+					'description' => 'Where to search within each item.',
+					'enum'        => array( 'content', 'title', 'both', 'all' ),
+					'default'     => 'content',
+				),
+				'dry_run'   => array(
+					'type'        => 'boolean',
+					'description' => 'When true, only report matches without writing changes.',
+					'default'     => true,
+				),
+			),
+			'required'   => array( 'find' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for update_site_settings.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function update_site_settings_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'changes' => array(
+					'type'          => 'object',
+					'description'   => 'Writable WordPress options to update.',
+					'minProperties' => 1,
+					'strict'        => true,
+					'properties'    => array(
+						'blogname'               => array( 'type' => 'string', 'description' => 'Site title.' ),
+						'blogdescription'        => array( 'type' => 'string', 'description' => 'Site tagline.' ),
+						'timezone_string'        => array( 'type' => 'string', 'description' => 'PHP timezone identifier.' ),
+						'date_format'            => array( 'type' => 'string', 'description' => 'Date display format.' ),
+						'time_format'            => array( 'type' => 'string', 'description' => 'Time display format.' ),
+						'posts_per_page'         => array( 'type' => 'integer', 'description' => 'Blog index size.', 'minimum' => 1, 'maximum' => 100 ),
+						'permalink_structure'    => array( 'type' => 'string', 'description' => 'Permalink structure pattern.' ),
+						'default_comment_status' => array( 'type' => 'string', 'description' => 'Default comment state.', 'enum' => array( 'open', 'closed' ) ),
+						'show_on_front'          => array( 'type' => 'string', 'description' => 'Front page display mode.', 'enum' => array( 'posts', 'page' ) ),
+						'page_on_front'          => array( 'type' => 'integer', 'description' => 'Static front page ID.', 'minimum' => 0 ),
+						'page_for_posts'         => array( 'type' => 'integer', 'description' => 'Posts page ID.', 'minimum' => 0 ),
+						'start_of_week'          => array( 'type' => 'integer', 'description' => 'Week start day (0=Sunday).', 'minimum' => 0, 'maximum' => 6 ),
+						'blog_public'            => array( 'type' => array( 'boolean', 'integer' ), 'description' => 'Search engine visibility toggle.' ),
+						'default_category'       => array( 'type' => 'integer', 'description' => 'Default category term ID.', 'minimum' => 1 ),
+						'default_post_format'    => array(
+							'type'        => 'string',
+							'description' => 'Default post format.',
+							'enum'        => array( 'standard', 'aside', 'gallery', 'link', 'image', 'quote', 'status', 'video', 'audio', 'chat' ),
+						),
+						'WPLANG'                 => array( 'type' => 'string', 'description' => 'Site locale code.' ),
+					),
+					'dependencies' => array(
+						array(
+							'field'        => 'page_on_front',
+							'field_values' => array(
+								'show_on_front' => array( 'page' ),
+							),
+							'message'      => 'changes.page_on_front only applies when changes.show_on_front is page.',
+						),
+						array(
+							'field'        => 'page_for_posts',
+							'field_values' => array(
+								'show_on_front' => array( 'page' ),
+							),
+							'message'      => 'changes.page_for_posts only applies when changes.show_on_front is page.',
+						),
+					),
+				),
+			),
+			'required'   => array( 'changes' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for toggle_plugin.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function toggle_plugin_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'plugin_file' => array(
+					'type'        => 'string',
+					'description' => 'Plugin file path such as woocommerce/woocommerce.php.',
+					'minLength'   => 1,
+				),
+				'activate'    => array(
+					'type'        => 'boolean',
+					'description' => 'True to activate, false to deactivate.',
+					'default'     => true,
+				),
+			),
+			'required'   => array( 'plugin_file' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for update_theme_setting.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function update_theme_setting_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'setting_name' => array(
+					'type'        => 'string',
+					'description' => 'Customizer setting id or theme_mod key.',
+					'minLength'   => 1,
+				),
+				'value'        => array(
+					'type'        => array( 'string', 'integer', 'number', 'boolean', 'array', 'object' ),
+					'description' => 'New setting value.',
+				),
+			),
+			'required'   => array( 'setting_name', 'value' ),
+		);
+	}
+
+	/**
+	 * Authoritative contract for switch_theme.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function switch_theme_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'theme_slug' => array(
+					'type'        => 'string',
+					'description' => 'Theme stylesheet slug.',
+					'minLength'   => 1,
+				),
+			),
+			'required'   => array( 'theme_slug' ),
+		);
+	}
+
+	/**
+	 * Shared product mutation field definitions.
+	 *
+	 * @since 5.5.0
+	 * @return array<string, array<string, mixed>>
+	 */
+	private static function product_change_properties(): array {
+		return array(
+			'name'              => array( 'type' => 'string', 'description' => 'Product name.' ),
+			'description'       => array( 'type' => 'string', 'description' => 'Long description HTML.' ),
+			'short_description' => array( 'type' => 'string', 'description' => 'Short description HTML.' ),
+			'slug'              => array( 'type' => 'string', 'description' => 'Product slug.' ),
+			'status'            => array( 'type' => 'string', 'description' => 'Product post status.', 'enum' => array( 'publish', 'draft', 'pending', 'private' ) ),
+			'catalog_visibility'=> array( 'type' => 'string', 'description' => 'Catalog visibility.', 'enum' => array( 'visible', 'catalog', 'search', 'hidden' ) ),
+			'purchase_note'     => array( 'type' => 'string', 'description' => 'Post-purchase note.' ),
+			'menu_order'        => array( 'type' => 'integer', 'description' => 'Menu order.', 'minimum' => 0 ),
+			'regular_price'     => array( 'type' => array( 'string', 'number' ), 'description' => 'Regular price.' ),
+			'sale_price'        => array( 'type' => array( 'string', 'number' ), 'description' => 'Sale price.' ),
+			'sale_from'         => array( 'type' => 'string', 'description' => 'Sale start date/time.' ),
+			'sale_to'           => array( 'type' => 'string', 'description' => 'Sale end date/time.' ),
+			'price_delta'       => array( 'type' => 'number', 'description' => 'Relative price change added to the current regular price.' ),
+			'price_adjust_pct'  => array( 'type' => 'number', 'description' => 'Relative percentage applied to the current regular price.' ),
+			'sku'               => array( 'type' => 'string', 'description' => 'SKU.' ),
+			'manage_stock'      => array( 'type' => 'boolean', 'description' => 'Whether WooCommerce manages stock.' ),
+			'stock_quantity'    => array( 'type' => 'integer', 'description' => 'Absolute stock quantity.', 'minimum' => 0 ),
+			'stock_adjust'      => array( 'type' => 'integer', 'description' => 'Relative stock adjustment.' ),
+			'stock_status'      => array( 'type' => 'string', 'description' => 'Stock state.', 'enum' => array( 'instock', 'outofstock', 'onbackorder' ) ),
+			'backorders'        => array( 'type' => 'string', 'description' => 'Backorder policy.', 'enum' => array( 'no', 'notify', 'yes' ) ),
+			'low_stock_amount'  => array( 'type' => 'integer', 'description' => 'Low stock threshold.', 'minimum' => 0 ),
+			'weight'            => array( 'type' => array( 'string', 'number' ), 'description' => 'Weight.' ),
+			'length'            => array( 'type' => array( 'string', 'number' ), 'description' => 'Length.' ),
+			'width'             => array( 'type' => array( 'string', 'number' ), 'description' => 'Width.' ),
+			'height'            => array( 'type' => array( 'string', 'number' ), 'description' => 'Height.' ),
+			'tax_status'        => array( 'type' => 'string', 'description' => 'Tax status.', 'enum' => array( 'taxable', 'shipping', 'none' ) ),
+			'tax_class'         => array( 'type' => 'string', 'description' => 'Tax class slug.' ),
+			'featured'          => array( 'type' => 'boolean', 'description' => 'Featured flag.' ),
+			'virtual'           => array( 'type' => 'boolean', 'description' => 'Virtual product flag.' ),
+			'downloadable'      => array( 'type' => 'boolean', 'description' => 'Downloadable flag.' ),
+			'sold_individually' => array( 'type' => 'boolean', 'description' => 'Limit to one per order.' ),
+			'reviews_allowed'   => array( 'type' => 'boolean', 'description' => 'Enable reviews.' ),
+			'product_url'       => array( 'type' => 'string', 'description' => 'External product URL.', 'format' => 'uri' ),
+			'button_text'       => array( 'type' => 'string', 'description' => 'External product button text.' ),
+			'category_ids'      => array(
+				'type'        => 'array',
+				'description' => 'Product category term IDs.',
+				'minItems'    => 1,
+				'items'       => array( 'type' => 'integer', 'minimum' => 1 ),
+			),
+			'tag_ids'           => array(
+				'type'        => 'array',
+				'description' => 'Product tag term IDs.',
+				'minItems'    => 1,
+				'items'       => array( 'type' => 'integer', 'minimum' => 1 ),
+			),
+			'image_id'          => array( 'type' => 'integer', 'description' => 'Featured image attachment ID.', 'minimum' => 1 ),
+			'gallery_image_ids' => array(
+				'type'        => 'array',
+				'description' => 'Gallery attachment IDs.',
+				'minItems'    => 1,
+				'items'       => array( 'type' => 'integer', 'minimum' => 1 ),
+			),
+			'upsell_ids'        => array(
+				'type'        => 'array',
+				'description' => 'Upsell product IDs.',
+				'minItems'    => 1,
+				'items'       => array( 'type' => 'integer', 'minimum' => 1 ),
+			),
+			'cross_sell_ids'    => array(
+				'type'        => 'array',
+				'description' => 'Cross-sell product IDs.',
+				'minItems'    => 1,
+				'items'       => array( 'type' => 'integer', 'minimum' => 1 ),
+			),
+			'shipping_class'    => array( 'type' => array( 'string', 'integer' ), 'description' => 'Shipping class slug or term ID.' ),
+		);
+	}
+
+	/**
+	 * Compatibility aliases used inside a product changes object.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function product_change_object_aliases(): array {
+		return array(
+			'regular_price'  => array( 'price' ),
+			'stock_quantity' => array( 'stock' ),
+		);
+	}
+
+	/**
+	 * Shared product changes object schema.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function product_change_object_schema( string $description ): array {
+		return array(
+			'type'          => 'object',
+			'description'   => $description,
+			'minProperties' => 1,
+			'strict'        => true,
+			'properties'    => self::product_change_properties(),
+			'one_of'        => array(
+				array(
+					'fields'  => array( 'regular_price', 'price_delta', 'price_adjust_pct' ),
+					'mode'    => 'at_most_one',
+					'message' => 'Use at most one price driver: regular_price, price_delta, or price_adjust_pct.',
+				),
+				array(
+					'fields'  => array( 'stock_quantity', 'stock_adjust' ),
+					'mode'    => 'at_most_one',
+					'message' => 'Use either stock_quantity or stock_adjust, not both.',
+				),
+			),
+			'compatibility_aliases' => self::product_change_object_aliases(),
+		);
+	}
+
+	/**
+	 * Compatibility aliases that move legacy top-level product fields into changes.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function product_root_change_aliases(): array {
+		$aliases = array(
+			'post_id' => array( 'product_id', 'id' ),
+		);
+
+		foreach ( array_keys( self::product_change_properties() ) as $field ) {
+			$paths = array( $field );
+			if ( 'regular_price' === $field ) {
+				$paths[] = 'price';
+			}
+			if ( 'stock_quantity' === $field ) {
+				$paths[] = 'stock';
+			}
+			$aliases[ 'changes.' . $field ] = array_values( array_unique( $paths ) );
+		}
+
+		return $aliases;
+	}
+
+	/**
+	 * Authoritative contract for edit_product.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function edit_product_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'post_id' => array(
+					'type'        => 'integer',
+					'description' => 'WooCommerce product post ID.',
+					'minimum'     => 1,
+				),
+				'changes' => self::product_change_object_schema( 'Fields to update on the product.' ),
+			),
+			'required'   => array( 'post_id', 'changes' ),
+			'compatibility_aliases' => self::product_root_change_aliases(),
+		);
+	}
+
+	/**
+	 * Authoritative contract for create_product.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function create_product_parameter_contract(): array {
+		$shared = self::product_change_properties();
+		unset( $shared['name'], $shared['status'] );
+
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array_merge(
+				$shared,
+				array(
+					'type'   => array(
+						'type'        => 'string',
+						'description' => 'WooCommerce product type.',
+						'enum'        => array( 'simple', 'variable', 'grouped', 'external' ),
+						'default'     => 'simple',
+					),
+					'name'   => array(
+						'type'        => 'string',
+						'description' => 'Product name.',
+						'minLength'   => 1,
+					),
+					'status' => array(
+						'type'        => 'string',
+						'description' => 'Initial product status.',
+						'enum'        => array( 'draft', 'publish', 'pending', 'private' ),
+						'default'     => 'draft',
+					),
+				)
+			),
+			'required'   => array( 'name' ),
+			'one_of'     => array(
+				array(
+					'fields'  => array( 'regular_price', 'price_delta', 'price_adjust_pct' ),
+					'mode'    => 'at_most_one',
+					'message' => 'Use at most one price driver: regular_price, price_delta, or price_adjust_pct.',
+				),
+				array(
+					'fields'  => array( 'stock_quantity', 'stock_adjust' ),
+					'mode'    => 'at_most_one',
+					'message' => 'Use either stock_quantity or stock_adjust, not both.',
+				),
+			),
+			'compatibility_aliases' => self::product_change_object_aliases(),
+		);
+	}
+
+	/**
+	 * Authoritative contract for bulk_edit_products.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function bulk_edit_products_parameter_contract(): array {
+		$item_aliases = array(
+			'post_id' => array( 'id', 'product_id' ),
+		);
+		foreach ( array_keys( self::product_change_properties() ) as $field ) {
+			$paths = array( $field );
+			if ( 'regular_price' === $field ) {
+				$paths[] = 'price';
+			}
+			if ( 'stock_quantity' === $field ) {
+				$paths[] = 'stock';
+			}
+			$item_aliases[ 'changes.' . $field ] = array_values( array_unique( $paths ) );
+		}
+
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'products' => array(
+					'type'        => 'array',
+					'description' => 'Explicit per-product updates.',
+					'minItems'    => 1,
+					'maxItems'    => 50,
+					'items'       => array(
+						'type'       => 'object',
+						'strict'     => true,
+						'properties' => array(
+							'post_id' => array(
+								'type'        => 'integer',
+								'description' => 'WooCommerce product post ID.',
+								'minimum'     => 1,
+							),
+							'changes' => self::product_change_object_schema( 'Fields to update on this product.' ),
+						),
+						'required'   => array( 'post_id', 'changes' ),
+						'compatibility_aliases' => $item_aliases,
+					),
+				),
+				'scope'    => array(
+					'type'        => 'string',
+					'description' => 'Dynamic bulk scope instead of an explicit products array.',
+					'enum'        => array( 'all', 'matching' ),
+				),
+				'changes'  => self::product_change_object_schema( 'Shared changes applied to every matched product.' ),
+				'status'   => array(
+					'type'        => 'string',
+					'description' => 'Product status filter for scoped bulk updates.',
+					'enum'        => array( 'publish', 'draft', 'pending', 'private' ),
+					'default'     => 'publish',
+				),
+				'search'   => array(
+					'type'        => 'string',
+					'description' => 'Search term when scope=matching.',
+				),
+				'limit'    => array(
+					'type'        => 'integer',
+					'description' => 'Maximum products to resolve when using scope.',
+					'default'     => 50,
+					'minimum'     => 1,
+					'maximum'     => 50,
+				),
+				'offset'   => array(
+					'type'        => 'integer',
+					'description' => 'Offset for scoped bulk updates.',
+					'default'     => 0,
+					'minimum'     => 0,
+				),
+			),
+			'one_of'     => array(
+				array(
+					'fields'  => array( 'products', 'scope' ),
+					'mode'    => 'exactly_one',
+					'message' => 'Provide either explicit products or a scope-driven bulk update, not both.',
+				),
+			),
+			'dependencies' => array(
+				array(
+					'field'   => 'scope',
+					'requires'=> array( 'changes' ),
+					'message' => 'Scope-based bulk product updates require one shared changes object.',
+				),
+				array(
+					'field'        => 'search',
+					'field_values' => array(
+						'scope' => array( 'matching' ),
+					),
+					'message'      => 'search only applies when scope is matching.',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Allowed order status slugs for contracts.
+	 *
+	 * @since 5.5.0
+	 * @return string[]
+	 */
+	private static function order_status_contract_values(): array {
+		return array(
+			'pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed',
+			'wc-pending', 'wc-processing', 'wc-on-hold', 'wc-completed', 'wc-cancelled', 'wc-refunded', 'wc-failed',
+		);
+	}
+
+	/**
+	 * Authoritative contract for update_order.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function update_order_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'order_id'      => array(
+					'type'        => 'integer',
+					'description' => 'WooCommerce order ID.',
+					'minimum'     => 1,
+				),
+				'status'        => array(
+					'type'        => 'string',
+					'description' => 'New order status slug.',
+					'enum'        => self::order_status_contract_values(),
+				),
+				'note'          => array(
+					'type'        => 'string',
+					'description' => 'Order note to add.',
+					'minLength'   => 1,
+				),
+				'customer_note' => array(
+					'type'        => 'boolean',
+					'description' => 'Whether the added note should be customer-visible.',
+					'default'     => false,
+				),
+			),
+			'required'   => array( 'order_id' ),
+			'one_of'     => array(
+				array(
+					'fields'  => array( 'status', 'note' ),
+					'mode'    => 'at_least_one',
+					'message' => 'Provide a new status, a note, or both.',
+				),
+			),
+			'dependencies' => array(
+				array(
+					'field'   => 'customer_note',
+					'requires'=> array( 'note' ),
+					'message' => 'customer_note only applies when note is provided.',
+				),
+			),
+			'compatibility_aliases' => array(
+				'order_id' => array( 'id' ),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for create_refund.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function create_refund_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'order_id'        => array(
+					'type'        => 'integer',
+					'description' => 'WooCommerce order ID.',
+					'minimum'     => 1,
+				),
+				'amount'          => array(
+					'type'        => array( 'number', 'string' ),
+					'description' => 'Refund amount. Omit for a full refund.',
+				),
+				'reason'          => array(
+					'type'        => 'string',
+					'description' => 'Refund reason shown in the order notes.',
+				),
+				'process_payment' => array(
+					'type'        => 'boolean',
+					'description' => 'Attempt the refund via the payment gateway.',
+					'default'     => false,
+				),
+				'restock'         => array(
+					'type'        => 'boolean',
+					'description' => 'Restock refunded items when possible.',
+					'default'     => true,
+				),
+			),
+			'required'   => array( 'order_id' ),
+		);
+	}
+
+	/**
+	 * Shared address schema for create_order.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function create_order_address_schema( bool $include_contact = false ): array {
+		$properties = array(
+			'first_name' => array( 'type' => 'string', 'description' => 'First name.' ),
+			'last_name'  => array( 'type' => 'string', 'description' => 'Last name.' ),
+			'address_1'  => array( 'type' => 'string', 'description' => 'Address line 1.' ),
+			'address_2'  => array( 'type' => 'string', 'description' => 'Address line 2.' ),
+			'city'       => array( 'type' => 'string', 'description' => 'City.' ),
+			'state'      => array( 'type' => 'string', 'description' => 'State or province.' ),
+			'postcode'   => array( 'type' => 'string', 'description' => 'Postal code.' ),
+			'country'    => array( 'type' => 'string', 'description' => 'Two-letter country code or country string.' ),
+		);
+		if ( $include_contact ) {
+			$properties['company'] = array( 'type' => 'string', 'description' => 'Company name.' );
+			$properties['email'] = array( 'type' => 'string', 'description' => 'Billing email.' );
+			$properties['phone'] = array( 'type' => 'string', 'description' => 'Billing phone.' );
+		}
+
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => $properties,
+		);
+	}
+
+	/**
+	 * Authoritative contract for create_order.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function create_order_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'customer_id'    => array(
+					'type'        => 'integer',
+					'description' => 'Existing customer user ID.',
+					'minimum'     => 1,
+				),
+				'customer_email' => array(
+					'type'        => 'string',
+					'description' => 'Fallback guest email when no billing object is provided.',
+				),
+				'billing'        => self::create_order_address_schema( true ),
+				'shipping'       => self::create_order_address_schema( false ),
+				'products'       => array(
+					'type'        => 'array',
+					'description' => 'Products to add to the order.',
+					'minItems'    => 1,
+					'maxItems'    => 50,
+					'items'       => array(
+						'type'       => 'object',
+						'strict'     => true,
+						'properties' => array(
+							'product_id'   => array( 'type' => 'integer', 'description' => 'WooCommerce product ID.', 'minimum' => 1 ),
+							'variation_id' => array( 'type' => 'integer', 'description' => 'Variation ID when ordering a variation.', 'minimum' => 1 ),
+							'quantity'     => array( 'type' => 'integer', 'description' => 'Quantity to add.', 'minimum' => 1, 'default' => 1 ),
+						),
+						'required'   => array( 'product_id' ),
+						'compatibility_aliases' => array(
+							'product_id' => array( 'id' ),
+						),
+					),
+				),
+				'payment_method' => array(
+					'type'        => 'string',
+					'description' => 'WooCommerce payment gateway id.',
+				),
+				'coupon_code'    => array(
+					'type'        => 'string',
+					'description' => 'Coupon code to apply.',
+				),
+				'customer_note'  => array(
+					'type'        => 'string',
+					'description' => 'Customer-visible note.',
+				),
+				'note'           => array(
+					'type'        => 'string',
+					'description' => 'Admin note to add after creation.',
+				),
+				'status'         => array(
+					'type'        => 'string',
+					'description' => 'Initial order status slug.',
+					'enum'        => self::order_status_contract_values(),
+					'default'     => 'pending',
+				),
+			),
+			'required'   => array( 'products' ),
+			'compatibility_aliases' => array(
+				'products' => array( 'items' ),
+			),
+		);
+	}
+
+	/**
+	 * Authoritative contract for call_rest_endpoint.
+	 *
+	 * @since 5.5.0
+	 */
+	private static function call_rest_endpoint_parameter_contract(): array {
+		return array(
+			'type'       => 'object',
+			'strict'     => true,
+			'properties' => array(
+				'route'  => array(
+					'type'        => 'string',
+					'description' => 'REST route discovered from discover_rest_routes.',
+					'minLength'   => 1,
+				),
+				'method' => array(
+					'type'        => 'string',
+					'description' => 'HTTP method.',
+					'enum'        => array( 'GET', 'POST', 'PUT', 'PATCH', 'DELETE' ),
+					'default'     => 'GET',
+				),
+				'params'  => array(
+					'type'        => 'object',
+					'description' => 'Query params for GET or body params for writes.',
+				),
+			),
+			'required'   => array( 'route' ),
+		);
 	}
 
 	/**

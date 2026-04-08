@@ -37,6 +37,7 @@ class PressArk_Checkpoint {
 	private array  $selected_target    = array(); // [ 'id' => int, 'title' => string, 'type' => string ]
 	private string $workflow_stage     = '';       // discover|gather|plan|preview|apply|verify|settled
 	private array  $approvals          = array(); // [ ['action' => string, 'approved_at' => string], ... ]
+	private array  $approval_outcomes  = array(); // [ ['action' => string, 'status' => string, 'recorded_at' => string], ... ]
 	private array  $blockers           = array(); // [ string, ... ]
 	private array  $context_capsule    = array(); // durable compressed state for long-running continuations
 	private array  $loaded_tool_groups = array(); // [ 'seo', 'content', ... ]
@@ -74,6 +75,7 @@ class PressArk_Checkpoint {
 		$cp->selected_target    = self::sanitize_selected_target( $data['selected_target'] ?? array() );
 		$cp->workflow_stage     = self::sanitize_stage( $data['workflow_stage'] ?? '' );
 		$cp->approvals          = self::sanitize_approvals( $data['approvals'] ?? array() );
+		$cp->approval_outcomes  = self::sanitize_approval_outcomes( $data['approval_outcomes'] ?? array() );
 		$cp->blockers           = array_map( 'sanitize_text_field', array_slice( $data['blockers'] ?? array(), 0, 10 ) );
 		$cp->context_capsule    = self::sanitize_context_capsule( $data['context_capsule'] ?? array() );
 		$cp->loaded_tool_groups = array_map( 'sanitize_text_field', array_slice( $data['loaded_tool_groups'] ?? array(), 0, 15 ) );
@@ -112,6 +114,7 @@ class PressArk_Checkpoint {
 			'selected_target'    => $this->selected_target,
 			'workflow_stage'     => $this->workflow_stage,
 			'approvals'          => $this->approvals,
+			'approval_outcomes'  => $this->approval_outcomes,
 			'blockers'           => $this->blockers,
 			'context_capsule'    => $this->context_capsule,
 			'loaded_tool_groups' => $this->loaded_tool_groups,
@@ -211,6 +214,18 @@ class PressArk_Checkpoint {
 				return $a['action'] ?? '';
 			}, $this->approvals );
 			$parts[] = 'APPROVALS: ' . implode( ', ', array_filter( $approval_strs ) );
+		}
+
+		if ( $this->approval_outcomes ) {
+			$outcome_strs = array_map(
+				static function ( array $entry ): string {
+					$action = sanitize_text_field( (string) ( $entry['action'] ?? 'request' ) );
+					$status = sanitize_key( (string) ( $entry['status'] ?? '' ) );
+					return trim( $action . ' ' . $status );
+				},
+				array_slice( $this->approval_outcomes, -6 )
+			);
+			$parts[] = 'APPROVAL HISTORY: ' . implode( '; ', array_filter( $outcome_strs ) );
 		}
 
 		if ( $this->blockers ) {
@@ -362,6 +377,7 @@ class PressArk_Checkpoint {
 			&& empty( $this->selected_target )
 			&& empty( $this->workflow_stage )
 			&& empty( $this->approvals )
+			&& empty( $this->approval_outcomes )
 			&& empty( $this->blockers )
 			&& empty( $this->context_capsule )
 			&& empty( $this->loaded_tool_groups )
@@ -637,6 +653,14 @@ class PressArk_Checkpoint {
 			'action'      => $action,
 			'approved_at' => gmdate( 'c' ),
 		);
+		$this->record_approval_outcome(
+			$action,
+			class_exists( 'PressArk_Permission_Decision' ) ? PressArk_Permission_Decision::OUTCOME_APPROVED : 'approved',
+			array(
+				'source'      => 'approval',
+				'reason_code' => 'approved',
+			)
+		);
 	}
 
 	public function merge_approvals( array $approvals ): void {
@@ -662,11 +686,76 @@ class PressArk_Checkpoint {
 				'action'      => $action,
 				'approved_at' => sanitize_text_field( $approval['approved_at'] ?? gmdate( 'c' ) ),
 			);
+			$this->record_approval_outcome(
+				$action,
+				class_exists( 'PressArk_Permission_Decision' ) ? PressArk_Permission_Decision::OUTCOME_APPROVED : 'approved',
+				array(
+					'source'      => 'approval',
+					'reason_code' => 'approved',
+					'recorded_at' => sanitize_text_field( $approval['approved_at'] ?? gmdate( 'c' ) ),
+				)
+			);
 		}
 	}
 
 	public function get_approvals(): array {
 		return $this->approvals;
+	}
+
+	public function record_approval_outcome( string $action, string $status, array $meta = array() ): void {
+		if ( ! class_exists( 'PressArk_Permission_Decision' ) ) {
+			return;
+		}
+
+		$action  = sanitize_key( $action );
+		$outcome = PressArk_Permission_Decision::approval_outcome(
+			$status,
+			array_merge(
+				$meta,
+				array(
+					'action' => $action,
+				)
+			)
+		);
+		if ( empty( $outcome ) ) {
+			return;
+		}
+
+		$exists = false;
+		foreach ( $this->approval_outcomes as $existing ) {
+			if (
+				( $existing['action'] ?? '' ) === ( $outcome['action'] ?? '' )
+				&& ( $existing['status'] ?? '' ) === ( $outcome['status'] ?? '' )
+				&& ( $existing['source'] ?? '' ) === ( $outcome['source'] ?? '' )
+			) {
+				$exists = true;
+				break;
+			}
+		}
+
+		if ( $exists ) {
+			return;
+		}
+
+		$this->approval_outcomes[] = $outcome;
+		$this->approval_outcomes   = array_slice( $this->approval_outcomes, -12 );
+	}
+
+	public function merge_approval_outcomes( array $outcomes ): void {
+		foreach ( $outcomes as $outcome ) {
+			if ( ! is_array( $outcome ) ) {
+				continue;
+			}
+			$this->record_approval_outcome(
+				(string) ( $outcome['action'] ?? '' ),
+				(string) ( $outcome['status'] ?? '' ),
+				$outcome
+			);
+		}
+	}
+
+	public function get_approval_outcomes(): array {
+		return $this->approval_outcomes;
 	}
 
 	public function add_blocker( string $blocker ): void {
@@ -1003,6 +1092,9 @@ class PressArk_Checkpoint {
 		if ( ! empty( $workflow_state['approvals'] ) && is_array( $workflow_state['approvals'] ) ) {
 			$this->merge_approvals( $workflow_state['approvals'] );
 		}
+		if ( ! empty( $workflow_state['approval_outcomes'] ) && is_array( $workflow_state['approval_outcomes'] ) ) {
+			$this->merge_approval_outcomes( $workflow_state['approval_outcomes'] );
+		}
 
 		if ( ! empty( $workflow_state['blockers'] ) && is_array( $workflow_state['blockers'] ) ) {
 			$this->merge_blockers( $workflow_state['blockers'] );
@@ -1165,6 +1257,7 @@ class PressArk_Checkpoint {
 			$merged->workflow_stage = $client->workflow_stage;
 		}
 		$merged->merge_approvals( $client->approvals );
+		$merged->merge_approval_outcomes( $client->approval_outcomes );
 		// Blockers: union.
 		$merged->merge_blockers( $client->blockers );
 		$merged->context_capsule = self::merge_context_capsule_state( $server->context_capsule, $client->context_capsule );
@@ -1237,6 +1330,7 @@ class PressArk_Checkpoint {
 		$this->selected_target    = $other->selected_target;
 		$this->workflow_stage     = $other->workflow_stage;
 		$this->approvals          = $other->approvals;
+		$this->approval_outcomes  = $other->approval_outcomes;
 		$this->blockers           = $other->blockers;
 		$this->context_capsule    = $other->context_capsule;
 		$this->loaded_tool_groups = $other->loaded_tool_groups;
@@ -1267,6 +1361,7 @@ class PressArk_Checkpoint {
 			'read_state',
 			'read_invalidation_log',
 			'plan_state',
+			'approval_outcomes',
 		) as $key ) {
 			if ( array_key_exists( $key, $snapshot ) ) {
 				return true;
@@ -1434,6 +1529,26 @@ class PressArk_Checkpoint {
 				'approved_at' => sanitize_text_field( $item['approved_at'] ?? '' ),
 			);
 		}
+		return $clean;
+	}
+
+	private static function sanitize_approval_outcomes( array $raw ): array {
+		if ( ! class_exists( 'PressArk_Permission_Decision' ) ) {
+			return array();
+		}
+
+		$clean = array();
+		foreach ( array_slice( $raw, -12 ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$outcome = PressArk_Permission_Decision::normalize_approval_outcome( $item );
+			if ( ! empty( $outcome ) ) {
+				$clean[] = $outcome;
+			}
+		}
+
 		return $clean;
 	}
 

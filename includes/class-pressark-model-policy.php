@@ -48,6 +48,9 @@ class PressArk_Model_Policy {
 	/** Model prefixes known to support native tool calling. */
 	private const TOOL_CAPABLE_PREFIXES = array(
 		'anthropic/claude',
+		'google/gemini',
+		'models/gemini',
+		'gemini',
 		'openai/gpt',
 		'openai/o3',
 		'openai/o4',
@@ -63,6 +66,7 @@ class PressArk_Model_Policy {
 		'openai',
 		'anthropic',
 		'deepseek',
+		'gemini',
 		'minimax',
 		'moonshotai',
 		'z-ai',
@@ -74,6 +78,7 @@ class PressArk_Model_Policy {
 		'anthropic',
 		'openrouter',
 		'deepseek',
+		'gemini',
 		'minimax',
 		'moonshotai',
 		'z-ai',
@@ -439,7 +444,7 @@ class PressArk_Model_Policy {
 		// All share the pressark_summarize_model setting (renamed "Back-Agent" in UI).
 		$back_agent_phases = array( 'summarize', 'classification', 'memory_selection' );
 		if ( in_array( $phase, $back_agent_phases, true ) ) {
-			$configured = get_option( 'pressark_summarize_model', 'auto' );
+			$configured = sanitize_text_field( (string) get_option( 'pressark_summarize_model', 'auto' ) );
 			if ( 'custom' === $configured ) {
 				$configured = sanitize_text_field( (string) get_option( 'pressark_summarize_custom_model', '' ) );
 			}
@@ -448,6 +453,16 @@ class PressArk_Model_Policy {
 					return self::PHASE_ROUTING[ $phase ]['economy'] ?? self::PHASE_ROUTING['summarize']['economy'];
 				}
 				return $configured;
+			}
+
+			// BYOK parity: if the user did not pick a dedicated Back-Agent model,
+			// reuse their main BYOK model instead of silently falling back to the
+			// bundled economy-phase router.
+			if ( PressArk_Entitlements::is_byok() ) {
+				$byok_model = sanitize_text_field( (string) get_option( 'pressark_byok_model', 'gpt-5.4-mini' ) );
+				if ( '' !== $byok_model ) {
+					return $byok_model;
+				}
 			}
 		}
 

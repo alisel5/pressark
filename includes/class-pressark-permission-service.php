@@ -156,6 +156,73 @@ class PressArk_Permission_Service {
 	}
 
 	/**
+	 * Apply the canonical execution gate used by the action engine.
+	 *
+	 * This keeps execution truth aligned with the same permission decision that
+	 * tool visibility, preview/confirm surfaces, and diagnostics consume.
+	 *
+	 * @param string $operation_name Operation name.
+	 * @param array  $params         Operation arguments.
+	 * @param string $context        Execution context.
+	 * @param array  $meta           Extra execution metadata.
+	 * @return array{
+	 *   allowed: bool,
+	 *   context: string,
+	 *   params: array,
+	 *   permission_decision: array,
+	 *   pre_operation: array
+	 * }
+	 */
+	public static function gate_execution(
+		string $operation_name,
+		array $params = array(),
+		string $context = '',
+		array $meta = array()
+	): array {
+		$context = '' !== $context
+			? $context
+			: ( class_exists( 'PressArk_Policy_Engine' )
+				? PressArk_Policy_Engine::CONTEXT_INTERACTIVE
+				: 'interactive' );
+
+		$decision = self::evaluate( $operation_name, $params, $context, $meta );
+		$gate     = array(
+			'allowed'             => false,
+			'context'             => $context,
+			'params'              => $params,
+			'permission_decision' => $decision,
+			'pre_operation'       => array(
+				'proceed' => true,
+				'params'  => $params,
+			),
+		);
+
+		$approval_granted = ! empty( $meta['approval_granted'] )
+			&& ( ! class_exists( 'PressArk_Policy_Engine' ) || PressArk_Policy_Engine::CONTEXT_INTERACTIVE === $context );
+
+		if ( PressArk_Permission_Decision::is_denied( $decision ) ) {
+			return $gate;
+		}
+
+		if ( PressArk_Permission_Decision::is_ask( $decision ) && ! $approval_granted ) {
+			return $gate;
+		}
+
+		if ( class_exists( 'PressArk_Policy_Engine' ) ) {
+			$pre_check               = PressArk_Policy_Engine::pre_operation( $operation_name, $params, $context );
+			$gate['pre_operation']   = $pre_check;
+			$gate['params']          = is_array( $pre_check['params'] ?? null ) ? $pre_check['params'] : $params;
+
+			if ( empty( $pre_check['proceed'] ) ) {
+				return $gate;
+			}
+		}
+
+		$gate['allowed'] = true;
+		return $gate;
+	}
+
+	/**
 	 * Filter a set of tool names down to the effective visible surface.
 	 *
 	 * @param string[] $tool_names Tool names to evaluate.
@@ -223,6 +290,15 @@ class PressArk_Permission_Service {
 				$hidden_decisions[ $tool_name ] = $visibility['decisions'][ $tool_name ];
 			}
 		}
+		$hidden_reason_rows = self::summarize_hidden_decisions( $hidden_decisions );
+		$hidden_reason_summary = array();
+		foreach ( $hidden_reason_rows as $row ) {
+			$kind = sanitize_key( (string) ( $row['kind'] ?? '' ) );
+			if ( '' === $kind ) {
+				continue;
+			}
+			$hidden_reason_summary[ $kind ] = (int) ( $row['count'] ?? 0 );
+		}
 
 		return array(
 			'contract'            => 'effective_visible_tools',
@@ -236,9 +312,180 @@ class PressArk_Permission_Service {
 			'visible_tool_count'  => count( (array) ( $visibility['visible_tool_names'] ?? array() ) ),
 			'hidden_tools'        => array_values( array_filter( array_map( 'sanitize_key', (array) ( $visibility['hidden_tool_names'] ?? array() ) ) ) ),
 			'hidden_tool_count'   => count( (array) ( $visibility['hidden_tool_names'] ?? array() ) ),
+			'hidden_groups'       => self::group_names_for_tools( (array) ( $visibility['hidden_tool_names'] ?? array() ) ),
 			'hidden_summary'      => (array) ( $visibility['hidden_summary'] ?? array() ),
 			'hidden_decisions'    => $hidden_decisions,
+			'hidden_reason_rows'  => $hidden_reason_rows,
+			'hidden_reason_summary' => $hidden_reason_summary,
 		);
+	}
+
+	/**
+	 * Build a compact, user-safe summary row for one hidden visibility decision.
+	 *
+	 * @param array  $decision  Canonical permission decision.
+	 * @param string $tool_name Optional tool name.
+	 * @return array<string,mixed>
+	 */
+	public static function summarize_visibility_decision( array $decision, string $tool_name = '' ): array {
+		$decision     = PressArk_Permission_Decision::normalize( $decision );
+		$tool_name    = sanitize_key( '' !== $tool_name ? $tool_name : (string) ( $decision['operation'] ?? '' ) );
+		$group        = sanitize_key( (string) ( $decision['debug']['group'] ?? $decision['entitlement']['group'] ?? '' ) );
+		$reason_codes = array_values( array_filter( array_map( 'sanitize_key', (array) ( $decision['visibility']['reason_codes'] ?? array() ) ) ) );
+		$kind         = 'hidden';
+
+		if ( ! empty( $decision['entitlement']['checked'] ) && false === $decision['entitlement']['allowed'] ) {
+			$basis = sanitize_key( (string) ( $decision['entitlement']['basis'] ?? '' ) );
+			if (
+				in_array( $basis, array( 'group_limit_exhausted', 'weekly_remaining' ), true )
+				|| null !== ( $decision['entitlement']['remaining'] ?? null )
+				|| null !== ( $decision['entitlement']['limit'] ?? null )
+			) {
+				$kind = 'quota';
+			} else {
+				$kind = 'entitlement';
+			}
+		} elseif ( in_array( 'unregistered', $reason_codes, true ) || empty( $decision['debug']['registered'] ) ) {
+			$kind = 'capability';
+		} elseif (
+			in_array( 'approval_blocked', $reason_codes, true )
+			|| ( PressArk_Permission_Decision::is_ask( $decision ) && empty( $decision['approval']['available'] ) )
+		) {
+			$kind = 'approval';
+		} elseif (
+			in_array( 'policy_denied', $reason_codes, true )
+			|| in_array( 'never_auto_approve', $reason_codes, true )
+			|| 'policy' === sanitize_key( (string) ( $decision['provenance']['kind'] ?? '' ) )
+			|| in_array( sanitize_key( (string) ( $decision['source'] ?? '' ) ), array( 'policy_engine', 'automation_policy' ), true )
+			|| PressArk_Permission_Decision::is_denied( $decision )
+		) {
+			$kind = 'policy';
+		}
+
+		switch ( $kind ) {
+			case 'quota':
+				$label   = 'Quota reached';
+				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
+				$hint    = 'Retry after the quota resets or upgrade the plan, then rerun.';
+				break;
+			case 'entitlement':
+				$label   = 'Plan does not include it';
+				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
+				$hint    = 'Upgrade the plan or use a tool group that is included.';
+				break;
+			case 'approval':
+				$label   = 'Needs human approval';
+				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
+				$hint    = 'Switch to an interactive run or use a confirmation-capable flow.';
+				break;
+			case 'capability':
+				$label   = 'Capability unavailable';
+				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
+				$hint    = 'Enable the needed integration or use a supported tool group before retrying.';
+				break;
+			case 'policy':
+				$label   = 'Blocked by policy';
+				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
+				$hint    = 'Use an allowed tool group or adjust policy and approval settings before retrying.';
+				break;
+			default:
+				$label   = 'Hidden for this run';
+				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
+				$hint    = 'Try another visible group or rerun with a context that allows it.';
+				break;
+		}
+
+		return array_filter(
+			array(
+				'tool'         => $tool_name,
+				'group'        => $group,
+				'kind'         => $kind,
+				'label'        => $label,
+				'summary'      => $summary,
+				'hint'         => $hint,
+				'reason_codes' => $reason_codes,
+			),
+			static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			}
+		);
+	}
+
+	/**
+	 * Aggregate hidden decisions into compact, reason-first summary rows.
+	 *
+	 * @param array<string,mixed> $hidden_decisions Hidden decisions keyed by tool.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function summarize_hidden_decisions( array $hidden_decisions ): array {
+		$aggregated = array();
+
+		foreach ( $hidden_decisions as $tool_name => $decision ) {
+			if ( ! is_array( $decision ) ) {
+				continue;
+			}
+
+			$row  = self::summarize_visibility_decision( $decision, (string) $tool_name );
+			$kind = sanitize_key( (string) ( $row['kind'] ?? '' ) );
+			if ( '' === $kind ) {
+				continue;
+			}
+
+			if ( ! isset( $aggregated[ $kind ] ) ) {
+				$aggregated[ $kind ] = array(
+					'kind'         => $kind,
+					'label'        => sanitize_text_field( (string) ( $row['label'] ?? '' ) ),
+					'summary'      => sanitize_text_field( (string) ( $row['summary'] ?? '' ) ),
+					'hint'         => sanitize_text_field( (string) ( $row['hint'] ?? '' ) ),
+					'count'        => 0,
+					'groups'       => array(),
+					'tools'        => array(),
+					'reason_codes' => array(),
+				);
+			}
+
+			++$aggregated[ $kind ]['count'];
+			if ( ! empty( $row['group'] ) ) {
+				$aggregated[ $kind ]['groups'][ sanitize_key( (string) $row['group'] ) ] = true;
+			}
+			if ( ! empty( $row['tool'] ) ) {
+				$aggregated[ $kind ]['tools'][ sanitize_key( (string) $row['tool'] ) ] = true;
+			}
+			foreach ( (array) ( $row['reason_codes'] ?? array() ) as $reason_code ) {
+				$reason_code = sanitize_key( (string) $reason_code );
+				if ( '' !== $reason_code ) {
+					$aggregated[ $kind ]['reason_codes'][ $reason_code ] = true;
+				}
+			}
+		}
+
+		foreach ( $aggregated as $kind => &$row ) {
+			$row['groups']       = array_values( array_keys( (array) ( $row['groups'] ?? array() ) ) );
+			$row['tools']        = array_values( array_keys( (array) ( $row['tools'] ?? array() ) ) );
+			$row['reason_codes'] = array_values( array_keys( (array) ( $row['reason_codes'] ?? array() ) ) );
+			$row['summary'] = self::build_hidden_reason_summary(
+				$kind,
+				(array) ( $row['groups'] ?? array() ),
+				(int) ( $row['count'] ?? 0 )
+			);
+		}
+		unset( $row );
+
+		$rows = array_values( $aggregated );
+		usort(
+			$rows,
+			static function ( array $left, array $right ): int {
+				$priority_diff = self::visibility_reason_priority( (string) ( $left['kind'] ?? '' ) )
+					<=> self::visibility_reason_priority( (string) ( $right['kind'] ?? '' ) );
+				if ( 0 !== $priority_diff ) {
+					return $priority_diff;
+				}
+
+				return (int) ( $right['count'] ?? 0 ) <=> (int) ( $left['count'] ?? 0 );
+			}
+		);
+
+		return $rows;
 	}
 
 	/**
@@ -432,5 +679,111 @@ class PressArk_Permission_Service {
 		}
 
 		return PressArk_Permission_Decision::with_visibility( $decision, $visible, $codes );
+	}
+
+	/**
+	 * Derive unique groups for a set of tool names.
+	 *
+	 * @param array $tool_names Tool names.
+	 * @return array<int,string>
+	 */
+	private static function group_names_for_tools( array $tool_names ): array {
+		if ( ! class_exists( 'PressArk_Operation_Registry' ) ) {
+			return array();
+		}
+
+		$groups = array();
+		foreach ( array_values( array_unique( array_filter( array_map( 'sanitize_key', $tool_names ) ) ) ) as $tool_name ) {
+			$group = sanitize_key( (string) PressArk_Operation_Registry::get_group( $tool_name ) );
+			if ( '' !== $group ) {
+				$groups[ $group ] = true;
+			}
+		}
+
+		return array_values( array_keys( $groups ) );
+	}
+
+	/**
+	 * Convert one or more groups into a compact scope label.
+	 *
+	 * @param array $groups      Group names.
+	 * @param int   $tool_count  Tool count fallback.
+	 * @return string
+	 */
+	private static function format_group_scope( array $groups, int $tool_count = 0 ): string {
+		$groups = array_values( array_unique( array_filter( array_map( 'sanitize_key', $groups ) ) ) );
+		if ( 1 === count( $groups ) ) {
+			return self::display_group_label( (string) $groups[0] ) . ' tools';
+		}
+		if ( count( $groups ) > 1 ) {
+			return count( $groups ) . ' tool groups';
+		}
+		if ( $tool_count > 1 ) {
+			return $tool_count . ' tools';
+		}
+
+		return 'This capability';
+	}
+
+	/**
+	 * Render a short, grammatical summary for a hidden-reason bucket.
+	 *
+	 * @param string $kind       Reason kind.
+	 * @param array  $groups     Related groups.
+	 * @param int    $tool_count Related tool count.
+	 * @return string
+	 */
+	private static function build_hidden_reason_summary( string $kind, array $groups = array(), int $tool_count = 0 ): string {
+		$scope       = self::format_group_scope( $groups, $tool_count );
+		$is_singular = 'This capability' === $scope;
+
+		return match ( sanitize_key( $kind ) ) {
+			'quota'       => $is_singular
+				? 'This capability stayed hidden because the current quota window is exhausted.'
+				: sprintf( '%s stayed hidden because the current quota window is exhausted.', $scope ),
+			'entitlement' => $is_singular
+				? 'This capability is not included on the current plan.'
+				: sprintf( '%s are not included on the current plan.', $scope ),
+			'approval'    => $is_singular
+				? 'This capability needs a human-approved route in this context.'
+				: sprintf( '%s need a human-approved route in this context.', $scope ),
+			'capability'  => $is_singular
+				? 'This capability is not available on this site right now.'
+				: sprintf( '%s are not available on this site right now.', $scope ),
+			'policy'      => $is_singular
+				? 'This capability was hidden by the current policy for this run.'
+				: sprintf( '%s were hidden by the current policy for this run.', $scope ),
+			default       => $is_singular
+				? 'This capability stayed hidden for the current run.'
+				: sprintf( '%s stayed hidden for the current run.', $scope ),
+		};
+	}
+
+	/**
+	 * Render a compact display label for a tool group.
+	 *
+	 * @param string $group Group name.
+	 * @return string
+	 */
+	private static function display_group_label( string $group ): string {
+		$group = sanitize_key( $group );
+		return '' === $group ? 'Tool' : ucwords( str_replace( '_', ' ', $group ) );
+	}
+
+	/**
+	 * Sort hidden-reason rows by how actionable they are to the user.
+	 *
+	 * @param string $kind Reason kind.
+	 * @return int
+	 */
+	private static function visibility_reason_priority( string $kind ): int {
+		return match ( sanitize_key( $kind ) ) {
+			'quota'       => 10,
+			'entitlement' => 20,
+			'approval'    => 30,
+			'policy'      => 40,
+			'capability'  => 50,
+			default       => 90,
+		};
 	}
 }

@@ -1871,8 +1871,19 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		);
 
 		$html_body = "<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;'>{$body}</body></html>";
+		$mail_error = null;
+		$mail_hook  = static function ( $wp_error ) use ( &$mail_error ) {
+			if ( $wp_error instanceof \WP_Error ) {
+				$mail_error = $wp_error;
+			}
+		};
 
-		$sent = wp_mail( $email, $subject, $html_body, $headers );
+		add_action( 'wp_mail_failed', $mail_hook, 10, 1 );
+		try {
+			$sent = wp_mail( $email, $subject, $html_body, $headers );
+		} finally {
+			remove_action( 'wp_mail_failed', $mail_hook, 10 );
+		}
 
 		$customer_name = trim( $customer->get_first_name() . ' ' . $customer->get_last_name() );
 
@@ -1894,7 +1905,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 				'message' => sprintf( __( 'Email sent to %1$s (%2$s): "%3$s"', 'pressark' ), $customer_name, $email, $subject ),
 			);
 		}
-		return array( 'success' => false, 'message' => __( 'Failed to send email. Check SMTP configuration.', 'pressark' ) );
+
+		return $this->build_email_delivery_failure( $mail_error );
 	}
 
 
@@ -3926,7 +3938,71 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			return null; // Caller should fall back to SQL.
 		}
 
-		return $response->get_data();
+		return $this->normalize_wc_analytics_payload( $response->get_data() );
+	}
+
+	/**
+	 * Normalize WooCommerce Analytics REST payloads to arrays recursively.
+	 *
+	 * Some installs return nested stdClass rows (for example interval subtotals),
+	 * while the reporting helpers expect array access.
+	 *
+	 * @param mixed $value Raw analytics payload fragment.
+	 * @return mixed
+	 */
+	private function normalize_wc_analytics_payload( $value ) {
+		if ( is_array( $value ) ) {
+			foreach ( $value as $key => $item ) {
+				$value[ $key ] = $this->normalize_wc_analytics_payload( $item );
+			}
+			return $value;
+		}
+
+		if ( is_object( $value ) ) {
+			$value = get_object_vars( $value );
+			foreach ( $value as $key => $item ) {
+				$value[ $key ] = $this->normalize_wc_analytics_payload( $item );
+			}
+			return $value;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Build a clear environmental failure when WordPress mail transport is unavailable.
+	 *
+	 * @param \WP_Error|null $mail_error Captured wp_mail_failed error, if any.
+	 * @return array<string,mixed>
+	 */
+	private function build_email_delivery_failure( $mail_error = null ): array {
+		$detail = '';
+		$code   = 'mail_transport_unavailable';
+
+		if ( $mail_error instanceof \WP_Error ) {
+			$detail = trim( (string) $mail_error->get_error_message() );
+			$raw    = (string) $mail_error->get_error_code();
+			if ( '' !== $raw ) {
+				$code = $raw;
+			}
+		}
+
+		$message = __( 'Email could not be sent because this WordPress environment does not have a working mail transport.', 'pressark' );
+		if ( '' !== $detail ) {
+			$message .= ' ' . sprintf(
+				/* translators: %s: wp_mail failure detail. */
+				__( 'wp_mail reported: %s', 'pressark' ),
+				$detail
+			);
+		}
+
+		return array(
+			'success'       => false,
+			'message'       => $message,
+			'hint'          => __( 'Configure SMTP/sendmail for WordPress before retrying email_customer.', 'pressark' ),
+			'failure_code'  => $code,
+			'environmental' => true,
+		);
 	}
 
 

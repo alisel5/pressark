@@ -67,6 +67,7 @@ if ( ! function_exists( 'wp_list_pluck' ) ) {
 require_once __DIR__ . '/../includes/class-pressark-execution-ledger.php';
 require_once __DIR__ . '/../includes/class-pressark-token-budget-manager.php';
 require_once __DIR__ . '/../includes/class-pressark-replay-integrity.php';
+require_once __DIR__ . '/../includes/class-pressark-permission-decision.php';
 require_once __DIR__ . '/../includes/class-pressark-checkpoint.php';
 
 $passed = 0;
@@ -223,6 +224,49 @@ $client_replay = PressArk_Checkpoint::from_array( array(
 $merged_replay_sidecar = PressArk_Checkpoint::merge( $server_replay, $client_replay )->get_replay_sidecar();
 assert_eq_pb( 'Replay merge preserves newer resume source', 'checkpoint_replay', $merged_replay_sidecar['last_resume']['source'] ?? '' );
 assert_eq_pb( 'Replay merge preserves replacement journal count', 1, (int) ( $merged_replay_sidecar['replacement_count'] ?? 0 ) );
+
+$approval_checkpoint = PressArk_Checkpoint::from_array( array() );
+$approval_checkpoint->record_approval_outcome(
+	'fix_seo',
+	PressArk_Permission_Decision::OUTCOME_DECLINED,
+	array(
+		'source'      => 'approval',
+		'actor'       => 'user',
+		'reason_code' => 'user_declined',
+	)
+);
+$approval_checkpoint->record_approval_outcome(
+	'preview_apply',
+	PressArk_Permission_Decision::OUTCOME_DISCARDED,
+	array(
+		'source'      => 'approval',
+		'actor'       => 'user',
+		'reason_code' => 'preview_discarded',
+	)
+);
+$approval_history = $approval_checkpoint->get_approval_outcomes();
+$approval_header  = $approval_checkpoint->to_context_header();
+assert_eq_pb( 'Checkpoint keeps declined approval outcome in compact history', 'declined', $approval_history[0]['status'] ?? '' );
+assert_eq_pb( 'Checkpoint keeps discarded preview outcome in compact history', 'discarded', $approval_history[1]['status'] ?? '' );
+assert_true_pb( 'Checkpoint context header exposes approval history summary', false !== strpos( $approval_header, 'APPROVAL HISTORY:' ) );
+
+$normalized_outcome = PressArk_Permission_Decision::normalize_approval_outcome(
+	array(
+		'outcome'     => 'CANCELLED',
+		'action'      => 'Preview Apply',
+		'scope'       => 'Preview',
+		'source'      => 'Chat',
+		'actor'       => 'User',
+		'reason_code' => 'User Cancelled',
+		'message'     => 'Cancelled while waiting.',
+		'at'          => '2026-04-06T00:00:00Z',
+	)
+);
+$normalized_receipt = PressArk_Permission_Decision::approval_receipt( $normalized_outcome );
+assert_eq_pb( 'Typed approval normalization accepts legacy outcome field', 'cancelled', $normalized_outcome['status'] ?? '' );
+assert_eq_pb( 'Typed approval normalization sanitizes action and scope', 'previewapply', $normalized_outcome['action'] ?? '' );
+assert_eq_pb( 'Approval receipt mirrors the typed cancelled outcome', 'cancelled', $normalized_receipt['status'] ?? '' );
+assert_eq_pb( 'Approval receipt keeps the canonical receipt contract', PressArk_Permission_Decision::RECEIPT_CONTRACT, $normalized_receipt['contract'] ?? '' );
 
 echo "\nResults: {$passed} passed, {$failed} failed\n";
 exit( $failed > 0 ? 1 : 0 );

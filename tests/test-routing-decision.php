@@ -18,6 +18,11 @@ $pressark_test_options        = array(
 	'pressark_api_key'        => 'test-key',
 	'pressark_model'          => 'auto',
 	'pressark_summarize_model'=> 'auto',
+	'pressark_summarize_custom_model' => '',
+	'pressark_byok_enabled'   => false,
+	'pressark_byok_provider'  => 'openai',
+	'pressark_byok_api_key'   => 'byok-test-key',
+	'pressark_byok_model'     => 'openai/gpt-5.4',
 );
 $pressark_http_responses      = array();
 $pressark_http_requests       = array();
@@ -166,15 +171,18 @@ if ( ! class_exists( 'PressArk_Usage_Tracker' ) ) {
 		}
 
 		public function is_byok(): bool {
-			return false;
+			global $pressark_test_options;
+			return ! empty( $pressark_test_options['pressark_byok_enabled'] );
 		}
 
 		public function get_byok_provider(): string {
-			return 'openai';
+			global $pressark_test_options;
+			return (string) ( $pressark_test_options['pressark_byok_provider'] ?? 'openai' );
 		}
 
 		public function get_byok_api_key(): string {
-			return '';
+			global $pressark_test_options;
+			return (string) ( $pressark_test_options['pressark_byok_api_key'] ?? '' );
 		}
 	}
 }
@@ -190,7 +198,8 @@ if ( ! class_exists( 'PressArk_Entitlements' ) ) {
 		}
 
 		public static function is_byok(): bool {
-			return false;
+			global $pressark_test_options;
+			return ! empty( $pressark_test_options['pressark_byok_enabled'] );
 		}
 	}
 }
@@ -205,6 +214,37 @@ if ( ! class_exists( 'PressArk_License' ) ) {
 
 if ( ! class_exists( 'PressArk_Token_Budget_Manager' ) ) {
 	class PressArk_Token_Budget_Manager {}
+}
+
+if ( ! class_exists( 'PressArk_Token_Bank' ) ) {
+	class PressArk_Token_Bank {
+		public function get_multipliers(): array {
+			return array(
+				'classes' => array(
+					'standard' => array(
+						'input'  => 10,
+						'output' => 30,
+					),
+				),
+				'model_to_class' => array(),
+				'default_class'  => 'standard',
+			);
+		}
+
+		public function resolve_icus( array $usage ): array {
+			$input_tokens  = (int) ( $usage['input_tokens'] ?? 0 );
+			$output_tokens = (int) ( $usage['output_tokens'] ?? 0 );
+
+			return array(
+				'icu_total'   => max( 1, (int) ceil( ( $input_tokens * 10 + $output_tokens * 30 ) / 1000 ) ),
+				'model_class' => 'standard',
+				'multiplier'  => array(
+					'input'  => 10,
+					'output' => 30,
+				),
+			);
+		}
+	}
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-pressark-model-policy.php';
@@ -227,6 +267,24 @@ function assert_routing( string $label, bool $condition, string $detail = '' ): 
 	if ( '' !== $detail ) {
 		echo "    {$detail}\n";
 	}
+}
+
+function invoke_private_routing( object $object, string $method, array $args = array() ) {
+	$reflection = new ReflectionMethod( $object, $method );
+	$reflection->setAccessible( true );
+	return $reflection->invokeArgs( $object, $args );
+}
+
+function read_private_property_routing( object $object, string $property ) {
+	$reflection = new ReflectionProperty( $object, $property );
+	$reflection->setAccessible( true );
+	return $reflection->getValue( $object );
+}
+
+function inject_private_property_routing( object $object, string $property, $value ): void {
+	$reflection = new ReflectionProperty( $object, $property );
+	$reflection->setAccessible( true );
+	$reflection->setValue( $object, $value );
 }
 
 echo "=== Routing Decision Tests ===\n\n";
@@ -319,8 +377,8 @@ assert_routing(
 	'Trace: ' . var_export( $trace, true )
 );
 assert_routing(
-	'Capability assumptions still mark the request as tool-requiring',
-	! empty( $routing['capability_assumptions']['requires_tools'] ),
+	'Capability assumptions do not pretend tools are required when none were exposed',
+	empty( $routing['capability_assumptions']['requires_tools'] ),
 	'Capability assumptions: ' . var_export( $routing['capability_assumptions'] ?? null, true )
 );
 assert_routing(
@@ -330,6 +388,579 @@ assert_routing(
 		&& 'openai/gpt-5.4' === ( $pressark_http_requests[1]['body']['model'] ?? '' ),
 	'Requests: ' . var_export( $pressark_http_requests, true )
 );
+
+$pressark_http_responses[] = array(
+	'response' => array( 'code' => 200 ),
+	'body'     => wp_json_encode( array(
+		'choices' => array(
+			array(
+				'message' => array(
+					'role'    => 'assistant',
+					'content' => 'Snapshot probe',
+				),
+				'finish_reason' => 'stop',
+			),
+		),
+		'usage'   => array(
+			'prompt_tokens'     => 40,
+			'completion_tokens' => 10,
+			'total_tokens'      => 50,
+		),
+	) ),
+);
+$connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Read the next page.',
+		),
+	),
+	array(
+		array(
+			'type'     => 'function',
+			'function' => array(
+				'name'        => 'read_content',
+				'description' => 'Read one page.',
+				'parameters'  => array(
+					'type'       => 'object',
+					'properties' => array(),
+				),
+			),
+		),
+	),
+	'Compact phase context',
+	false,
+	array(
+		'phase' => 'retrieval_planning',
+	)
+);
+$snapshot = $connector->get_last_request_snapshot();
+$snapshot_system_prompt = '';
+foreach ( (array) ( $pressark_http_requests[2]['body']['messages'] ?? array() ) as $message ) {
+	if ( 'system' === ( $message['role'] ?? '' ) ) {
+		$snapshot_system_prompt = (string) ( $message['content'] ?? '' );
+		break;
+	}
+}
+assert_routing(
+	'Prompt snapshot records the compact phase addendum contract',
+	'retrieval_planning' === ( $snapshot['phase_addendum']['phase'] ?? '' )
+		&& 'restricted_auto' === ( $snapshot['phase_addendum']['tool_choice'] ?? '' ),
+	'Snapshot: ' . var_export( $snapshot['phase_addendum'] ?? null, true )
+);
+assert_routing(
+	'Prompt snapshot no longer records default global tool heuristics',
+	! array_key_exists( 'tool_heuristics', (array) ( $snapshot['phase_addendum'] ?? array() ) ),
+	'Snapshot: ' . var_export( $snapshot['phase_addendum'] ?? null, true )
+);
+assert_routing(
+	'Prompt addendum stays compact even when tools are present',
+	(int) ( $snapshot['phase_addendum']['tokens'] ?? 0 ) > 0
+		&& (int) ( $snapshot['phase_addendum']['tokens'] ?? 0 ) <= 80,
+	'Snapshot: ' . var_export( $snapshot['phase_addendum'] ?? null, true )
+);
+assert_routing(
+	'Provider-facing system prompt omits legacy allowed-tool and heuristic prose',
+	false === strpos( $snapshot_system_prompt, 'Allowed tools:' )
+		&& false === strpos( $snapshot_system_prompt, 'Heuristics:' ),
+	$snapshot_system_prompt
+);
+
+echo "\n--- Streaming execution refreshes stale planner contracts before tool-bearing rounds ---\n";
+
+$read_stream_tool = array(
+	array(
+		'type'     => 'function',
+		'function' => array(
+			'name'        => 'read_content',
+			'description' => 'Read one page.',
+			'parameters'  => array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'post_id' => array( 'type' => 'integer' ),
+				),
+				'required'             => array( 'post_id' ),
+				'additionalProperties' => false,
+			),
+		),
+	),
+);
+
+$pressark_test_options['pressark_api_provider'] = 'openrouter';
+$pressark_test_options['pressark_model']        = 'deepseek/deepseek-v3.2';
+$pressark_test_options['pressark_byok_enabled'] = false;
+$pressark_http_requests                         = array();
+$pressark_http_responses                        = array(
+	array(
+		'response' => array( 'code' => 200 ),
+		'body'     => wp_json_encode( array(
+			'choices' => array(
+				array(
+					'message' => array(
+						'role'    => 'assistant',
+						'content' => 'Planner',
+					),
+					'finish_reason' => 'stop',
+				),
+			),
+			'usage'   => array(
+				'prompt_tokens'     => 40,
+				'completion_tokens' => 10,
+				'total_tokens'      => 50,
+			),
+		) ),
+	),
+);
+
+$bank_stream_connector = new PressArk_AI_Connector( 'pro' );
+$bank_stream_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Plan the next read.',
+		),
+	),
+	array(),
+	'Planner phase context',
+	false,
+	array(
+		'phase' => 'classification',
+	)
+);
+$bank_planner_snapshot = $bank_stream_connector->get_last_request_snapshot();
+$bank_stream_request   = $bank_stream_connector->prepare_streaming_request(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Read the current page.',
+		),
+	),
+	$read_stream_tool,
+	'Execution phase context'
+);
+$bank_stream_snapshot = $bank_stream_connector->get_last_request_snapshot();
+
+assert_routing(
+	'Planner snapshot keeps classification rounds text-only',
+	'classification' === ( $bank_planner_snapshot['phase_addendum']['phase'] ?? '' )
+		&& 'text_only' === ( $bank_planner_snapshot['phase_addendum']['tool_choice'] ?? '' ),
+	'Snapshot: ' . var_export( $bank_planner_snapshot, true )
+);
+assert_routing(
+	'Streaming execution refreshes bank requests to the tool-bearing contract',
+	'restricted_auto' === ( $bank_stream_snapshot['phase_addendum']['tool_choice'] ?? '' )
+		&& 1 === (int) ( $bank_stream_snapshot['request_shape']['tool_schema_count'] ?? 0 )
+		&& 'read_content' === ( $bank_stream_snapshot['allowed_tools'][0] ?? '' )
+		&& 'deepseek/deepseek-v3.2' === ( $bank_stream_request['body']['model'] ?? '' ),
+	'Snapshot: ' . var_export( $bank_stream_snapshot, true ) . ' Request: ' . var_export( $bank_stream_request, true )
+);
+
+$pressark_test_options['pressark_byok_enabled']  = true;
+$pressark_test_options['pressark_byok_provider'] = 'openrouter';
+$pressark_test_options['pressark_byok_api_key']  = 'byok-test-key';
+$pressark_test_options['pressark_byok_model']    = 'deepseek/deepseek-v3.2';
+$pressark_http_requests                          = array();
+$pressark_http_responses                         = array(
+	array(
+		'response' => array( 'code' => 200 ),
+		'body'     => wp_json_encode( array(
+			'choices' => array(
+				array(
+					'message' => array(
+						'role'    => 'assistant',
+						'content' => 'Planner',
+					),
+					'finish_reason' => 'stop',
+				),
+			),
+			'usage'   => array(
+				'prompt_tokens'     => 38,
+				'completion_tokens' => 9,
+				'total_tokens'      => 47,
+			),
+		) ),
+	),
+);
+
+$byok_stream_connector = new PressArk_AI_Connector( 'pro' );
+$byok_stream_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Plan the next read.',
+		),
+	),
+	array(),
+	'Planner phase context',
+	false,
+	array(
+		'phase' => 'classification',
+	)
+);
+$byok_stream_request  = $byok_stream_connector->prepare_streaming_request(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Read the current page.',
+		),
+	),
+	$read_stream_tool,
+	'Execution phase context'
+);
+$byok_stream_snapshot = $byok_stream_connector->get_last_request_snapshot();
+
+assert_routing(
+	'BYOK streaming execution uses the same refreshed execution contract as bank',
+	'restricted_auto' === ( $byok_stream_snapshot['phase_addendum']['tool_choice'] ?? '' )
+		&& ( $byok_stream_snapshot['allowed_tools'] ?? array() ) === ( $bank_stream_snapshot['allowed_tools'] ?? array() )
+		&& ( $byok_stream_snapshot['request_shape']['tool_schema_count'] ?? 0 ) === ( $bank_stream_snapshot['request_shape']['tool_schema_count'] ?? 0 )
+		&& 'deepseek/deepseek-v3.2' === ( $byok_stream_request['body']['model'] ?? '' ),
+	'BYOK snapshot: ' . var_export( $byok_stream_snapshot, true ) . ' Request: ' . var_export( $byok_stream_request, true )
+);
+
+$pressark_test_options['pressark_byok_enabled'] = false;
+
+echo "\n--- Truthful provider request shaping stays transport-aligned ---\n";
+
+$strict_tool = array(
+	array(
+		'type'     => 'function',
+		'function' => array(
+			'name'        => 'lookup_context',
+			'description' => 'Read supporting context.',
+			'parameters'  => array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'query' => array( 'type' => 'string' ),
+				),
+				'required'             => array( 'query' ),
+				'additionalProperties' => false,
+			),
+		),
+	),
+);
+$strict_schema = array(
+	'summary'   => 'string',
+	'citations' => array( 'string' ),
+);
+
+$pressark_test_options['pressark_api_provider'] = 'openai';
+$pressark_test_options['pressark_model']        = 'openai/gpt-5.4';
+$pressark_http_responses[] = array(
+	'response' => array( 'code' => 200 ),
+	'body'     => wp_json_encode( array(
+		'choices' => array(
+			array(
+				'message' => array(
+					'role'    => 'assistant',
+					'content' => '{"summary":"ok","citations":["a"]}',
+				),
+				'finish_reason' => 'stop',
+			),
+		),
+		'usage'   => array(
+			'prompt_tokens'     => 90,
+			'completion_tokens' => 20,
+			'total_tokens'      => 110,
+		),
+	) ),
+);
+$openai_connector = new PressArk_AI_Connector( 'pro' );
+inject_private_property_routing( $openai_connector, 'model', 'openai/gpt-5.4' );
+$openai_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Return the final deliverable.',
+		),
+	),
+	$strict_tool,
+	'Enforce the contract.',
+	false,
+	array(
+		'tool_choice'        => 'required',
+		'deliverable_schema' => $strict_schema,
+		'schema_mode'        => 'strict',
+	)
+);
+$openai_http_request  = $pressark_http_requests[ count( $pressark_http_requests ) - 1 ]['body'] ?? array();
+$openai_snapshot      = $openai_connector->get_last_request_snapshot();
+$openai_transport     = (array) ( $openai_snapshot['transport_contract'] ?? array() );
+$openai_schema_contract = (array) ( $openai_transport['structured_output'] ?? array() );
+$openai_tool_contract   = (array) ( $openai_transport['tool_choice'] ?? array() );
+
+assert_routing(
+	'OpenAI strict schema is enforced with response_format json_schema',
+	'json_schema' === ( $openai_http_request['response_format']['type'] ?? '' )
+		&& true === ( $openai_http_request['response_format']['json_schema']['strict'] ?? false )
+		&& is_array( $openai_http_request['response_format']['json_schema']['schema'] ?? null ),
+	'Request: ' . var_export( $openai_http_request, true )
+);
+assert_routing(
+	'OpenAI required tool choice is transmitted truthfully',
+	'required' === ( $openai_http_request['tool_choice'] ?? '' )
+		&& 'required' === ( $openai_tool_contract['effective'] ?? '' )
+		&& 'required' === ( $openai_tool_contract['transport'] ?? '' ),
+	'Tool contract: ' . var_export( $openai_tool_contract, true )
+);
+assert_routing(
+	'OpenAI snapshot reports native strict enforcement',
+	'strict' === ( $openai_snapshot['phase_addendum']['schema_mode'] ?? '' )
+		&& ! empty( $openai_snapshot['request_shape']['structured_output_native'] )
+		&& 'response_format' === ( $openai_schema_contract['transport'] ?? '' ),
+	'Snapshot: ' . var_export( $openai_snapshot, true )
+);
+
+$pressark_test_options['pressark_api_provider'] = 'anthropic';
+$pressark_test_options['pressark_model']        = 'anthropic/claude-sonnet-4.6';
+$pressark_http_responses[] = array(
+	'response' => array( 'code' => 200 ),
+	'body'     => wp_json_encode( array(
+		'content' => array(
+			array(
+				'type' => 'text',
+				'text' => '{"summary":"ok","citations":["a"]}',
+			),
+		),
+		'usage'   => array(
+			'input_tokens'  => 120,
+			'output_tokens' => 30,
+		),
+	) ),
+);
+$anthropic_connector = new PressArk_AI_Connector( 'pro' );
+inject_private_property_routing( $anthropic_connector, 'model', 'anthropic/claude-sonnet-4.6' );
+$anthropic_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Return the final deliverable.',
+		),
+	),
+	$strict_tool,
+	'Enforce the contract.',
+	false,
+	array(
+		'tool_choice'        => 'required',
+		'deliverable_schema' => $strict_schema,
+		'schema_mode'        => 'strict',
+	)
+);
+$anthropic_http_request    = $pressark_http_requests[ count( $pressark_http_requests ) - 1 ]['body'] ?? array();
+$anthropic_snapshot        = $anthropic_connector->get_last_request_snapshot();
+$anthropic_transport       = (array) ( $anthropic_snapshot['transport_contract'] ?? array() );
+$anthropic_schema_contract = (array) ( $anthropic_transport['structured_output'] ?? array() );
+$anthropic_tool_contract   = (array) ( $anthropic_transport['tool_choice'] ?? array() );
+
+assert_routing(
+	'Anthropic strict schema is enforced with output_config.format',
+	'json_schema' === ( $anthropic_http_request['output_config']['format']['type'] ?? '' )
+		&& is_array( $anthropic_http_request['output_config']['format']['schema'] ?? null )
+		&& 'output_config.format' === ( $anthropic_schema_contract['transport'] ?? '' ),
+	'Request: ' . var_export( $anthropic_http_request, true )
+);
+assert_routing(
+	'Anthropic required tool choice is transmitted with provider-native any mode',
+	'any' === ( $anthropic_http_request['tool_choice']['type'] ?? '' )
+		&& 'required' === ( $anthropic_tool_contract['effective'] ?? '' )
+		&& 'any' === ( $anthropic_tool_contract['transport'] ?? '' ),
+	'Tool contract: ' . var_export( $anthropic_tool_contract, true )
+);
+
+$pressark_test_options['pressark_api_provider'] = 'deepseek';
+$pressark_test_options['pressark_model']        = 'deepseek/deepseek-chat';
+$pressark_http_responses[] = array(
+	'response' => array( 'code' => 200 ),
+	'body'     => wp_json_encode( array(
+		'choices' => array(
+			array(
+				'message' => array(
+					'role'    => 'assistant',
+					'content' => '{"summary":"ok","citations":["a"]}',
+				),
+				'finish_reason' => 'stop',
+			),
+		),
+		'usage'   => array(
+			'prompt_tokens'     => 80,
+			'completion_tokens' => 20,
+			'total_tokens'      => 100,
+		),
+	) ),
+);
+$deepseek_connector = new PressArk_AI_Connector( 'pro' );
+inject_private_property_routing( $deepseek_connector, 'model', 'deepseek/deepseek-chat' );
+$deepseek_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Return the final deliverable.',
+		),
+	),
+	array(),
+	'Enforce the contract.',
+	false,
+	array(
+		'deliverable_schema' => $strict_schema,
+		'schema_mode'        => 'strict',
+	)
+);
+$deepseek_http_request    = $pressark_http_requests[ count( $pressark_http_requests ) - 1 ]['body'] ?? array();
+$deepseek_snapshot        = $deepseek_connector->get_last_request_snapshot();
+$deepseek_transport       = (array) ( $deepseek_snapshot['transport_contract'] ?? array() );
+$deepseek_schema_contract = (array) ( $deepseek_transport['structured_output'] ?? array() );
+
+assert_routing(
+	'Unsupported DeepSeek strict schema downgrades truthfully instead of claiming transport enforcement',
+	! isset( $deepseek_http_request['response_format'] )
+		&& 'prompt_only' === ( $deepseek_snapshot['phase_addendum']['schema_mode'] ?? '' )
+		&& ! empty( $deepseek_schema_contract['downgraded'] )
+		&& 'provider_model_lacks_native_structured_outputs' === ( $deepseek_schema_contract['reason'] ?? '' ),
+	'Snapshot: ' . var_export( $deepseek_snapshot, true )
+);
+
+$deepseek_active_options = (array) read_private_property_routing( $deepseek_connector, 'active_request_options' );
+$downgraded_reserve = (array) invoke_private_routing(
+	$deepseek_connector,
+	'estimate_proxy_reserve',
+	array( $deepseek_http_request, 'chat' )
+);
+$fake_strict_options = $deepseek_active_options;
+$fake_strict_options['schema_mode']                 = 'strict';
+$fake_strict_options['structured_output_transport'] = 'response_format';
+inject_private_property_routing( $deepseek_connector, 'active_request_options', $fake_strict_options );
+$fake_strict_reserve = (array) invoke_private_routing(
+	$deepseek_connector,
+	'estimate_proxy_reserve',
+	array( $deepseek_http_request, 'chat' )
+);
+
+assert_routing(
+	'Reserve estimation does not charge native strictness when the transport body does not enforce it',
+	(int) ( $downgraded_reserve['estimated_icus'] ?? -1 ) === (int) ( $fake_strict_reserve['estimated_icus'] ?? -2 )
+		&& (int) ( $downgraded_reserve['estimated_raw_tokens'] ?? -1 ) === (int) ( $fake_strict_reserve['estimated_raw_tokens'] ?? -2 ),
+	'Downgraded: ' . var_export( $downgraded_reserve, true ) . ' Fake strict: ' . var_export( $fake_strict_reserve, true )
+);
+
+echo "\n--- BYOK back-agent routing stays on the user's models ---\n";
+
+$pressark_test_options['pressark_byok_enabled']          = true;
+$pressark_test_options['pressark_byok_provider']         = 'openai';
+$pressark_test_options['pressark_byok_api_key']          = 'byok-test-key';
+$pressark_test_options['pressark_byok_model']            = 'openai/gpt-5.4';
+$pressark_test_options['pressark_summarize_model']       = 'auto';
+$pressark_test_options['pressark_summarize_custom_model'] = '';
+$pressark_http_requests                                  = array();
+$pressark_http_responses                                 = array(
+	array(
+		'response' => array( 'code' => 200 ),
+		'body'     => wp_json_encode( array(
+			'choices' => array(
+				array(
+					'message' => array(
+						'role'    => 'assistant',
+						'content' => 'BYOK auto back-agent',
+					),
+					'finish_reason' => 'stop',
+				),
+			),
+			'usage'   => array(
+				'prompt_tokens'     => 60,
+				'completion_tokens' => 12,
+				'total_tokens'      => 72,
+			),
+		) ),
+	),
+);
+
+$byok_connector = new PressArk_AI_Connector( 'pro' );
+$byok_auto      = $byok_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Compress the current run context.',
+		),
+	),
+	array(),
+	'Back-agent context',
+	false,
+	array(
+		'phase' => 'summarize',
+	)
+);
+
+$byok_auto_request = $pressark_http_requests[0]['body'] ?? array();
+$byok_auto_routing = (array) ( $byok_auto['routing_decision'] ?? array() );
+$byok_auto_snapshot = $byok_connector->get_last_request_snapshot();
+
+assert_routing(
+	'BYOK Back-Agent auto reuses the main BYOK model',
+	'gpt-5.4' === ( $byok_auto_request['model'] ?? '' )
+		&& 'openai/gpt-5.4' === ( $byok_auto_routing['model'] ?? '' )
+		&& 'byok' === ( $byok_auto_routing['selection']['mode'] ?? '' ),
+	'Request: ' . var_export( $byok_auto_request, true ) . ' Routing: ' . var_export( $byok_auto_routing, true )
+);
+assert_routing(
+	'BYOK transport mode is recorded explicitly',
+	'direct' === ( $byok_auto_routing['transport_mode'] ?? '' )
+		&& 'direct' === ( $byok_auto_snapshot['transport_mode'] ?? '' ),
+	'Routing: ' . var_export( $byok_auto_routing, true ) . ' Snapshot: ' . var_export( $byok_auto_snapshot, true )
+);
+
+$pressark_test_options['pressark_summarize_model']        = 'custom';
+$pressark_test_options['pressark_summarize_custom_model'] = 'openai/gpt-5.4-mini';
+$pressark_http_requests                                   = array();
+$pressark_http_responses                                  = array(
+	array(
+		'response' => array( 'code' => 200 ),
+		'body'     => wp_json_encode( array(
+			'choices' => array(
+				array(
+					'message' => array(
+						'role'    => 'assistant',
+						'content' => 'BYOK override back-agent',
+					),
+					'finish_reason' => 'stop',
+				),
+			),
+			'usage'   => array(
+				'prompt_tokens'     => 58,
+				'completion_tokens' => 11,
+				'total_tokens'      => 69,
+			),
+		) ),
+	),
+);
+
+$byok_override = $byok_connector->send_message_raw(
+	array(
+		array(
+			'role'    => 'user',
+			'content' => 'Plan the next retrieval step.',
+		),
+	),
+	array(),
+	'Back-agent context',
+	false,
+	array(
+		'phase' => 'classification',
+	)
+);
+
+$byok_override_request = $pressark_http_requests[0]['body'] ?? array();
+$byok_override_routing = (array) ( $byok_override['routing_decision'] ?? array() );
+
+assert_routing(
+	'BYOK Back-Agent override can use a dedicated model without changing the main BYOK model',
+	'gpt-5.4-mini' === ( $byok_override_request['model'] ?? '' )
+		&& 'openai/gpt-5.4-mini' === ( $byok_override_routing['model'] ?? '' )
+		&& 'openai/gpt-5.4' === (string) ( $pressark_test_options['pressark_byok_model'] ?? '' ),
+	'Request: ' . var_export( $byok_override_request, true ) . ' Routing: ' . var_export( $byok_override_routing, true )
+);
+
+$pressark_test_options['pressark_byok_enabled']          = false;
+$pressark_test_options['pressark_summarize_model']       = 'auto';
+$pressark_test_options['pressark_summarize_custom_model'] = '';
 
 echo "\nResults: {$passed} passed, {$failed} failed\n";
 exit( $failed > 0 ? 1 : 0 );

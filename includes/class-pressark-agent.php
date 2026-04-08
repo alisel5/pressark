@@ -447,14 +447,25 @@ class PressArk_Agent {
 		// v2.3.1: Start with base tools + sticky conversation-scoped groups.
 		// v5.4.0: Heuristic preloads are admitted only if they fit the
 		// current prompt budget.
-		$loader   = new PressArk_Tool_Loader();
-		$tool_set = $loader->resolve( $message, $conversation, $this->tier, $this->loaded_groups, array(
+		$loader       = new PressArk_Tool_Loader();
+		$loader_args  = array(
 			'candidate_groups'      => $preload_groups,
 			'budget_manager'        => $this->budget_manager,
 			'conversation_messages' => $messages,
 			'permission_context'    => $this->tool_permission_context(),
 			'permission_meta'       => $this->tool_permission_meta(),
-		) );
+		);
+		$tool_set     = $this->ai->supports_tool_search()
+			? $loader->resolve_native_search(
+				$this->tier,
+				array_merge(
+					$loader_args,
+					array(
+						'loaded_groups' => $this->loaded_groups,
+					)
+				)
+			)
+			: $loader->resolve( $message, $conversation, $this->tier, $this->loaded_groups, $loader_args );
 
 		$tool_defs                = $tool_set['schemas'];
 		$this->initial_tool_count = $tool_set['tool_count'];
@@ -585,7 +596,7 @@ class PressArk_Agent {
 				$this->actual_model    = (string) ( $api_result['model'] ?? $this->ai->get_model() );
 			}
 
-			$this->context_inspector = $this->build_request_context_snapshot( $round, $tool_set, $messages );
+			$this->context_inspector = $this->build_request_context_snapshot( $round, $tool_set, $messages, $checkpoint );
 
 			if ( ! empty( $api_result['routing_decision'] ) && empty( $this->routing_decision ) ) {
 				$this->routing_decision = (array) $api_result['routing_decision'];
@@ -1169,10 +1180,28 @@ class PressArk_Agent {
 						'zero_hit_count'    => $this->discover_zero_hits,
 						'discover_calls'    => $this->discover_calls,
 						'loaded_groups'     => array_values( array_unique( $this->loaded_groups ) ),
-						'requested_families'=> PressArk_Tool_Catalog::instance()->match_groups( (string) $query ),
+					'requested_families'=> PressArk_Tool_Catalog::instance()->match_groups( (string) $query ),
 					)
 				);
 			}
+
+			$tool_set = $loader->mark_discovered_tools(
+				$tool_set,
+				array_values( array_filter( array_map(
+					static function ( array $row ): string {
+						if ( 'resource' === (string) ( $row['type'] ?? '' ) ) {
+							return '';
+						}
+						return sanitize_key( (string) ( $row['name'] ?? '' ) );
+					},
+					(array) $results
+				) ) ),
+				array(
+					'permission_context' => $this->tool_permission_context(),
+					'permission_meta'    => $this->tool_permission_meta(),
+					'tier'               => $this->tier,
+				)
+			);
 
 			$this->emit_step( 'reading', $name, $tc['arguments'] );
 
@@ -1328,15 +1357,26 @@ class PressArk_Agent {
 	 * @return array Complete result array.
 	 */
 	private function build_result( array $data, array $tool_set, array $initial_groups, ?PressArk_Checkpoint $checkpoint = null ): array {
-		$deferred_groups = array_values( array_filter( array_map(
+		$tool_state         = is_array( $tool_set['tool_state'] ?? null ) ? (array) $tool_set['tool_state'] : array();
+		$loaded_groups      = array_values( array_unique(
+			! empty( $this->loaded_groups ) ? $this->loaded_groups : ( $tool_set['groups'] ?? array() )
+		) );
+		$deferred_group_rows = array_values( array_filter(
+			(array) ( $tool_set['deferred_groups'] ?? array() ),
+			static function ( $candidate ): bool {
+				return is_array( $candidate ) || is_string( $candidate );
+			}
+		) );
+		$deferred_groups    = array_values( array_filter( array_map(
 			static function ( $candidate ) {
 				if ( is_array( $candidate ) ) {
 					return (string) ( $candidate['group'] ?? $candidate['name'] ?? '' );
 				}
 				return is_string( $candidate ) ? $candidate : '';
 			},
-			(array) ( $tool_set['deferred_groups'] ?? array() )
+			$deferred_group_rows
 		) ) );
+		$harness_state      = $this->build_harness_state_snapshot( $tool_set, $checkpoint );
 
 		$base = array_merge( $data, array(
 			'steps'              => $this->steps,
@@ -1351,20 +1391,22 @@ class PressArk_Agent {
 			'agent_rounds'       => $this->model_rounds,
 			'task_type'          => $this->task_type,
 			'suggestions'        => $this->generate_suggestions( $data['message'] ?? '' ),
-			'loaded_groups'      => array_values( array_unique(
-				! empty( $this->loaded_groups ) ? $this->loaded_groups : ( $tool_set['groups'] ?? array() )
-			) ),
+			'loaded_groups'      => $loaded_groups,
 			'tool_loading'  => array(
 				'initial_groups'  => $initial_groups,
-				'final_groups'    => array_values( array_unique(
-					! empty( $this->loaded_groups ) ? $this->loaded_groups : ( $tool_set['groups'] ?? array() )
-				) ),
+				'final_groups'    => $loaded_groups,
 				'deferred_groups' => $deferred_groups,
+				'deferred_group_rows' => $deferred_group_rows,
 				'discover_calls'  => $this->discover_calls,
 				'discover_zero_hits' => $this->discover_zero_hits,
 				'load_calls'      => $this->load_calls,
 				'initial_count'   => $this->initial_tool_count,
 				'final_count'     => $tool_set['tool_count'] ?? 0,
+				'visible_count'   => (int) ( $tool_state['visible_tool_count'] ?? count( (array) ( $tool_set['effective_visible_tools'] ?? array() ) ) ),
+				'loaded_count'    => (int) ( $tool_state['loaded_tool_count'] ?? ( $tool_set['tool_count'] ?? 0 ) ),
+				'searchable_count' => (int) ( $tool_state['searchable_tool_count'] ?? 0 ),
+				'discovered_count' => (int) ( $tool_state['discovered_tool_count'] ?? 0 ),
+				'blocked_count'    => (int) ( $tool_state['blocked_tool_count'] ?? 0 ),
 				'capability_map_variant' => (string) ( $tool_set['capability_map_variant'] ?? '' ),
 				'history_budget'  => $this->history_budget,
 			),
@@ -1378,6 +1420,8 @@ class PressArk_Agent {
 				(array) ( $tool_set['effective_visible_tools'] ?? $tool_set['tool_names'] ?? array() )
 			) ),
 			'permission_surface' => (array) ( $tool_set['permission_surface'] ?? array() ),
+			'tool_state'         => $tool_state,
+			'harness_state'      => $harness_state,
 			'routing_decision'   => $this->routing_decision,
 			'activity_events'    => $this->activity_events,
 		) );
@@ -1531,6 +1575,11 @@ class PressArk_Agent {
 	 * @return array|null
 	 */
 	private function reconstruct_leaked_tool_call( string $text ): ?array {
+		$native_tool_call = $this->reconstruct_parenthesized_tool_call( $text );
+		if ( ! empty( $native_tool_call ) ) {
+			return $native_tool_call;
+		}
+
 		if ( ! preg_match( '/\b(?:post_id|post\s+id|review\s+id|comment\s+id|ID)\b[):.\s]*[:=#-]?\s*(\d+)\b/i', $text, $post_id_match ) ) {
 			return null;
 		}
@@ -1597,6 +1646,122 @@ class PressArk_Agent {
 		$tool_call['arguments']['changes'] = $changes;
 
 		return $tool_call;
+	}
+
+	/**
+	 * Reconstruct leaked native-style read calls such as read_content(id=33).
+	 *
+	 * Only read-class tools are recovered here so the safety profile stays
+	 * aligned with the existing automatic read orchestration.
+	 *
+	 * @param string $text Assistant text content.
+	 * @return array|null
+	 */
+	private function reconstruct_parenthesized_tool_call( string $text ): ?array {
+		$tool_names = array_merge(
+			array_keys( PressArk_Operation_Registry::all() ),
+			array_keys( PressArk_Operation_Registry::get_aliases() )
+		);
+		$tool_names = array_values( array_unique( array_filter( array_map( 'sanitize_key', $tool_names ) ) ) );
+
+		if ( empty( $tool_names ) ) {
+			return null;
+		}
+
+		$escaped_names = array_map(
+			static fn( string $name ): string => preg_quote( $name, '/' ),
+			$tool_names
+		);
+		$tool_pattern = implode( '|', $escaped_names );
+
+		if ( ! preg_match( '/@?\b(' . $tool_pattern . ')\s*\(([^()]*)\)/i', $text, $matches ) ) {
+			return null;
+		}
+
+		$tool_name = PressArk_Operation_Registry::resolve_alias( sanitize_key( (string) ( $matches[1] ?? '' ) ) );
+		$arguments = $this->parse_parenthesized_tool_arguments( (string) ( $matches[2] ?? '' ) );
+
+		if ( isset( $arguments['id'] ) && ! isset( $arguments['post_id'] ) ) {
+			$arguments['post_id'] = $arguments['id'];
+		}
+		if ( isset( $arguments['page_id'] ) && ! isset( $arguments['post_id'] ) ) {
+			$arguments['post_id'] = $arguments['page_id'];
+		}
+		unset( $arguments['id'], $arguments['page_id'] );
+
+		if ( '' === $tool_name || 'read' !== self::classify_tool( $tool_name, $arguments ) ) {
+			return null;
+		}
+
+		return array(
+			'id'        => 'recovered_' . substr( md5( $tool_name . ':' . wp_json_encode( $arguments ) . ':' . $text ), 0, 12 ),
+			'name'      => $tool_name,
+			'arguments' => $arguments,
+		);
+	}
+
+	/**
+	 * Parse a simple key=value argument list from leaked parenthesized tool text.
+	 *
+	 * @param string $argument_string Raw argument substring.
+	 * @return array<string,mixed>
+	 */
+	private function parse_parenthesized_tool_arguments( string $argument_string ): array {
+		$arguments = array();
+
+		if ( ! preg_match_all(
+			'/([a-z_][a-z0-9_]*)\s*=\s*("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|[^,\s)]+)/i',
+			$argument_string,
+			$matches,
+			PREG_SET_ORDER
+		) ) {
+			return $arguments;
+		}
+
+		foreach ( $matches as $match ) {
+			$key   = sanitize_key( (string) ( $match[1] ?? '' ) );
+			$value = trim( (string) ( $match[2] ?? '' ) );
+
+			if ( '' === $key || '' === $value ) {
+				continue;
+			}
+
+			$arguments[ $key ] = $this->normalize_leaked_argument_value( $value );
+		}
+
+		return $arguments;
+	}
+
+	/**
+	 * Normalize a leaked argument token into a scalar PHP value.
+	 *
+	 * @param string $value Raw token value.
+	 * @return mixed
+	 */
+	private function normalize_leaked_argument_value( string $value ) {
+		$value = trim( $value );
+
+		if ( preg_match( '/^-?\d+$/', $value ) ) {
+			return (int) $value;
+		}
+
+		$lower = strtolower( $value );
+		if ( 'true' === $lower ) {
+			return true;
+		}
+		if ( 'false' === $lower ) {
+			return false;
+		}
+
+		if (
+			( str_starts_with( $value, '"' ) && str_ends_with( $value, '"' ) )
+			|| ( str_starts_with( $value, '\'' ) && str_ends_with( $value, '\'' ) )
+		) {
+			$value = substr( $value, 1, -1 );
+			$value = stripcslashes( $value );
+		}
+
+		return $value;
 	}
 
 	/**
@@ -1691,6 +1856,9 @@ class PressArk_Agent {
 
 		return (bool) preg_match(
 			'/\b(?:' . $tool_pattern . ')\b(?:\s|["\':=\-]){0,24}(?:json\b(?:\s|:){0,8})?[{\[]/i',
+			$text
+		) || (bool) preg_match(
+			'/@?\b(?:' . $tool_pattern . ')\s*\([^()\n]+\)/i',
 			$text
 		);
 	}
@@ -2006,6 +2174,283 @@ class PressArk_Agent {
 		}
 	}
 
+	/**
+	 * Build the compact harness-state snapshot shared by prompt inspection and
+	 * chat-facing run visibility surfaces.
+	 */
+	private function build_harness_state_snapshot( array $tool_set, ?PressArk_Checkpoint $checkpoint = null ): array {
+		$tool_state         = is_array( $tool_set['tool_state'] ?? null ) ? (array) $tool_set['tool_state'] : array();
+		$permission_surface = (array) ( $tool_set['permission_surface'] ?? array() );
+		$loaded_groups      = array_values(
+			array_unique(
+				array_filter(
+					array_map(
+						'sanitize_key',
+						(array) ( $this->loaded_groups ?: ( $tool_set['groups'] ?? array() ) )
+					)
+				)
+			)
+		);
+		$visibility_state   = class_exists( 'PressArk_Policy_Diagnostics' )
+			? PressArk_Policy_Diagnostics::build_harness_visibility_summary(
+				$permission_surface,
+				$tool_state,
+				array(
+					'loaded_groups'   => $loaded_groups,
+					'deferred_groups' => (array) ( $tool_set['deferred_groups'] ?? array() ),
+				)
+			)
+			: array(
+				'loaded_groups'  => $loaded_groups,
+				'deferred_groups'=> array_values( array_filter( array_map(
+					static function ( $candidate ): string {
+						if ( is_array( $candidate ) ) {
+							return sanitize_key( (string) ( $candidate['group'] ?? $candidate['name'] ?? '' ) );
+						}
+						return is_string( $candidate ) ? sanitize_key( $candidate ) : '';
+					},
+					(array) ( $tool_set['deferred_groups'] ?? array() )
+				) ) ),
+				'blocked_groups' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['blocked_groups'] ?? array() ) ) ) ),
+				'hidden_reasons' => array_values( array_filter(
+					array_map(
+						static function ( $row ) {
+							return is_array( $row ) ? $row : null;
+						},
+						(array) ( $permission_surface['hidden_reason_rows'] ?? array() )
+					)
+				) ),
+			);
+		$discover_state     = $this->build_harness_discovery_state();
+		$context_trim       = $this->build_harness_context_trim_snapshot( $checkpoint );
+		$route_status       = $this->build_harness_route_status_snapshot();
+		$recovery_hints     = array();
+
+		foreach ( (array) ( $visibility_state['recovery_hints'] ?? array() ) as $hint ) {
+			$hint = sanitize_text_field( (string) $hint );
+			if ( '' !== $hint ) {
+				$recovery_hints[ $hint ] = true;
+			}
+		}
+		if ( ! empty( $context_trim['hint'] ) ) {
+			$recovery_hints[ sanitize_text_field( (string) $context_trim['hint'] ) ] = true;
+		}
+		if ( ! empty( $route_status['hint'] ) ) {
+			$recovery_hints[ sanitize_text_field( (string) $route_status['hint'] ) ] = true;
+		}
+		if ( ! empty( $discover_state['hint'] ) ) {
+			$recovery_hints[ sanitize_text_field( (string) $discover_state['hint'] ) ] = true;
+		}
+
+		return array_filter(
+			array(
+				'contract'       => 'harness_state',
+				'version'        => 1,
+				'loaded_groups'  => array_values( array_filter( array_map( 'sanitize_key', (array) ( $visibility_state['loaded_groups'] ?? $loaded_groups ) ) ) ),
+				'deferred_groups'=> array_values( array_filter( array_map( 'sanitize_key', (array) ( $visibility_state['deferred_groups'] ?? array() ) ) ) ),
+				'deferred_rows'  => array_values(
+					array_slice(
+						array_values(
+							array_filter(
+								array_map(
+									static function ( $row ) {
+										return is_array( $row ) ? $row : null;
+									},
+									(array) ( $visibility_state['deferred_rows'] ?? array() )
+								)
+							)
+						),
+						0,
+						4
+					)
+				),
+				'blocked_groups' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $visibility_state['blocked_groups'] ?? array() ) ) ) ),
+				'hidden_reasons' => array_values( array_slice( (array) ( $visibility_state['hidden_reasons'] ?? array() ), 0, 4 ) ),
+				'discover'       => $discover_state,
+				'context_trim'   => $context_trim,
+				'route_status'   => $route_status,
+				'recovery_hints' => array_slice( array_keys( $recovery_hints ), 0, 4 ),
+			),
+			static function ( $value, $key ) {
+				if ( in_array( $key, array( 'contract', 'version' ), true ) ) {
+					return true;
+				}
+
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			},
+			ARRAY_FILTER_USE_BOTH
+		);
+	}
+
+	/**
+	 * Surface discovery dead-ends so the model stops repeating the same miss.
+	 */
+	private function build_harness_discovery_state(): array {
+		if ( $this->discover_calls <= 0 && $this->discover_zero_hits <= 0 ) {
+			return array();
+		}
+
+		$hint = '';
+		if ( $this->discover_zero_hits >= 3 ) {
+			$hint = 'Stop retrying the same discovery search. Load a visible group directly or explain the limitation.';
+		} elseif ( $this->discover_zero_hits > 0 ) {
+			$hint = 'If discovery keeps missing, load a visible group directly instead of repeating the same search.';
+		}
+
+		return array_filter(
+			array(
+				'discover_calls'   => $this->discover_calls > 0 ? $this->discover_calls : null,
+				'zero_hit_streak'  => $this->discover_zero_hits > 0 ? $this->discover_zero_hits : null,
+				'hint'             => $hint,
+			),
+			static function ( $value ) {
+				return null !== $value && '' !== (string) $value;
+			}
+		);
+	}
+
+	/**
+	 * Summarize any active context trimming/compaction state.
+	 */
+	private function build_harness_context_trim_snapshot( ?PressArk_Checkpoint $checkpoint = null ): array {
+		if ( ! $checkpoint ) {
+			return array();
+		}
+
+		$compaction = (array) ( $checkpoint->get_context_capsule()['compaction'] ?? array() );
+		$count      = max( 0, (int) ( $compaction['count'] ?? 0 ) );
+		if ( $count <= 0 ) {
+			return array();
+		}
+
+		$reason = sanitize_key( (string) ( $compaction['last_reason'] ?? '' ) );
+		$detail = 1 === $count
+			? 'Earlier context was compacted to keep the run moving.'
+			: $count . ' context compactions kept this run within budget.';
+
+		return array_filter(
+			array(
+				'count'  => $count,
+				'reason' => $reason,
+				'label'  => 'Context trimmed',
+				'detail' => $detail,
+				'hint'   => 'If something seems missing, continue from the latest result or rerun with a narrower scope.',
+			),
+			static function ( $value ) {
+				return ! ( is_int( $value ) ? $value <= 0 : '' === (string) $value );
+			}
+		);
+	}
+
+	/**
+	 * Summarize active route degradation or fallback state for the next round.
+	 */
+	private function build_harness_route_status_snapshot(): array {
+		$routing  = is_array( $this->routing_decision ) ? $this->routing_decision : array();
+		$fallback = is_array( $routing['fallback'] ?? null ) ? $routing['fallback'] : array();
+
+		if ( empty( $fallback['used'] ) ) {
+			return array();
+		}
+
+		$failure = sanitize_text_field( (string) ( $fallback['failure_class'] ?? '' ) );
+		$detail  = '' !== $failure
+			? 'Route degraded after ' . strtolower( str_replace( '_', ' ', $failure ) ) . '.'
+			: 'The run switched to a fallback model to keep moving.';
+
+		return array(
+			'state'  => 'degraded',
+			'label'  => 'Fallback route active',
+			'detail' => $detail,
+			'hint'   => 'If you need the strongest tool or format support, retry in Deep Mode or rerun later.',
+		);
+	}
+
+	/**
+	 * Render the model-visible harness-state block that explains what is
+	 * loaded, deferred, blocked, hidden, trimmed, or degraded right now.
+	 */
+	private function build_harness_state_prompt_block( array $tool_set, ?PressArk_Checkpoint $checkpoint = null ): string {
+		$state = $this->build_harness_state_snapshot( $tool_set, $checkpoint );
+		if ( empty( $state ) ) {
+			return '';
+		}
+
+		$payload = array_filter(
+			array(
+				'loaded_groups'  => array_values( array_slice( (array) ( $state['loaded_groups'] ?? array() ), 0, 8 ) ),
+				'deferred_groups'=> array_values( array_slice( (array) ( $state['deferred_groups'] ?? array() ), 0, 4 ) ),
+				'blocked_groups' => array_values( array_slice( (array) ( $state['blocked_groups'] ?? array() ), 0, 4 ) ),
+				'hidden_reasons' => array_values(
+					array_map(
+						static function ( array $row ): array {
+							return array_filter(
+								array(
+									'kind'   => sanitize_key( (string) ( $row['kind'] ?? '' ) ),
+									'count'  => max( 0, (int) ( $row['count'] ?? 0 ) ),
+									'groups' => array_values( array_slice( array_filter( array_map( 'sanitize_key', (array) ( $row['groups'] ?? array() ) ) ), 0, 3 ) ),
+									'hint'   => sanitize_text_field( (string) ( $row['hint'] ?? '' ) ),
+								),
+								static function ( $value ) {
+									return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value || 0 === (int) $value );
+								}
+							);
+						},
+						array_slice( (array) ( $state['hidden_reasons'] ?? array() ), 0, 3 )
+					)
+				),
+				'context_trim'   => ! empty( $state['context_trim'] )
+					? array_filter(
+						array(
+							'count'  => max( 0, (int) ( $state['context_trim']['count'] ?? 0 ) ),
+							'reason' => sanitize_key( (string) ( $state['context_trim']['reason'] ?? '' ) ),
+							'hint'   => sanitize_text_field( (string) ( $state['context_trim']['hint'] ?? '' ) ),
+						),
+						static function ( $value ) {
+							return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value || 0 === (int) $value );
+						}
+					)
+					: array(),
+				'route_status'   => ! empty( $state['route_status'] )
+					? array_filter(
+						array(
+							'state' => sanitize_key( (string) ( $state['route_status']['state'] ?? '' ) ),
+							'label' => sanitize_text_field( (string) ( $state['route_status']['label'] ?? '' ) ),
+							'hint'  => sanitize_text_field( (string) ( $state['route_status']['hint'] ?? '' ) ),
+						),
+						static function ( $value ) {
+							return '' !== (string) $value;
+						}
+					)
+					: array(),
+				'discover'       => ! empty( $state['discover'] )
+					? array_filter(
+						array(
+							'discover_calls'  => max( 0, (int) ( $state['discover']['discover_calls'] ?? 0 ) ),
+							'zero_hit_streak' => max( 0, (int) ( $state['discover']['zero_hit_streak'] ?? 0 ) ),
+							'hint'            => sanitize_text_field( (string) ( $state['discover']['hint'] ?? '' ) ),
+						),
+						static function ( $value ) {
+							return ! ( is_int( $value ) ? $value <= 0 : '' === (string) $value );
+						}
+					)
+					: array(),
+				'recovery_hints' => array_values( array_slice( array_filter( array_map( 'sanitize_text_field', (array) ( $state['recovery_hints'] ?? array() ) ) ), 0, 3 ) ),
+			),
+			static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			}
+		);
+		$json = wp_json_encode( $payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		if ( ! is_string( $json ) || '' === trim( $json ) ) {
+			return '';
+		}
+
+		return "## Harness State\n"
+			. $json
+			. "\nTreat this as harness truth. Do not retry blocked or hidden capabilities until the state changes; load deferred groups only when the user's goal requires them.";
+	}
+
 	private function build_round_system_prompt(
 		string $screen,
 		int $post_id,
@@ -2038,101 +2483,6 @@ class PressArk_Agent {
 		$tool_set['prompt_assembly'] = $this->describe_round_prompt_assembly( $prompt_sections );
 
 		return $this->compose_round_prompt_sections( $prompt_sections );
-
-		$context       = new PressArk_Context();
-		$system_prompt = $context->build( $screen, $post_id );
-
-		if ( $this->automation_context ) {
-			$addendum = PressArk_AI_Connector::build_automation_addendum( $this->automation_context );
-			if ( ! empty( $addendum ) ) {
-				$system_prompt .= "\n\n" . $addendum;
-			}
-		}
-
-		// v4.3.0: Inject conditional prompt blocks (Elementor/WC/FSE rules)
-		// only when the task type is relevant. Saves ~1,000 tokens/round on chat.
-		$conditional_blocks = PressArk_AI_Connector::get_conditional_blocks(
-			$task_type,
-			$screen,
-			(array) ( $this->loaded_groups ?: ( $tool_set['groups'] ?? array() ) )
-		);
-		if ( ! empty( $conditional_blocks ) ) {
-			$system_prompt .= $conditional_blocks;
-		}
-
-		$task_skills = PressArk_Skills::get_dynamic_task_scoped( $task_type, array(
-			'has_woo'       => class_exists( 'WooCommerce' ),
-			'has_elementor' => defined( 'ELEMENTOR_VERSION' ),
-		) );
-		if ( ! empty( $task_skills ) ) {
-			$system_prompt .= "\n\n" . $task_skills;
-		}
-
-		$execution_guard = PressArk_Execution_Ledger::build_runtime_guard( $checkpoint->get_execution() );
-		if ( ! empty( $execution_guard ) && self::is_continuation_message( $message ) ) {
-			$system_prompt .= "\n\n" . $execution_guard;
-		}
-
-		// v5.2.0: When a previous round proposed writes that the user has NOT
-		// yet approved (confirm card still pending), inject an explicit notice.
-		// Without this, the model sees its own "I'll apply changes" text in
-		// history and assumes the actions were applied.
-		if ( $checkpoint->has_unapplied_confirms() ) {
-			$pending_names = array_map(
-				fn( $p ) => $p['action'] . ( $p['target'] ? ' on ' . $p['target'] : '' ),
-				$checkpoint->get_pending()
-			);
-			$system_prompt .= "\n\n## Pending Confirmation\n"
-				. "You previously proposed these write actions but they were NOT applied yet — "
-				. "the user has not clicked Approve on the confirm card:\n- "
-				. implode( "\n- ", $pending_names )
-				. "\nDo NOT claim these actions are done. If the user asks you to proceed, "
-				. "re-emit the tool calls so a new confirm card is generated.";
-		}
-
-		// v4.3.2: Inject execution plan if multi-step.
-		if ( count( $this->plan_steps ) > 1 ) {
-			$plan_lines = array();
-			foreach ( $this->plan_steps as $i => $step ) {
-				$plan_lines[] = ( $i + 1 ) . '. ' . $step;
-			}
-			$plan_block = "PLAN:\n" . implode( "\n", $plan_lines );
-			if ( $this->plan_step <= count( $this->plan_steps ) ) {
-				$plan_block .= "\nYou are on step {$this->plan_step}. Complete each step before moving to the next.";
-			}
-			$system_prompt .= "\n\n" . $plan_block;
-		}
-
-		if ( 'generate' === $task_type ) {
-			$system_prompt .= "\n\nIMPORTANT: Create the content first with currently loaded tools. "
-				. 'Load SEO or specialty groups only after the content exists.';
-		}
-
-		// v4.2.x: Adjust caution level based on environment.
-		$env_type = function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production';
-		if ( 'production' !== $env_type ) {
-			$system_prompt .= "\n\nENVIRONMENT NOTE: This is a {$env_type} environment. "
-			                . "You can be less cautious about experimental changes — they won't affect the live site. "
-			                . "Still use the preview/confirm flow, but don't over-warn about risks.";
-		}
-
-		// Operator-authored playbook memory — selective task/group injection.
-		$playbook_context = $this->resolve_site_playbook(
-			$task_type,
-			$this->resolve_playbook_tool_groups( $tool_set ),
-			$message
-		);
-		if ( '' !== ( $playbook_context['text'] ?? '' ) ) {
-			$system_prompt .= (string) $playbook_context['text'];
-		}
-
-		$tool_set       = $this->apply_budgeted_tool_support( $tool_set, $system_prompt, $messages );
-		$capability_map = $tool_set['capability_map'] ?? '';
-		if ( ! empty( $capability_map ) ) {
-			$system_prompt .= "\n\n" . $capability_map;
-		}
-
-		return $system_prompt;
 	}
 
 	private function build_round_prompt_sections(
@@ -2187,6 +2537,14 @@ class PressArk_Agent {
 				(string) ( $read_strata[ $stratum_key ] ?? '' )
 			);
 		}
+
+		$harness_prompt_block = $this->build_harness_state_prompt_block( $tool_set, $checkpoint );
+		$this->append_round_prompt_section(
+			$sections['volatile'],
+			$sections['labels']['volatile'],
+			'harness_state',
+			$harness_prompt_block
+		);
 
 		if ( $this->automation_context ) {
 			$this->append_round_prompt_section(
@@ -2310,6 +2668,7 @@ class PressArk_Agent {
 				$screen,
 				(array) ( $this->loaded_groups ?: ( $tool_set['groups'] ?? array() ) )
 			),
+			'harness_state'        => $this->build_harness_state_snapshot( $tool_set, $checkpoint ),
 			'site_profile_snapshots' => $this->extract_site_profile_snapshot_summaries( $checkpoint->get_read_state() ),
 		);
 
@@ -2368,6 +2727,7 @@ class PressArk_Agent {
 			'execution_guard'       => 'Execution Guard',
 			'pending_confirmation'  => 'Pending Confirmation',
 			'execution_plan'        => 'Execution Plan',
+			'harness_state'         => 'Harness State',
 			'generation_order'      => 'Generation Ordering',
 			'environment_note'      => 'Environment Note',
 			'capability_map'        => 'Capability Map',
@@ -2675,11 +3035,13 @@ class PressArk_Agent {
 		} );
 	}
 
-	private function build_request_context_snapshot( int $round, array $tool_set, array $messages ): array {
+	private function build_request_context_snapshot( int $round, array $tool_set, array $messages, ?PressArk_Checkpoint $checkpoint = null ): array {
 		$provider_request = $this->ai->get_last_request_snapshot();
 		$prompt_assembly  = (array) ( $tool_set['prompt_assembly'] ?? array() );
 		$inspector_meta   = is_array( $prompt_assembly['inspector'] ?? null ) ? $prompt_assembly['inspector'] : array();
 		$permission_surface = (array) ( $tool_set['permission_surface'] ?? array() );
+		$tool_state         = is_array( $tool_set['tool_state'] ?? null ) ? (array) $tool_set['tool_state'] : array();
+		$harness_state      = $this->build_harness_state_snapshot( $tool_set, $checkpoint );
 
 		return array(
 			'contract' => 'context_inspector',
@@ -2716,20 +3078,28 @@ class PressArk_Agent {
 						'preview'  => sanitize_text_field( (string) ( $inspector_meta['site_notes_preview'] ?? '' ) ),
 					)
 					: array(),
+				'harness_state'        => is_array( $inspector_meta['harness_state'] ?? null ) ? (array) $inspector_meta['harness_state'] : $harness_state,
 				'site_profiles'        => (array) ( $inspector_meta['site_profile_snapshots'] ?? array() ),
 			), static function ( $value ) {
 				return ! ( is_array( $value ) ? empty( $value ) : false === $value || '' === (string) $value );
 			} ),
 			'tool_surface' => array_filter( array(
-				'context'          => sanitize_key( (string) ( $permission_surface['context'] ?? '' ) ),
-				'visible_tools'    => array_values( array_filter( array_map( 'sanitize_key', (array) ( $permission_surface['visible_tools'] ?? array() ) ) ) ),
+				'context'          => sanitize_key( (string) ( $tool_state['context'] ?? $permission_surface['context'] ?? '' ) ),
+				'visible_tools'    => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['visible_tools'] ?? $permission_surface['visible_tools'] ?? array() ) ) ) ),
+				'loaded_tools'     => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['loaded_tools'] ?? $permission_surface['visible_tools'] ?? array() ) ) ) ),
+				'searchable_tools' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['searchable_tools'] ?? array() ) ) ) ),
+				'discovered_tools' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['discovered_tools'] ?? array() ) ) ) ),
+				'blocked_tools'    => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['blocked_tools'] ?? array() ) ) ) ),
+				'blocked_summary'  => (array) ( $tool_state['blocked_summary'] ?? array() ),
 				'hidden_tools'     => array_values( array_filter( array_map( 'sanitize_key', (array) ( $permission_surface['hidden_tools'] ?? array() ) ) ) ),
 				'hidden_summary'   => (array) ( $permission_surface['hidden_summary'] ?? array() ),
 				'hidden_decisions' => $this->simplify_hidden_decisions( (array) ( $permission_surface['hidden_decisions'] ?? array() ) ),
+				'state_rows'       => (array) ( $tool_state['tools'] ?? array() ),
 			), static function ( $value ) {
 				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
 			} ),
 			'messages'        => $this->summarize_context_messages( $messages ),
+			'harness_state'   => $harness_state,
 			'token_footprint' => $this->build_token_footprint_snapshot( $tool_set, $provider_request ),
 		);
 	}
@@ -2737,6 +3107,7 @@ class PressArk_Agent {
 	private function build_context_inspector( array $tool_set, ?PressArk_Checkpoint $checkpoint = null ): array {
 		$inspector = is_array( $this->context_inspector ) ? $this->context_inspector : array();
 		if ( empty( $inspector ) ) {
+			$tool_state = is_array( $tool_set['tool_state'] ?? null ) ? (array) $tool_set['tool_state'] : array();
 			$inspector = array(
 				'contract' => 'context_inspector',
 				'version'  => 1,
@@ -2744,14 +3115,22 @@ class PressArk_Agent {
 					'capability_map_variant' => sanitize_key( (string) ( $tool_set['capability_map_variant'] ?? '' ) ),
 				),
 				'tool_surface' => array_filter( array(
-					'visible_tools'  => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_set['effective_visible_tools'] ?? array() ) ) ) ),
-					'hidden_summary' => (array) ( $tool_set['permission_surface']['hidden_summary'] ?? array() ),
+					'visible_tools'    => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['visible_tools'] ?? $tool_set['effective_visible_tools'] ?? array() ) ) ) ),
+					'loaded_tools'     => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['loaded_tools'] ?? $tool_set['effective_visible_tools'] ?? array() ) ) ) ),
+					'searchable_tools' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['searchable_tools'] ?? array() ) ) ) ),
+					'discovered_tools' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['discovered_tools'] ?? array() ) ) ) ),
+					'blocked_tools'    => array_values( array_filter( array_map( 'sanitize_key', (array) ( $tool_state['blocked_tools'] ?? array() ) ) ) ),
+					'blocked_summary'  => (array) ( $tool_state['blocked_summary'] ?? array() ),
+					'hidden_summary'   => (array) ( $tool_set['permission_surface']['hidden_summary'] ?? array() ),
+					'state_rows'       => (array) ( $tool_state['tools'] ?? array() ),
 				), static function ( $value ) {
 					return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
 				} ),
 				'token_footprint' => $this->build_token_footprint_snapshot( $tool_set, $this->ai->get_last_request_snapshot() ),
 			);
 		}
+
+		$inspector['harness_state'] = $this->build_harness_state_snapshot( $tool_set, $checkpoint );
 
 		if ( $checkpoint ) {
 			$read_rows    = $this->simplify_read_snapshots( $checkpoint->get_read_state() );
@@ -5155,6 +5534,13 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 		$groups = array();
 		$mentions_content_surface = self::mentions_content_surface( $msg );
 
+		if ( self::is_explicit_content_read_request( $msg ) ) {
+			$groups[] = 'blocks';
+			if ( defined( 'ELEMENTOR_VERSION' ) ) {
+				$groups[] = 'elementor';
+			}
+		}
+
 		// Content/generation intent.
 		if ( 'generate' === $task_type ) {
 			$groups[] = 'generation';
@@ -5210,6 +5596,10 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 		$task_type = (string) ( $local_plan['task_type'] ?? '' );
 		$groups    = array_values( array_filter( (array) ( $local_plan['groups'] ?? array() ), 'is_string' ) );
 
+		if ( self::is_explicit_content_read_request( $message ) ) {
+			return true;
+		}
+
 		if ( 'generate' === $task_type ) {
 			if ( count( $groups ) < 2 ) {
 				return false;
@@ -5236,6 +5626,13 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 			},
 			$groups
 		) ) );
+
+		if ( self::is_explicit_content_read_request( $msg ) ) {
+			$normalized[] = 'blocks';
+			if ( defined( 'ELEMENTOR_VERSION' ) ) {
+				$normalized[] = 'elementor';
+			}
+		}
 
 		if ( 'generate' === $task_type && $mentions_content_surface ) {
 			$normalized = array_values( array_diff( $normalized, array( 'seo' ) ) );
@@ -5303,6 +5700,13 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 		);
 	}
 
+	private static function is_explicit_content_read_request( string $message ): bool {
+		return (bool) preg_match(
+			'/\b(?:read|inspect|review|analyz(?:e|ing)?|summari(?:ze|zing)|check|show|look\s+at|what(?:\'s| is))\b.*\b(?:page|post|article|content|copy|homepage|home\s+page|landing\s+page)\b/i',
+			$message
+		);
+	}
+
 	public static function classify_task( string $message, array $conversation = array() ): string {
 		// v3.7.3: Continuation detection — classify based on the original
 		// request when the current message is a post-approval continuation.
@@ -5333,6 +5737,10 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 
 		// Analyze: scan, audit, review, check, report, compare.
 		if ( preg_match( '/\b(scan|audit|review|check|report|compar|analyz|assess|inspect|summar|overview|status)/i', $msg ) ) {
+			return 'analyze';
+		}
+
+		if ( self::is_explicit_content_read_request( $msg ) ) {
 			return 'analyze';
 		}
 

@@ -43,7 +43,7 @@ class PressArk_Run_Approval_Service {
 			return array( 'success' => false, 'message' => 'User does not own this run.' );
 		}
 
-		if ( 'awaiting_confirm' !== $run['status'] ) {
+		if ( ! in_array( $run['status'], array( 'awaiting_confirm', 'partially_confirmed' ), true ) ) {
 			return array( 'success' => false, 'message' => "Run is in \"{$run['status']}\" state, not awaiting_confirm." );
 		}
 
@@ -58,11 +58,35 @@ class PressArk_Run_Approval_Service {
 			return array( 'success' => false, 'message' => 'No action data in pending_actions.' );
 		}
 
+		$action_meta = is_array( $action['meta'] ?? null ) ? $action['meta'] : array();
+		$permission_meta = is_array( $action_meta['permission_meta'] ?? null ) ? $action_meta['permission_meta'] : array();
+		$permission_meta['run_id']       = $run_id;
+		$permission_meta['action_index'] = $action_index;
+		$permission_meta['source']       = 'automation_confirm';
+		$action_meta['approval_granted'] = true;
+		$action_meta['permission_meta']  = $permission_meta;
+		if ( empty( $action_meta['permission_context'] ) ) {
+			$action_meta['permission_context'] = 'interactive';
+		}
+		$action['meta'] = $action_meta;
+		$action_name    = (string) ( $action['type'] ?? 'confirmed_action' );
+
 		// Execute the action.
 		wp_set_current_user( $user_id );
 		$logger = new PressArk_Action_Logger();
 		$engine = new PressArk_Action_Engine( $logger );
 		$result = $engine->execute_single( $action );
+		$result = self::attach_approval_outcome(
+			$result,
+			'approved',
+			array(
+				'action'      => $action_name,
+				'actor'       => 'system',
+				'scope'       => 'confirm',
+				'source'      => 'approval',
+				'reason_code' => 'automation_confirmed',
+			)
+		);
 
 		// Track usage.
 		if ( ! empty( $result['success'] ) ) {
@@ -79,12 +103,23 @@ class PressArk_Run_Approval_Service {
 			$action_args = is_array( $action['params'] ?? null ) ? $action['params'] : array();
 			if ( empty( $action_args ) ) {
 				$action_args = $action;
-				unset( $action_args['type'], $action_args['description'] );
+				unset( $action_args['type'], $action_args['description'], $action_args['meta'] );
 			}
+			self::remember_approval_outcome(
+				$checkpoint,
+				$action_name,
+				'approved',
+				array(
+					'scope'       => 'confirm',
+					'source'      => 'approval',
+					'actor'       => 'system',
+					'reason_code' => 'automation_confirmed',
+				)
+			);
 			$checkpoint->record_execution_write( (string) ( $action['type'] ?? '' ), $action_args, $result );
 			if ( ! empty( $result['success'] ) ) {
 				$checkpoint->clear_blockers();
-				$checkpoint->add_approval( (string) ( $action['type'] ?? 'confirmed_action' ) );
+				$checkpoint->add_approval( $action_name );
 				$checkpoint->set_workflow_stage( 'settled' );
 				$checkpoint->clear_plan_state(); // v5.3.0
 
@@ -121,7 +156,7 @@ class PressArk_Run_Approval_Service {
 		$run_store = new PressArk_Run_Store();
 		$run       = $run_store->get( $run_id );
 
-		if ( ! $run || 'awaiting_confirm' !== $run['status'] ) {
+		if ( ! $run || ! in_array( $run['status'], array( 'awaiting_confirm', 'partially_confirmed' ), true ) ) {
 			return array( 'success' => false, 'results' => array(), 'policy_blocked' => array() );
 		}
 
@@ -139,10 +174,31 @@ class PressArk_Run_Approval_Service {
 		foreach ( $pending as $idx => $item ) {
 			$action = $item['action'] ?? $item;
 			$op_name = $action['type'] ?? '';
+			$action_meta = is_array( $action['meta'] ?? null ) ? $action['meta'] : array();
+			$permission_meta = is_array( $action_meta['permission_meta'] ?? null ) ? $action_meta['permission_meta'] : array();
+			$permission_meta['run_id']       = $run_id;
+			$permission_meta['action_index'] = $idx;
+			$permission_meta['source']       = 'automation_confirm';
+			$action_meta['permission_context'] = class_exists( 'PressArk_Policy_Engine' )
+				? PressArk_Policy_Engine::CONTEXT_AUTOMATION
+				: 'automation';
+			$action_meta['permission_meta'] = $permission_meta;
+			$action['meta'] = $action_meta;
 
-			// v5.4.0: Route through Policy Engine (falls back to Automation_Policy
-			// when no custom rules are registered).
-			if ( class_exists( 'PressArk_Policy_Engine' ) ) {
+			// Route unattended approvals through the canonical permission service.
+			if ( class_exists( 'PressArk_Permission_Service' ) ) {
+				$decision = PressArk_Permission_Service::evaluate(
+					$op_name,
+					$action['params'] ?? array(),
+					class_exists( 'PressArk_Policy_Engine' ) ? PressArk_Policy_Engine::CONTEXT_AUTOMATION : 'automation',
+					array( 'policy' => $policy, 'run_id' => $run_id, 'user_id' => $user_id )
+				);
+				if ( ! PressArk_Permission_Decision::is_allowed( $decision ) ) {
+					$blocked[] = implode( ' ', $decision['reasons'] ?? array( "Blocked: {$op_name}" ) );
+					$blocked_decisions[ $idx ] = $decision;
+					continue;
+				}
+			} elseif ( class_exists( 'PressArk_Policy_Engine' ) ) {
 				$verdict = PressArk_Policy_Engine::evaluate(
 					$op_name,
 					$action['params'] ?? array(),
@@ -167,6 +223,17 @@ class PressArk_Run_Approval_Service {
 			}
 
 			$result = $engine->execute_single( $action );
+			$result = self::attach_approval_outcome(
+				$result,
+				'approved',
+				array(
+					'action'      => (string) $op_name,
+					'actor'       => 'system',
+					'scope'       => 'confirm',
+					'source'      => 'approval',
+					'reason_code' => 'automation_confirmed',
+				)
+			);
 			if ( ! empty( $result['success'] ) ) {
 				$tracker->increment_if_write( $op_name );
 			}
@@ -224,6 +291,21 @@ class PressArk_Run_Approval_Service {
 				$op_name = $action['type'] ?? '';
 				if ( isset( $results_by_index[ $idx ] ) ) {
 					$action_args = is_array( $action['params'] ?? null ) ? $action['params'] : array();
+					if ( empty( $action_args ) ) {
+						$action_args = $action;
+						unset( $action_args['type'], $action_args['description'], $action_args['meta'] );
+					}
+					self::remember_approval_outcome(
+						$checkpoint,
+						$op_name ?: 'confirmed_action',
+						'approved',
+						array(
+							'scope'       => 'confirm',
+							'source'      => 'approval',
+							'actor'       => 'system',
+							'reason_code' => 'automation_confirmed',
+						)
+					);
 					$checkpoint->record_execution_write( $op_name, $action_args, $results_by_index[ $idx ] );
 					if ( ! empty( $results_by_index[ $idx ]['success'] ) ) {
 						$checkpoint->add_approval( $op_name ?: 'confirmed_action' );
@@ -298,8 +380,19 @@ class PressArk_Run_Approval_Service {
 			$blocked_reason   = null;
 			$blocked_decision = null;
 
-			// v5.4.0: Route through Policy Engine for preview-keep.
-			if ( class_exists( 'PressArk_Policy_Engine' ) ) {
+			// Route preview approvals through the canonical permission service.
+			if ( class_exists( 'PressArk_Permission_Service' ) ) {
+				$decision = PressArk_Permission_Service::evaluate(
+					$op_name,
+					$op_args,
+					class_exists( 'PressArk_Policy_Engine' ) ? PressArk_Policy_Engine::CONTEXT_PREVIEW : 'preview',
+					array( 'policy' => $policy, 'run_id' => $run_id, 'user_id' => $user_id )
+				);
+				if ( ! PressArk_Permission_Decision::is_allowed( $decision ) ) {
+					$blocked_reason = implode( ' ', $decision['reasons'] ?? array( $op_name ) );
+					$blocked_decision = $decision;
+				}
+			} elseif ( class_exists( 'PressArk_Policy_Engine' ) ) {
 				$verdict = PressArk_Policy_Engine::evaluate(
 					$op_name,
 					$op_args,
@@ -345,6 +438,17 @@ class PressArk_Run_Approval_Service {
 			PressArk_Pipeline::fail_run( $run_id, 'Preview apply failed: ' . ( $result['message'] ?? 'unknown' ) );
 			return $result;
 		}
+		$result = self::attach_approval_outcome(
+			$result,
+			'approved',
+			array(
+				'action'      => 'preview_apply',
+				'actor'       => 'system',
+				'scope'       => 'preview',
+				'source'      => 'approval',
+				'reason_code' => 'automation_preview_kept',
+			)
+		);
 
 		// Track usage.
 		$tracker = new PressArk_Usage_Tracker();
@@ -357,8 +461,35 @@ class PressArk_Run_Approval_Service {
 		$checkpoint = self::load_run_checkpoint( $run );
 		if ( $checkpoint ) {
 			$checkpoint->record_execution_preview( $session_calls, $result );
-			foreach ( $session_calls as $call ) {
-				$checkpoint->add_approval( (string) ( $call['name'] ?? $call['type'] ?? 'preview_apply' ) );
+			if ( ! empty( $session_calls ) ) {
+				foreach ( $session_calls as $call ) {
+					$call_name = (string) ( $call['name'] ?? $call['type'] ?? 'preview_apply' );
+					self::remember_approval_outcome(
+						$checkpoint,
+						$call_name,
+						'approved',
+						array(
+							'scope'       => 'preview',
+							'source'      => 'approval',
+							'actor'       => 'system',
+							'reason_code' => 'automation_preview_kept',
+						)
+					);
+					$checkpoint->add_approval( $call_name );
+				}
+			} else {
+				self::remember_approval_outcome(
+					$checkpoint,
+					'preview_apply',
+					'approved',
+					array(
+						'scope'       => 'preview',
+						'source'      => 'approval',
+						'actor'       => 'system',
+						'reason_code' => 'automation_preview_kept',
+					)
+				);
+				$checkpoint->add_approval( 'preview_apply' );
 			}
 			if ( ! empty( $result['success'] ) ) {
 				$checkpoint->clear_blockers();
@@ -381,6 +512,39 @@ class PressArk_Run_Approval_Service {
 	/**
 	 * Load or bootstrap a checkpoint for a run.
 	 */
+	/**
+	 * Attach a typed approval outcome while preserving legacy result flags.
+	 *
+	 * @param array  $result    Result payload.
+	 * @param string $status    Outcome status.
+	 * @param array  $overrides Outcome metadata.
+	 * @return array
+	 */
+	private static function attach_approval_outcome( array $result, string $status, array $overrides = array() ): array {
+		$outcome = class_exists( 'PressArk_Permission_Decision' )
+			? PressArk_Permission_Decision::approval_outcome( $status, $overrides )
+			: array_merge( array( 'status' => sanitize_key( $status ) ), $overrides );
+		$result['approval_outcome'] = $outcome;
+
+		if ( in_array( sanitize_key( (string) ( $outcome['status'] ?? $status ) ), array( 'cancelled', 'aborted' ), true ) ) {
+			$result['cancelled'] = true;
+		}
+		if ( 'discarded' === sanitize_key( (string) ( $outcome['status'] ?? $status ) ) ) {
+			$result['discarded'] = true;
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Record an approval outcome in checkpoint memory when supported.
+	 */
+	private static function remember_approval_outcome( PressArk_Checkpoint $checkpoint, string $action, string $status, array $meta = array() ): void {
+		if ( method_exists( $checkpoint, 'record_approval_outcome' ) ) {
+			$checkpoint->record_approval_outcome( $action, $status, $meta );
+		}
+	}
+
 	private static function load_run_checkpoint( array $run ): ?PressArk_Checkpoint {
 		if ( ! class_exists( 'PressArk_Checkpoint' ) ) {
 			return null;

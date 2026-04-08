@@ -74,6 +74,44 @@ class PressArk_Tool_Loader {
 		array $options = array()
 	): array {
 		unset( $message, $conversation );
+		return $this->resolve_group_scoped( $tier, $loaded_groups, $options, 'filtered' );
+	}
+
+	/**
+	 * Resolve for models with native tool search (GPT-5.4-class).
+	 *
+	 * Keeps the provider-facing schema set tight while preserving a richer
+	 * internal distinction between visible, searchable, discovered, loaded,
+	 * and blocked tools for operator and future chat-side run details.
+	 *
+	 * @since 3.8.0
+	 *
+	 * @param string $tier User's tier.
+	 * @return array Same shape as resolve().
+	 */
+	public function resolve_native_search( string $tier, array $options = array() ): array {
+		$loaded_groups = (array) ( $options['loaded_groups'] ?? array() );
+		unset( $options['loaded_groups'] );
+
+		return $this->resolve_group_scoped( $tier, $loaded_groups, $options, 'native_search' );
+	}
+
+	/**
+	 * Resolve a request-scoped tool set while preserving the richer capability
+	 * state needed for deferred loading and later run inspection.
+	 *
+	 * @param string   $tier          User tier.
+	 * @param string[] $loaded_groups Groups that should start loaded.
+	 * @param array    $options       Loader options.
+	 * @param string   $strategy      Strategy label.
+	 * @return array
+	 */
+	private function resolve_group_scoped(
+		string $tier,
+		array $loaded_groups = array(),
+		array $options = array(),
+		string $strategy = 'filtered'
+	): array {
 		$options['tier'] = $tier;
 
 		$required_groups = $this->normalize_groups(
@@ -84,7 +122,7 @@ class PressArk_Tool_Loader {
 			$required_groups
 		) );
 
-		$tool_set = $this->build_tool_set( $required_groups, 'filtered', $options );
+		$tool_set = $this->build_tool_set( $required_groups, $strategy, $options );
 
 		$budget_manager = $options['budget_manager'] ?? null;
 		if ( $budget_manager instanceof PressArk_Token_Budget_Manager && ! empty( $candidate_groups ) ) {
@@ -113,7 +151,7 @@ class PressArk_Tool_Loader {
 			);
 			$tool_set   = $this->build_tool_set(
 				array_merge( $required_groups, (array) ( $hydration['selected_groups'] ?? array() ) ),
-				'filtered',
+				$strategy,
 				$options
 			);
 			$tool_set['group_costs']     = $group_costs;
@@ -122,95 +160,6 @@ class PressArk_Tool_Loader {
 		}
 
 		return $this->finalize_tool_set_budget( $tool_set, $options );
-	}
-
-	/**
-	 * Resolve for models with native tool search (GPT-5.4-class).
-	 *
-	 * Skips local discovery scaffolding and sends all tool schemas directly.
-	 *
-	 * @since 3.8.0
-	 *
-	 * @param string $tier User's tier.
-	 * @return array Same shape as resolve().
-	 */
-	public function resolve_native_search( string $tier, array $options = array() ): array {
-		$options['tier'] = $tier;
-
-		$has_woo       = class_exists( 'WooCommerce' );
-		$has_elementor = class_exists( '\\Elementor\\Plugin' );
-		$all_tools     = PressArk_Tools::get_all( $has_woo, $has_elementor );
-
-		$tool_names = array_values( array_filter( array_map(
-			static fn( array $tool ): string => sanitize_key( (string) ( $tool['name'] ?? '' ) ),
-			$all_tools
-		) ) );
-		$visibility = null;
-		if ( class_exists( 'PressArk_Permission_Service' ) ) {
-			$visibility = PressArk_Permission_Service::evaluate_tool_set(
-				$tool_names,
-				$this->permission_context( $options ),
-				$this->permission_meta( $options )
-			);
-			$tool_names = $visibility['visible_tool_names'];
-		}
-
-		$schemas = $this->catalog->get_schemas( $tool_names );
-
-		usort( $schemas, function ( $a, $b ) {
-			return strcmp( $a['function']['name'] ?? '', $b['function']['name'] ?? '' );
-		} );
-
-		$tool_names = array_values( array_filter( array_map(
-			static fn( array $schema ): string => sanitize_key( (string) ( $schema['function']['name'] ?? '' ) ),
-			$schemas
-		) ) );
-		$groups     = $this->visible_groups_from_tool_names( PressArk_Operation_Registry::group_names(), $tool_names );
-		$permission_surface = class_exists( 'PressArk_Permission_Service' )
-			? PressArk_Permission_Service::build_surface_snapshot(
-				$visibility ?? array(
-					'context'            => $this->permission_context( $options ),
-					'visible_tool_names' => $tool_names,
-					'hidden_tool_names'  => array(),
-					'visible_groups'     => $groups,
-					'decisions'          => array(),
-					'hidden_summary'     => array(),
-				),
-				$groups
-			)
-			: array();
-		if ( ! empty( $permission_surface ) && class_exists( 'PressArk_Policy_Diagnostics' ) ) {
-			PressArk_Policy_Diagnostics::record_tool_surface(
-				$permission_surface,
-				array_merge(
-					$this->permission_meta( $options ),
-					array(
-						'strategy' => 'native_search',
-					)
-				)
-			);
-		}
-
-		return array(
-			'schemas'               => $schemas,
-			'descriptors'           => '',
-			'capability_map'        => $this->catalog->get_capability_map( $groups, 'full', $tool_names ),
-			'capability_maps'       => array(
-				'full'    => $this->catalog->get_capability_map( $groups, 'full', $tool_names ),
-				'compact' => $this->catalog->get_compact_capability_map( $groups, $tool_names ),
-				'minimal' => $this->catalog->get_minimal_capability_map( $groups, $tool_names ),
-			),
-			'capability_map_variant' => 'full',
-			'groups'                => $groups,
-			'strategy'              => 'native_search',
-			'tool_count'            => count( $schemas ),
-			'tool_names'            => $tool_names,
-			'effective_visible_tools' => $tool_names,
-			'permission_surface'    => $permission_surface,
-			'deferred_groups'       => array(),
-			'hydration_plan'        => array(),
-			'budget'                => array(),
-		);
 	}
 
 	/**
@@ -230,7 +179,11 @@ class PressArk_Tool_Loader {
 		}
 
 		$groups[]  = $group;
-		$tool_set  = $this->build_tool_set( $groups, 'filtered', $options );
+		$tool_set  = $this->build_tool_set(
+			$groups,
+			(string) ( $current['strategy'] ?? 'filtered' ),
+			$this->merge_state_options( $options, $current )
+		);
 		$deferred  = array_values( array_filter(
 			(array) ( $current['deferred_groups'] ?? array() ),
 			static function ( $candidate ) use ( $group ): bool {
@@ -277,7 +230,11 @@ class PressArk_Tool_Loader {
 			return $current;
 		}
 
-		$tool_set = $this->build_tool_set( $groups, 'filtered', $options );
+		$tool_set = $this->build_tool_set(
+			$groups,
+			(string) ( $current['strategy'] ?? 'filtered' ),
+			$this->merge_state_options( $options, $current )
+		);
 		$tool_set['deferred_groups'] = array_values( array_filter(
 			(array) ( $current['deferred_groups'] ?? array() ),
 			static function ( $candidate ) use ( $groups ): bool {
@@ -286,6 +243,45 @@ class PressArk_Tool_Loader {
 		) );
 
 		return $tool_set;
+	}
+
+	/**
+	 * Mark a set of tools as discovered without hydrating their schemas yet.
+	 *
+	 * The current request keeps them distinct from both the provider-loaded
+	 * subset and the wider searchable pool so run details can explain what the
+	 * harness surfaced versus what it actually hydrated.
+	 *
+	 * @param array    $current    Current tool-set payload.
+	 * @param string[] $tool_names Discovered tool names.
+	 * @param array    $options    Optional loader context.
+	 * @return array
+	 */
+	public function mark_discovered_tools( array $current, array $tool_names, array $options = array() ): array {
+		$history = array_values( array_unique( array_merge(
+			(array) ( $current['discovered_tool_names'] ?? array() ),
+			$this->normalize_tool_names( $tool_names )
+		) ) );
+
+		$current['discovered_tool_names'] = $history;
+		$current['tool_state']            = $this->build_tool_state(
+			(array) ( $current['tool_names'] ?? array() ),
+			(array) ( $current['requested_groups'] ?? $current['groups'] ?? array() ),
+			(array) ( $current['groups'] ?? array() ),
+			(string) ( $current['strategy'] ?? 'filtered' ),
+			$this->merge_state_options(
+				array_merge(
+					$options,
+					array(
+						'discovered_tool_names' => $history,
+					)
+				),
+				$current
+			),
+			(array) ( $current['permission_surface'] ?? array() )
+		);
+
+		return $current;
 	}
 
 	/**
@@ -316,11 +312,21 @@ class PressArk_Tool_Loader {
 			'capability_maps'        => array(),
 			'capability_map_variant' => '',
 			'groups'                 => PressArk_Operation_Registry::group_names(),
+			'requested_groups'       => PressArk_Operation_Registry::group_names(),
 			'strategy'               => 'full',
 			'tool_count'             => count( $schemas ),
 			'tool_names'             => $tool_names,
+			'discovered_tool_names'  => array(),
 			'effective_visible_tools' => $tool_names,
 			'permission_surface'     => array(),
+			'tool_state'             => $this->build_tool_state(
+				$tool_names,
+				PressArk_Operation_Registry::group_names(),
+				PressArk_Operation_Registry::group_names(),
+				'full',
+				array(),
+				array()
+			),
 			'deferred_groups'        => array(),
 			'hydration_plan'         => array(),
 			'budget'                 => array(),
@@ -379,12 +385,167 @@ class PressArk_Tool_Loader {
 			'strategy'               => $strategy,
 			'tool_count'             => count( $schemas ),
 			'tool_names'             => $candidate_tool_names,
+			'discovered_tool_names'  => $this->normalize_tool_names( (array) ( $options['discovered_tool_names'] ?? array() ) ),
 			'effective_visible_tools' => $candidate_tool_names,
 			'permission_surface'     => $permission_surface,
+			'tool_state'             => $this->build_tool_state(
+				$candidate_tool_names,
+				$groups,
+				$effective_groups,
+				$strategy,
+				$options,
+				$permission_surface
+			),
 			'deferred_groups'        => array(),
 			'hydration_plan'         => array(),
 			'budget'                 => array(),
 		);
+	}
+
+	/**
+	 * Preserve discovery state when rebuilding a tool set after loads/expands.
+	 *
+	 * @param array $options Loader options for the next build.
+	 * @param array $current Current tool-set payload.
+	 * @return array
+	 */
+	private function merge_state_options( array $options, array $current ): array {
+		if ( ! isset( $options['discovered_tool_names'] ) && ! empty( $current['discovered_tool_names'] ) ) {
+			$options['discovered_tool_names'] = (array) $current['discovered_tool_names'];
+		}
+
+		return $options;
+	}
+
+	/**
+	 * Build the canonical tool-state model shared by loader results, traces,
+	 * and operator-facing run details.
+	 *
+	 * @param string[] $loaded_tool_names Provider-hydrated tool schemas.
+	 * @param string[] $requested_groups  Groups requested by the loader.
+	 * @param string[] $loaded_groups     Groups that ended up loaded.
+	 * @param string   $strategy          Strategy label.
+	 * @param array    $options           Loader options.
+	 * @param array    $permission_surface Request-scoped permission snapshot.
+	 * @return array
+	 */
+	private function build_tool_state(
+		array $loaded_tool_names,
+		array $requested_groups,
+		array $loaded_groups,
+		string $strategy,
+		array $options = array(),
+		array $permission_surface = array()
+	): array {
+		$loaded_tool_names = $this->normalize_tool_names( $loaded_tool_names );
+		$visibility        = $this->capture_tool_visibility( $options );
+		$visible_tools     = $this->normalize_tool_names( (array) ( $visibility['visible_tool_names'] ?? array() ) );
+		$blocked_tools     = $this->normalize_tool_names( (array) ( $visibility['hidden_tool_names'] ?? array() ) );
+		$discovered_history = array_values( array_intersect(
+			$this->normalize_tool_names( (array) ( $options['discovered_tool_names'] ?? array() ) ),
+			$visible_tools
+		) );
+		$discovered_tools = array_values( array_diff( $discovered_history, $loaded_tool_names ) );
+		$searchable_tools = array_values( array_diff( $visible_tools, $loaded_tool_names, $discovered_tools ) );
+		$loaded_lookup    = array_flip( $loaded_tool_names );
+		$discovered_lookup = array_flip( $discovered_tools );
+		$blocked_lookup   = array_flip( $blocked_tools );
+		$rows             = array();
+
+		foreach ( array_merge( $loaded_tool_names, $discovered_tools, $searchable_tools, $blocked_tools ) as $tool_name ) {
+			$tool_name = sanitize_key( (string) $tool_name );
+			if ( '' === $tool_name || isset( $rows[ $tool_name ] ) ) {
+				continue;
+			}
+
+			$state = isset( $loaded_lookup[ $tool_name ] )
+				? 'loaded'
+				: ( isset( $discovered_lookup[ $tool_name ] )
+					? 'discovered'
+					: ( isset( $blocked_lookup[ $tool_name ] ) ? 'blocked' : 'searchable' ) );
+
+			$rows[ $tool_name ] = array(
+				'name'   => $tool_name,
+				'group'  => $this->catalog->find_group_for_tool( $tool_name ),
+				'state'  => $state,
+				'loaded' => isset( $loaded_lookup[ $tool_name ] ),
+			);
+		}
+
+		return array(
+			'contract'            => 'tool_state',
+			'version'             => 1,
+			'strategy'            => sanitize_key( $strategy ),
+			'context'             => $this->permission_context( $options ),
+			'requested_groups'    => array_values( array_unique( array_filter( array_map( 'sanitize_key', $requested_groups ) ) ) ),
+			'loaded_groups'       => array_values( array_unique( array_filter( array_map( 'sanitize_key', $loaded_groups ) ) ) ),
+			'visible_groups'      => $this->groups_from_tool_names( $visible_tools ),
+			'loaded_groups_visible' => $this->groups_from_tool_names( $loaded_tool_names ),
+			'searchable_groups'   => $this->groups_from_tool_names( $searchable_tools ),
+			'discovered_groups'   => $this->groups_from_tool_names( $discovered_tools ),
+			'blocked_groups'      => $this->groups_from_tool_names( $blocked_tools ),
+			'visible_tools'       => $visible_tools,
+			'visible_tool_count'  => count( $visible_tools ),
+			'loaded_tools'        => $loaded_tool_names,
+			'loaded_tool_count'   => count( $loaded_tool_names ),
+			'searchable_tools'    => $searchable_tools,
+			'searchable_tool_count' => count( $searchable_tools ),
+			'discovered_tools'    => $discovered_tools,
+			'discovered_tool_count' => count( $discovered_tools ),
+			'discovered_history'  => $discovered_history,
+			'blocked_tools'       => $blocked_tools,
+			'blocked_tool_count'  => count( $blocked_tools ),
+			'blocked_summary'     => (array) ( $visibility['hidden_summary'] ?? array() ),
+			'request_hidden_tools' => $this->normalize_tool_names( (array) ( $permission_surface['hidden_tools'] ?? array() ) ),
+			'request_hidden_summary' => (array) ( $permission_surface['hidden_summary'] ?? array() ),
+			'tools'               => array_values( $rows ),
+		);
+	}
+
+	/**
+	 * Resolve the full visible-vs-blocked capability pool for the current site
+	 * and permission context.
+	 *
+	 * @param array $options Loader options.
+	 * @return array
+	 */
+	private function capture_tool_visibility( array $options = array() ): array {
+		$all_tool_names = $this->catalog->get_all_tool_names();
+
+		if ( ! class_exists( 'PressArk_Permission_Service' ) ) {
+			return array(
+				'context'            => $this->permission_context( $options ),
+				'visible_tool_names' => $all_tool_names,
+				'hidden_tool_names'  => array(),
+				'visible_groups'     => $this->groups_from_tool_names( $all_tool_names ),
+				'decisions'          => array(),
+				'hidden_summary'     => array(),
+			);
+		}
+
+		return PressArk_Permission_Service::evaluate_tool_set(
+			$all_tool_names,
+			$this->permission_context( $options ),
+			$this->permission_meta( $options )
+		);
+	}
+
+	/**
+	 * Derive unique groups for a set of tool names.
+	 *
+	 * @param string[] $tool_names Tool names.
+	 * @return string[]
+	 */
+	private function groups_from_tool_names( array $tool_names ): array {
+		$groups = array();
+		foreach ( $this->normalize_tool_names( $tool_names ) as $tool_name ) {
+			$group = $this->catalog->find_group_for_tool( $tool_name );
+			if ( '' !== $group ) {
+				$groups[] = $group;
+			}
+		}
+
+		return array_values( array_unique( $groups ) );
 	}
 
 	/**
@@ -489,6 +650,29 @@ class PressArk_Tool_Loader {
 		}
 
 		return array_values( array_unique( $always ) );
+	}
+
+	/**
+	 * Normalize a list of tool names.
+	 *
+	 * @param array $tool_names Arbitrary tool identifiers.
+	 * @return string[]
+	 */
+	private function normalize_tool_names( array $tool_names ): array {
+		$normalized = array();
+
+		foreach ( $tool_names as $tool_name ) {
+			if ( ! is_string( $tool_name ) && ! is_int( $tool_name ) ) {
+				continue;
+			}
+
+			$name = sanitize_key( (string) $tool_name );
+			if ( '' !== $name ) {
+				$normalized[] = $name;
+			}
+		}
+
+		return array_values( array_unique( $normalized ) );
 	}
 
 	/**

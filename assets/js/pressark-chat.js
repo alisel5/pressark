@@ -1122,6 +1122,8 @@
 			if (!skipSave) {
 				this.autoSaveChat();
 			}
+
+			return msgEl;
 		},
 
 		renderErrorMessage: function (text) {
@@ -1129,6 +1131,68 @@
 			html += '<span class="pressark-message-content">' + this.escapeHtml(text) + '</span>';
 			html += '<button class="pressark-retry-btn">Retry</button>';
 			return html;
+		},
+
+		appendRetryableError: function (text, skipSave) {
+			var msgEl = this.addMessage('error', text, skipSave);
+			if (msgEl) {
+				this.bindRetryButton(msgEl.querySelector('.pressark-retry-btn'));
+			}
+			return msgEl;
+		},
+
+		cleanupStreamingBubbleContent: function (bubble) {
+			if (!bubble) return null;
+
+			var contentEl = bubble.querySelector('.pressark-message-content');
+			if (!contentEl) return null;
+
+			var inlineSteps = contentEl.querySelectorAll('.pressark-inline-step');
+			for (var i = 0; i < inlineSteps.length; i++) {
+				inlineSteps[i].remove();
+			}
+
+			var segs = contentEl.querySelectorAll('.pressark-stream-text-segment');
+			for (var j = 0; j < segs.length; j++) {
+				while (segs[j].firstChild) {
+					contentEl.insertBefore(segs[j].firstChild, segs[j]);
+				}
+				segs[j].remove();
+			}
+
+			return contentEl;
+		},
+
+		renderInterruptedStream: function (bubble, message) {
+			this._streamText = '';
+			this._streamSegmentText = '';
+
+			if (bubble) {
+				bubble.classList.remove('pressark-message-streaming');
+			}
+
+			var contentEl = this.cleanupStreamingBubbleContent(bubble);
+			var hasRenderableContent = !!(
+				contentEl &&
+				(
+					(contentEl.textContent && contentEl.textContent.trim()) ||
+					contentEl.children.length > 0
+				)
+			);
+
+			if (bubble && !hasRenderableContent && bubble.parentNode) {
+				bubble.parentNode.removeChild(bubble);
+			}
+
+			this.appendRetryableError(message, true);
+		},
+
+		appendAssistantResultMessage: function (text, result, skipSave) {
+			if (!text) return null;
+
+			var msgEl = this.addMessage('ai', text, skipSave);
+			this.decorateAssistantMessage(msgEl, result);
+			return msgEl;
 		},
 
 		escapeHtml: function (text) {
@@ -1194,6 +1258,7 @@
 			var self = this;
 			var preview = pendingAction.preview;
 			var action = pendingAction.action;
+			var riskReceipt = pendingAction.risk_receipt || null;
 
 			// Store action in JS-side map instead of HTML attribute (A13: prevents XSS).
 			var actionId = 'action_' + (++this.actionIdCounter);
@@ -1249,6 +1314,7 @@
 			var title = preview.post_title
 				? 'Proposed changes to "' + this.escapeHtml(preview.post_title) + '"'
 				: 'Proposed changes';
+			var riskHtml = this.renderRiskReceipt(riskReceipt);
 
 			card.innerHTML =
 				'<div class="pressark-preview-header">' +
@@ -1257,6 +1323,7 @@
 				'</div>' +
 				'<div class="pressark-preview-changes">' + changesHTML + '</div>' +
 				warningsHTML +
+				riskHtml +
 				'<div class="pressark-preview-actions">' +
 				'<button type="button" class="pressark-preview-confirm">' +
 				this.getPreviewButtonContent('&#10003;', 'Apply Changes') +
@@ -1293,6 +1360,7 @@
 					// user request (from conversation history), selecting the right
 					// model tier and domain skills for remaining steps.
 					if (result && result.success && !result.cancelled
+						&& (!self.getApprovalOutcomeStatus(result) || self.getApprovalOutcomeStatus(result) === 'approved')
 						&& self.shouldAutoResume(result)
 						&& Object.keys(self.pendingActions).length === 0) {
 						setTimeout(function () {
@@ -1306,25 +1374,30 @@
 			});
 
 			card.querySelector('.pressark-preview-cancel').addEventListener('click', function () {
+				var cancelBtn = card.querySelector('.pressark-preview-cancel');
+				var confirmBtn = card.querySelector('.pressark-preview-confirm');
 				var actionData = self.pendingActions[actionId];
 				var actionRunId = self.pendingRunIds[actionId] || '';
 				var actionPendingIndex = self.pendingActionIndices[actionId] || 0;
 				var previewData = self.pendingPreviews[actionId];
-				self.confirmAction(actionData, false, actionRunId, actionPendingIndex);
-				card.innerHTML =
-					'<div class="pressark-preview-cancelled">' +
-					'<span>' + pwIcon('x') + ' Changes cancelled</span>' +
-					'</div>';
-				card.classList.add('pressark-preview-dismissed');
-				// Save card summary for history rendering.
-				if (previewData) {
-					self.conversation.push({ role: 'assistant', content: self.buildCardSummary(previewData, 'cancelled') });
+				if (cancelBtn) {
+					cancelBtn.textContent = 'Declining...';
+					cancelBtn.disabled = true;
 				}
-				delete self.pendingActions[actionId];
-				delete self.pendingPreviews[actionId];
-				delete self.pendingRunIds[actionId];
-				delete self.pendingActionIndices[actionId];
-				self.autoSaveChat();
+				if (confirmBtn) {
+					confirmBtn.disabled = true;
+				}
+				self.confirmAction(actionData, false, actionRunId, actionPendingIndex).then(function (result) {
+					self.renderConfirmResult(card, result, previewData);
+					delete self.pendingActions[actionId];
+					delete self.pendingPreviews[actionId];
+					delete self.pendingRunIds[actionId];
+					delete self.pendingActionIndices[actionId];
+
+					if (result && result.checkpoint && typeof result.checkpoint === 'object') {
+						self.checkpoint = result.checkpoint;
+					}
+				});
 			});
 
 			this.messagesEl.appendChild(card);
@@ -1347,6 +1420,277 @@
 				}
 			}
 			return '[PRESSARK_CARD:' + status + ']' + parts.join('||');
+		},
+
+		getApprovalOutcomeStatus: function (result) {
+			if (!result || typeof result !== 'object') return '';
+			if (result.approval_receipt && typeof result.approval_receipt.status === 'string') {
+				return result.approval_receipt.status;
+			}
+			if (result.approval_outcome && typeof result.approval_outcome.status === 'string') {
+				return result.approval_outcome.status;
+			}
+			if (result.discarded) return 'discarded';
+			if (result.cancelled) return 'cancelled';
+			if (result.success) return 'approved';
+			return '';
+		},
+
+		getApprovalReceipt: function (result) {
+			if (!result || typeof result !== 'object') return null;
+			if (!result.approval_receipt || typeof result.approval_receipt !== 'object') return null;
+			return result.approval_receipt;
+		},
+
+		getApprovalSettlement: function (result) {
+			var receipt = this.getApprovalReceipt(result);
+			if (receipt) {
+				return {
+					status: typeof receipt.status === 'string' ? receipt.status : '',
+					acknowledged: receipt.acknowledged === true,
+					settled: receipt.settled === true,
+					receipt: receipt
+				};
+			}
+
+			var status = this.getApprovalOutcomeStatus(result);
+			return {
+				status: status,
+				acknowledged: !!status,
+				settled: !!status,
+				receipt: null
+			};
+		},
+
+		renderRiskReceipt: function (riskReceipt) {
+			if (!riskReceipt || typeof riskReceipt !== 'object') return '';
+
+			var rows = [];
+			if (riskReceipt.target) {
+				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">Target</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.target) + '</span></div>');
+			}
+			if (riskReceipt.blast_radius) {
+				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">Blast radius</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.blast_radius) + '</span></div>');
+			}
+			if (riskReceipt.reversibility) {
+				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">Reversibility</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.reversibility) + '</span></div>');
+			}
+
+			var effectsHtml = '';
+			if (Array.isArray(riskReceipt.downstream_effects) && riskReceipt.downstream_effects.length > 0) {
+				var effects = [];
+				for (var i = 0; i < riskReceipt.downstream_effects.length; i++) {
+					effects.push('<li>' + this.escapeHtml(riskReceipt.downstream_effects[i]) + '</li>');
+				}
+				effectsHtml = '<ul class="pressark-risk-receipt__effects">' + effects.join('') + '</ul>';
+			}
+
+			var verificationHtml = riskReceipt.verification_plan
+				? '<div class="pressark-risk-receipt__verification"><span class="pressark-risk-receipt__label">Verification</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.verification_plan) + '</span></div>'
+				: '';
+
+			var badges = [];
+			if (riskReceipt.risk_level) {
+				badges.push('<span class="pressark-risk-badge pressark-risk-badge--' + this.escapeHtml(riskReceipt.risk_level) + '">' + this.escapeHtml(riskReceipt.risk_level) + '</span>');
+			}
+			if (riskReceipt.approval_mode) {
+				badges.push('<span class="pressark-risk-badge">' + this.escapeHtml(riskReceipt.approval_mode) + '</span>');
+			}
+
+			return '<div class="pressark-risk-receipt">' +
+				'<div class="pressark-risk-receipt__header">' +
+				'<span class="pressark-risk-receipt__title">' + pwIcon('shield') + '<span>' + this.escapeHtml(riskReceipt.label || 'Change review') + '</span></span>' +
+				(badges.length ? '<span class="pressark-risk-receipt__badges">' + badges.join('') + '</span>' : '') +
+				'</div>' +
+				(rows.length ? '<div class="pressark-risk-receipt__grid">' + rows.join('') + '</div>' : '') +
+				effectsHtml +
+				verificationHtml +
+				'</div>';
+		},
+
+		renderRunSurface: function (runSurface) {
+			if (!runSurface || typeof runSurface !== 'object') return '';
+
+			var summary = runSurface.summary || runSurface.route_label || 'Run details';
+			var badges = [];
+			if (Array.isArray(runSurface.badges)) {
+				for (var i = 0; i < runSurface.badges.length; i++) {
+					var badge = runSurface.badges[i];
+					if (!badge || !badge.label) continue;
+					var tone = badge.tone || 'neutral';
+					badges.push('<span class="pressark-run-surface__badge pressark-run-surface__badge--' + this.escapeHtml(tone) + '">' + this.escapeHtml(badge.label) + '</span>');
+				}
+			}
+
+			var metricChips = [];
+			if (Array.isArray(runSurface.metric_chips)) {
+				for (var m = 0; m < runSurface.metric_chips.length; m++) {
+					var chip = runSurface.metric_chips[m];
+					if (!chip || !chip.label || !chip.value) continue;
+					var chipTone = chip.tone || 'neutral';
+					metricChips.push(
+						'<div class="pressark-run-surface__metric pressark-run-surface__metric--' + this.escapeHtml(chipTone) + '">' +
+							'<span class="pressark-run-surface__metric-label">' + this.escapeHtml(chip.label) + '</span>' +
+							'<span class="pressark-run-surface__metric-value">' + this.escapeHtml(chip.value) + '</span>' +
+						'</div>'
+					);
+				}
+			}
+
+			var notices = [];
+			if (Array.isArray(runSurface.notices)) {
+				for (var n = 0; n < runSurface.notices.length; n++) {
+					var notice = runSurface.notices[n];
+					if (!notice || (!notice.label && !notice.text)) continue;
+					var noticeTone = notice.tone || 'neutral';
+					var noticeIcon = noticeTone === 'warning' ? pwIcon('warning') : pwIcon('info');
+					var noticeMeta = notice.meta
+						? '<span class="pressark-run-surface__notice-meta">' + this.escapeHtml(notice.meta) + '</span>'
+						: '';
+					var noticeText = notice.text
+						? '<div class="pressark-run-surface__notice-text">' + this.escapeHtml(notice.text) + '</div>'
+						: '';
+					var noticeHint = notice.hint
+						? '<div class="pressark-run-surface__notice-hint">' + this.escapeHtml(notice.hint) + '</div>'
+						: '';
+
+					notices.push(
+						'<div class="pressark-run-surface__notice pressark-run-surface__notice--' + this.escapeHtml(noticeTone) + '">' +
+							'<div class="pressark-run-surface__notice-top">' +
+								'<span class="pressark-run-surface__notice-title">' + noticeIcon + '<span>' + this.escapeHtml(notice.label || 'Run note') + '</span></span>' +
+								noticeMeta +
+							'</div>' +
+							noticeText +
+							noticeHint +
+						'</div>'
+					);
+				}
+			}
+
+			var rows = [];
+			if (Array.isArray(runSurface.detail_rows)) {
+				for (var j = 0; j < runSurface.detail_rows.length; j++) {
+					var row = runSurface.detail_rows[j];
+					if (!row || !row.label || !row.value) continue;
+					rows.push('<div class="pressark-run-surface__row"><span class="pressark-run-surface__label">' + this.escapeHtml(row.label) + '</span><span class="pressark-run-surface__value">' + this.escapeHtml(row.value) + '</span></div>');
+				}
+			}
+
+			var receiptHtml = this.renderRunBillingReceipt(runSurface.billing_receipt);
+			var bodyHtml = '';
+			if (metricChips.length) {
+				bodyHtml += '<div class="pressark-run-surface__metrics">' + metricChips.join('') + '</div>';
+			}
+			if (notices.length) {
+				bodyHtml += '<div class="pressark-run-surface__notices">' + notices.join('') + '</div>';
+			}
+			if (rows.length) {
+				bodyHtml += '<div class="pressark-run-surface__rows">' + rows.join('') + '</div>';
+			}
+			if (receiptHtml) {
+				bodyHtml += receiptHtml;
+			}
+
+			return '<details class="pressark-run-surface">' +
+				'<summary class="pressark-run-surface__summary">' +
+				'<span class="pressark-run-surface__summary-main">' + pwIcon('sparkles') + '<span class="pressark-run-surface__summary-text">' + this.escapeHtml(summary) + '</span></span>' +
+				(badges.length ? '<span class="pressark-run-surface__badges">' + badges.join('') + '</span>' : '') +
+				'</summary>' +
+				(bodyHtml ? '<div class="pressark-run-surface__body">' + bodyHtml + '</div>' : '') +
+				'</details>';
+		},
+
+		renderRunBillingReceipt: function (receipt) {
+			if (!receipt || typeof receipt !== 'object') return '';
+
+			var headerBadges = [];
+			if (receipt.authority_label) {
+				headerBadges.push('<span class="pressark-run-receipt__badge">' + this.escapeHtml(receipt.authority_label) + '</span>');
+			}
+			if (receipt.service_label) {
+				headerBadges.push('<span class="pressark-run-receipt__badge">' + this.escapeHtml(receipt.service_label) + '</span>');
+			}
+			if (receipt.spend_label) {
+				headerBadges.push('<span class="pressark-run-receipt__badge">' + this.escapeHtml(receipt.spend_label) + '</span>');
+			}
+
+			var stages = [];
+			if (Array.isArray(receipt.stages)) {
+				for (var i = 0; i < receipt.stages.length; i++) {
+					var stage = receipt.stages[i];
+					if (!stage || !stage.label || !stage.value) continue;
+					var tone = stage.tone || 'neutral';
+					var secondary = stage.secondary
+						? '<div class="pressark-run-receipt__stage-secondary">' + this.escapeHtml(stage.secondary) + '</div>'
+						: '';
+					var note = stage.note
+						? '<div class="pressark-run-receipt__stage-note">' + this.escapeHtml(stage.note) + '</div>'
+						: '';
+					var authority = stage.authority_tag
+						? '<span class="pressark-run-receipt__stage-authority">' + this.escapeHtml(stage.authority_tag) + '</span>'
+						: '';
+
+					stages.push(
+						'<div class="pressark-run-receipt__stage pressark-run-receipt__stage--' + this.escapeHtml(tone) + '">' +
+							'<div class="pressark-run-receipt__stage-top">' +
+								'<span class="pressark-run-receipt__stage-label">' + this.escapeHtml(stage.label) + '</span>' +
+								authority +
+							'</div>' +
+							'<div class="pressark-run-receipt__stage-value">' + this.escapeHtml(stage.value) + '</div>' +
+							secondary +
+							note +
+						'</div>'
+					);
+				}
+			}
+
+			var reducedHtml = '';
+			if (receipt.reduced_certainty && receipt.reduced_certainty.label) {
+				reducedHtml =
+					'<div class="pressark-run-receipt__degraded">' +
+						'<span class="pressark-run-receipt__degraded-label">' + this.escapeHtml(receipt.reduced_certainty.label) + '</span>' +
+						(receipt.reduced_certainty.value ? '<span class="pressark-run-receipt__degraded-value">' + this.escapeHtml(receipt.reduced_certainty.value) + '</span>' : '') +
+						(receipt.reduced_certainty.detail ? '<div class="pressark-run-receipt__degraded-note">' + this.escapeHtml(receipt.reduced_certainty.detail) + '</div>' : '') +
+					'</div>';
+			}
+
+			var notices = [];
+			if (Array.isArray(receipt.notices)) {
+				for (var j = 0; j < receipt.notices.length; j++) {
+					var notice = receipt.notices[j];
+					if (!notice || !notice.label || !notice.text) continue;
+					var noticeTone = notice.tone || 'neutral';
+					notices.push(
+						'<div class="pressark-run-receipt__notice pressark-run-receipt__notice--' + this.escapeHtml(noticeTone) + '">' +
+							'<span class="pressark-run-receipt__notice-label">' + this.escapeHtml(notice.label) + '</span>' +
+							'<span class="pressark-run-receipt__notice-text">' + this.escapeHtml(notice.text) + '</span>' +
+						'</div>'
+					);
+				}
+			}
+
+			return '<section class="pressark-run-receipt">' +
+				'<div class="pressark-run-receipt__header">' +
+					'<div class="pressark-run-receipt__title-wrap">' +
+						'<span class="pressark-run-receipt__title">' + this.escapeHtml(receipt.label || 'Per-run receipt') + '</span>' +
+						(receipt.summary ? '<span class="pressark-run-receipt__summary">' + this.escapeHtml(receipt.summary) + '</span>' : '') +
+					'</div>' +
+					(headerBadges.length ? '<div class="pressark-run-receipt__badges">' + headerBadges.join('') + '</div>' : '') +
+				'</div>' +
+				reducedHtml +
+				(stages.length ? '<div class="pressark-run-receipt__stages">' + stages.join('') + '</div>' : '') +
+				(notices.length ? '<div class="pressark-run-receipt__notices">' + notices.join('') + '</div>' : '') +
+			'</section>';
+		},
+
+		decorateAssistantMessage: function (messageEl, result) {
+			if (!messageEl || !result || typeof result !== 'object') return;
+
+			var contentEl = messageEl.querySelector('.pressark-message-content');
+			if (!contentEl || !result.run_surface) return;
+			if (contentEl.querySelector('.pressark-run-surface')) return;
+
+			contentEl.insertAdjacentHTML('beforeend', this.renderRunSurface(result.run_surface));
 		},
 
 		getPreviewDocumentIconMarkup: function () {
@@ -1387,11 +1731,13 @@
 		setPreviewFooterSettled: function (status) {
 			if (!this.activePreviewFooterEl) return;
 
-			var statusClass = status === 'keep'
+			var normalized = status || '';
+			var isApproved = normalized === 'approved' || normalized === 'keep';
+			var statusClass = isApproved
 				? 'pressark-preview-footer__status--keep'
 				: 'pressark-preview-footer__status--discard';
-			var label = status === 'keep' ? 'Preview approved' : 'Preview discarded';
-			var icon = status === 'keep' ? '&#10003;' : '&#10005;';
+			var label = isApproved ? 'Preview approved' : 'Preview discarded';
+			var icon = isApproved ? '&#10003;' : '&#10005;';
 
 			this.activePreviewFooterEl.classList.add('pressark-preview-footer--settled');
 			this.activePreviewFooterEl.innerHTML =
@@ -1405,7 +1751,7 @@
 		 * Render a static (non-interactive) card from a history summary string.
 		 */
 		renderStaticCard: function (content) {
-			var match = content.match(/^\[PRESSARK_CARD:(applied|cancelled)\](.*)/);
+			var match = content.match(/^\[PRESSARK_CARD:(applied|cancelled|declined|discarded)\](.*)/);
 			if (!match) return null;
 
 			var status = match[1];
@@ -1438,7 +1784,11 @@
 
 			var resultHTML = status === 'applied'
 				? '<div class="pressark-action-result pressark-action-success"><span>' + pwIcon('check') + ' Changes applied successfully</span></div>'
-				: '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Changes cancelled</span></div>';
+				: status === 'declined'
+					? '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Confirmation declined</span></div>'
+					: status === 'discarded'
+						? '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Preview discarded</span></div>'
+						: '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Changes cancelled</span></div>';
 
 			card.innerHTML =
 				'<div class="pressark-preview-header">' +
@@ -1474,8 +1824,9 @@
 
 		renderConfirmResult: function (card, result, previewData) {
 			var actionsDiv = card.querySelector('.pressark-preview-actions');
+			var outcomeStatus = this.getApprovalOutcomeStatus(result);
 
-			if (result.success) {
+			if (result.success && outcomeStatus !== 'declined') {
 				var undoHtml = '';
 				if (result.log_id) {
 					undoHtml = '<button class="pressark-undo-btn" data-log-id="' + result.log_id + '">Undo</button>';
@@ -1505,6 +1856,15 @@
 
 				var undoBtn = actionsDiv.querySelector('.pressark-undo-btn');
 				if (undoBtn) this.bindUndoButton(undoBtn);
+			} else if (outcomeStatus === 'declined') {
+				actionsDiv.innerHTML =
+					'<div class="pressark-preview-cancelled">' +
+					'<span>' + pwIcon('x') + ' ' + this.escapeHtml(result.message || 'No changes were made.') + '</span>' +
+					'</div>';
+				card.classList.add('pressark-preview-dismissed');
+				if (previewData) {
+					this.conversation.push({ role: 'assistant', content: this.buildCardSummary(previewData, 'declined') });
+				}
 			} else if (result.upgrade_prompt) {
 				var upgradeUrl = window.pressarkData.upgradeUrl || '#';
 				actionsDiv.innerHTML =
@@ -1677,7 +2037,8 @@
 		},
 
 		shouldAutoContinueCompactedRun: function (result) {
-			if (!result || result.is_error || result.cancelled) {
+			var outcomeStatus = this.getApprovalOutcomeStatus(result);
+			if (!result || result.is_error || result.cancelled || (outcomeStatus && outcomeStatus !== 'approved')) {
 				return false;
 			}
 
@@ -1987,6 +2348,9 @@
 				if (billingState.service_state !== 'normal') {
 					html += ' \u00B7 ' + this.escapeHtml(billingState.service_notice);
 				}
+				if (billingState.estimate_notice) {
+					html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
+				}
 
 				var settingsUrl = (window.pressarkData || {}).settings_url || '#';
 				var creditStoreUrl = (window.pressarkData || {}).creditStoreUrl || settingsUrl;
@@ -2003,8 +2367,11 @@
 				}
 			}
 
-			if (info.is_byok) {
-				html += ' \u00B7 ' + this.escapeHtml(billingTag);
+			if (!info.is_byok && billingState.estimate_notice && html.indexOf(billingState.estimate_notice) === -1) {
+				html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
+			}
+
+			if (info.is_byok && billingState.estimate_notice && html.indexOf(billingState.estimate_notice) === -1) {
 				html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
 			}
 
@@ -2046,7 +2413,9 @@
 					billing_spend_source: status.billing_spend_source,
 					verified_handshake: status.verified_handshake,
 					provisional_handshake: status.provisional_handshake,
-					offline: status.offline
+					offline: status.offline,
+					reserve_certainty: status.reserve_certainty,
+					reserve_envelope: status.reserve_envelope
 				});
 			}
 			this.renderQuotaBar();
@@ -2135,6 +2504,119 @@
 
 		// ── Live Preview System ──────────────────────────────────────
 
+		getResultActivityItems: function (result) {
+			if (!result || typeof result !== 'object') return [];
+
+			if (result.activity_strip && Array.isArray(result.activity_strip.items) && result.activity_strip.items.length > 0) {
+				return result.activity_strip.items;
+			}
+
+			if (Array.isArray(result.steps) && result.steps.length > 0) {
+				return result.steps;
+			}
+
+			return [];
+		},
+
+		normalizeActivityStatus: function (status) {
+			var normalized = this.normalizeStepStatus(status);
+			switch (normalized) {
+				case 'reading':
+				case 'running':
+					return 'running';
+				case 'preparing_preview':
+				case 'needs_confirm':
+				case 'waiting':
+					return 'waiting';
+				case 'done':
+				case 'completed':
+				case 'succeeded':
+				case 'approved':
+				case 'discarded':
+				case 'declined':
+					return 'done';
+				case 'retrying':
+					return 'retrying';
+				case 'queued':
+					return 'queued';
+				case 'degraded':
+					return 'degraded';
+				case 'blocked':
+				case 'failed':
+				case 'error':
+					return 'blocked';
+				default:
+					return normalized || 'queued';
+			}
+		},
+
+		getActivityIconMarkup: function (status) {
+			switch (status) {
+				case 'running':
+					return '<span class="pressark-step-icon pressark-step-icon--running">' + pwIcons.loader + '</span>';
+				case 'done':
+					return '<span class="pressark-step-icon pressark-step-icon--done">' + pwIcons.check + '</span>';
+				case 'waiting':
+					return '<span class="pressark-step-icon pressark-step-icon--waiting">' + pwIcons.dot + '</span>';
+				case 'retrying':
+					return '<span class="pressark-step-icon pressark-step-icon--retrying">' + pwIcons.refresh + '</span>';
+				case 'degraded':
+					return '<span class="pressark-step-icon pressark-step-icon--degraded">' + pwIcons.alertCircle + '</span>';
+				case 'blocked':
+					return '<span class="pressark-step-icon pressark-step-icon--blocked">' + pwIcons.xCircle + '</span>';
+				default:
+					return '<span class="pressark-step-icon pressark-step-icon--queued">' + pwIcons.statusDot + '</span>';
+			}
+		},
+
+		buildActivityStripElement: function (items) {
+			if (!items || !items.length) return null;
+
+			var strip = document.createElement('div');
+			strip.className = 'pressark-activity-strip';
+
+			for (var i = 0; i < items.length; i++) {
+				var item = items[i];
+				if (!item) continue;
+
+				var label = item.label || item.tool || '';
+				if (!label) continue;
+
+				var detail = item.detail || '';
+				var status = this.normalizeActivityStatus(item.status);
+				var row = document.createElement('div');
+				row.className = 'pressark-step pressark-step--' + status;
+				if (item.reason) {
+					row.setAttribute('data-reason', item.reason);
+				}
+
+				row.innerHTML = this.getActivityIconMarkup(status) +
+					'<span class="pressark-step-copy">' +
+					'<span class="pressark-step-label">' + this.escapeHtml(label) + '</span>' +
+					(detail ? '<span class="pressark-step-detail">' + this.escapeHtml(detail) + '</span>' : '') +
+					'</span>';
+				strip.appendChild(row);
+			}
+
+			return strip.childNodes.length ? strip : null;
+		},
+
+		renderActivityStrip: function (items) {
+			var strip = this.buildActivityStripElement(items);
+			if (!strip) return;
+
+			this.messagesEl.appendChild(strip);
+			this.scrollToBottom();
+		},
+
+		renderActivityStripBefore: function (items, beforeEl) {
+			var strip = this.buildActivityStripElement(items);
+			if (!strip || !beforeEl || !beforeEl.parentNode) return;
+
+			beforeEl.parentNode.insertBefore(strip, beforeEl);
+			this.scrollToBottom();
+		},
+
 		openPreview: function (data) {
 			var self = this;
 
@@ -2163,7 +2645,7 @@
 			wpBody.appendChild(overlay);
 
 			// Show Keep/Discard buttons in chat panel.
-			this.showPreviewActions(data.preview_session_id, data.diff);
+			this.showPreviewActions(data);
 		},
 
 		buildDiffHTML: function (diff) {
@@ -2233,8 +2715,11 @@
 			return text.substring(0, maxLen) + '…';
 		},
 
-		showPreviewActions: function (sessionId, diff) {
+		showPreviewActions: function (previewData) {
 			var self = this;
+			var sessionId = previewData && previewData.preview_session_id ? previewData.preview_session_id : '';
+			var diff = previewData && Array.isArray(previewData.diff) ? previewData.diff : [];
+			var riskReceipt = previewData && previewData.risk_receipt ? previewData.risk_receipt : null;
 			if (this.activePreviewFooterEl && this.activePreviewFooterEl.parentNode) {
 				this.activePreviewFooterEl.parentNode.removeChild(this.activePreviewFooterEl);
 			}
@@ -2242,6 +2727,7 @@
 			var actionsDiv = document.createElement('div');
 			actionsDiv.className = 'pressark-preview-footer';
 			actionsDiv.innerHTML =
+				this.renderRiskReceipt(riskReceipt) +
 				'<div class="pressark-preview-footer__actions">' +
 					'<button type="button" class="pressark-btn pressark-btn--keep" data-session="' + this.escapeHtml(sessionId) + '">' +
 						this.getPreviewButtonContent('&#10003;', 'Keep Changes') +
@@ -2292,18 +2778,22 @@
 			})
 				.then(function (response) { return response.json(); })
 				.then(function (result) {
-					if (result.success) {
-						self.closePreview(action);
-						var displayMsg = action === 'keep'
+					var settlement = self.getApprovalSettlement(result);
+					if (result.success && settlement.acknowledged && settlement.settled) {
+						var outcomeStatus = settlement.status || (action === 'keep' ? 'approved' : 'discarded');
+						self.closePreview(outcomeStatus);
+						var displayMsg = result.message || (outcomeStatus === 'approved'
 							? 'Changes applied successfully.'
-							: 'Changes discarded.';
+							: 'Preview discarded.');
 						// v3.1.0: Append verification summary if present.
-						if (action === 'keep' && result.verification && result.verification.message) {
+						if (outcomeStatus === 'approved' && result.verification && result.verification.message) {
 							displayMsg += '\n\n' + result.verification.message;
 						}
-						self.addMessage('ai', displayMsg);
+						self.appendAssistantResultMessage(displayMsg, result);
 						// Save as card summary so history renders the nice status card.
-						var cardStatus = action === 'keep' ? 'applied' : 'cancelled';
+						var cardStatus = outcomeStatus === 'approved'
+							? 'applied'
+							: (outcomeStatus === 'discarded' ? 'discarded' : outcomeStatus);
 						var historyMsg = '[PRESSARK_CARD:' + cardStatus + ']' + (result.post_title || 'Changes') + '||' + displayMsg;
 						self.conversation.push({ role: 'assistant', content: historyMsg });
 
@@ -2314,17 +2804,17 @@
 						// v3.7.3: Auto-resume with enriched continuation context.
 						// Uses [Continue] prefix so classify_task routes based on
 						// the original user request, not this continuation marker.
-						if (action === 'keep' && self.shouldAutoResume(result)) {
+						if (outcomeStatus === 'approved' && self.shouldAutoResume(result)) {
 							setTimeout(function () {
 								self.sendMessage(self.buildContinuationMessage(result, 'Changes applied successfully.'));
 							}, 600);
-						} else if (action === 'keep' && result.continuation && result.continuation.pause_message) {
+						} else if (outcomeStatus === 'approved' && result.continuation && result.continuation.pause_message) {
 							self.addMessage('ai', result.continuation.pause_message);
 							self.conversation.push({ role: 'assistant', content: result.continuation.pause_message });
 						}
 					} else {
 						self.setPreviewFooterBusy(self.activePreviewFooterEl, false);
-						self.addMessage('error', result.message || 'Something went wrong.');
+						self.addMessage('error', result.message || 'PressArk did not confirm that the preview was settled. Please try again.');
 					}
 
 					if (result.usage) {
@@ -2568,12 +3058,7 @@
 
 					try {
 						if (result.is_error) {
-							self.addMessage('error', result.reply || 'An error occurred.');
-							var msgs = self.messagesEl.querySelectorAll('.pressark-message-error');
-							var lastError = msgs[msgs.length - 1];
-							if (lastError) {
-								self.bindRetryButton(lastError.querySelector('.pressark-retry-btn'));
-							}
+							self.appendRetryableError(result.reply || 'An error occurred.');
 							return;
 						}
 
@@ -2590,9 +3075,10 @@
 
 					var silentContinuation = self.isSilentContinuationResult(result);
 
-					// Render activity strip (agentic loop steps).
-					if (result.steps && result.steps.length > 0) {
-						self.renderActivityStrip(result.steps);
+					// Render activity strip from canonical backend state when present.
+					var activityItems = self.getResultActivityItems(result);
+					if (activityItems.length > 0) {
+						self.renderActivityStrip(activityItems);
 					} else if (silentContinuation) {
 						self.renderSilentContinuationStep(result);
 					}
@@ -2608,23 +3094,24 @@
 						// Background task queued — show message and start the PressArk poller.
 						self.pendingTaskCount = Math.max(self.pendingTaskCount, 1);
 						self.syncTaskPolling(true);
-						self.addMessage('ai', result.message || 'Working on that in the background...');
+						self.appendAssistantResultMessage(result.message || 'Working on that in the background...', result);
 						self.conversation.push({ role: 'assistant', content: result.message || '' });
 					} else if (responseType === 'preview') {
 						// Live preview — show reply, then open preview overlay.
 						if (result.reply) {
-							self.addMessage('ai', result.reply);
+							self.appendAssistantResultMessage(result.reply, result);
 							self.conversation.push({ role: 'assistant', content: result.reply });
 						}
 						self.openPreview({
 							preview_session_id: result.preview_session_id,
 							preview_url: result.preview_url,
 							diff: result.diff,
+							risk_receipt: result.risk_receipt,
 						});
 					} else if (responseType === 'confirm_card') {
 						// Confirm card — show reply + old-style confirm cards.
 						if (result.reply) {
-							self.addMessage('ai', result.reply);
+							self.appendAssistantResultMessage(result.reply, result);
 							self.conversation.push({ role: 'assistant', content: result.reply });
 						}
 						if (result.pending_actions && result.pending_actions.length > 0) {
@@ -2636,7 +3123,7 @@
 						// final_response — standard text reply.
 						var reply = result.reply || result.message || (result.is_error ? 'Something went wrong.' : '');
 						if (reply && !silentContinuation) {
-							self.addMessage('ai', reply);
+							self.appendAssistantResultMessage(reply, result);
 							self.conversation.push({ role: 'assistant', content: reply });
 						}
 
@@ -2696,12 +3183,7 @@
 						}
 					}
 
-					self.addMessage('error', errorMessage);
-					var msgs = self.messagesEl.querySelectorAll('.pressark-message-error');
-					var lastError = msgs[msgs.length - 1];
-					if (lastError) {
-						self.bindRetryButton(lastError.querySelector('.pressark-retry-btn'));
-					}
+					self.appendRetryableError(errorMessage);
 				});
 		},
 		// ── SSE Streaming (v4.4.0) ──────────────────────────────────
@@ -2839,24 +3321,18 @@
 						bubble.classList.remove('pressark-message-streaming');
 						self._streamText = '';
 						self._streamSegmentText = '';
-						var contentEl = bubble.querySelector('.pressark-message-content');
-						var hasContent = contentEl && contentEl.textContent.trim();
-						if (hasContent && textBuffer) {
-							// Keep partial response, clean up inline step rows.
-							var inlineSteps = contentEl.querySelectorAll('.pressark-inline-step');
-							for (var si = 0; si < inlineSteps.length; si++) {
-								inlineSteps[si].remove();
-							}
-							var segs = contentEl.querySelectorAll('.pressark-stream-text-segment');
-							for (var sj = 0; sj < segs.length; sj++) {
-								while (segs[sj].firstChild) {
-									contentEl.insertBefore(segs[sj].firstChild, segs[sj]);
-								}
-								segs[sj].remove();
-							}
+						var contentEl = self.cleanupStreamingBubbleContent(bubble);
+						var hasRenderableContent = !!(
+							contentEl &&
+							(
+								(contentEl.textContent && contentEl.textContent.trim()) ||
+								contentEl.children.length > 0
+							)
+						);
+						if (hasRenderableContent && textBuffer) {
 							self.conversation.push({ role: 'assistant', content: textBuffer });
 							self.autoSaveChat();
-						} else {
+						} else if (!hasRenderableContent) {
 							// No content — remove empty bubble.
 							if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
 						}
@@ -2865,10 +3341,14 @@
 				}
 
 				console.error('PressArk stream failed', err);
-				if (bubble && bubble.parentNode && !bubble.querySelector('.pressark-message-content').textContent.trim()) {
-					bubble.parentNode.removeChild(bubble);
+				if (bubble) {
+					self.renderInterruptedStream(
+						bubble,
+						"Couldn't reach PressArk. Check your connection and try again."
+					);
+				} else {
+					self.appendRetryableError("Couldn't reach PressArk. Check your connection and try again.");
 				}
-				self.addMessage('error', "Couldn't reach PressArk. Check your connection and try again.");
 			});
 		},
 
@@ -3002,9 +3482,7 @@
 				case 'error':
 					this.finishRequest();
 					var msg = (event.data && event.data.message) || 'An error occurred.';
-					contentEl.innerHTML = '<span class="pressark-error-icon">' + pwIcons.warning + '</span> ' + this.escapeHtml(msg);
-					bubble.classList.add('pressark-message-error');
-					bubble.classList.remove('pressark-message-streaming');
+					this.renderInterruptedStream(bubble, msg);
 					break;
 			}
 		},
@@ -3153,8 +3631,8 @@
 			var silentContinuation = this.isSilentContinuationResult(result);
 
 			if (this.shouldAutoContinueCompactedRun(result)) {
-				if (result.steps && result.steps.length > 0) {
-					this.renderActivityStripBefore(result.steps, bubble);
+				if (this.getResultActivityItems(result).length > 0) {
+					this.renderActivityStripBefore(this.getResultActivityItems(result), bubble);
 				} else if (silentContinuation) {
 					this.renderSilentContinuationStep(result, bubble);
 				}
@@ -3168,11 +3646,12 @@
 			var responseType = result.type || 'final_response';
 			var replyText = result.reply || result.message || '';
 			var contentEl = bubble.querySelector('.pressark-message-content');
+			var activityItems = this.getResultActivityItems(result);
 
 			// Rebuild the bubble content: final activity strip, then formatted text.
 			if (silentContinuation) {
-				if (result.steps && result.steps.length > 0) {
-					this.renderActivityStripBefore(result.steps, bubble);
+				if (activityItems.length > 0) {
+					this.renderActivityStripBefore(activityItems, bubble);
 				} else {
 					this.renderSilentContinuationStep(result, bubble);
 				}
@@ -3200,16 +3679,18 @@
 				}
 
 				// If there were inline steps, render the final activity strip above the bubble.
-				if (result.steps && result.steps.length > 0) {
-					this.renderActivityStripBefore(result.steps, bubble);
+				if (activityItems.length > 0) {
+					this.renderActivityStripBefore(activityItems, bubble);
 				} else if (hadInlineSteps) {
 					// No final steps from server — remove inline steps (they're already cleared).
 				}
 
+				this.decorateAssistantMessage(bubble, result);
 				this.conversation.push({ role: 'assistant', content: replyText });
-			} else if (result.steps && result.steps.length > 0) {
+			} else if (activityItems.length > 0) {
 				// No reply text but has steps.
-				this.renderActivityStripBefore(result.steps, bubble);
+				this.renderActivityStripBefore(activityItems, bubble);
+				this.decorateAssistantMessage(bubble, result);
 			}
 
 			// Branch on response type.
@@ -3221,6 +3702,7 @@
 					preview_session_id: result.preview_session_id,
 					preview_url: result.preview_url,
 					diff: result.diff,
+					risk_receipt: result.risk_receipt,
 				});
 			} else if (responseType === 'confirm_card') {
 				if (result.pending_actions && result.pending_actions.length > 0) {
@@ -3251,35 +3733,10 @@
 			// This can happen if the connection drops.
 			if (this.isSending) {
 				this.finishRequest();
-				this._streamText = '';
-				this._streamSegmentText = '';
-				bubble.classList.remove('pressark-message-streaming');
-
-				// Clean up any inline step rows from the bubble.
-				var contentEl = bubble.querySelector('.pressark-message-content');
-				if (contentEl) {
-					var inlineSteps = contentEl.querySelectorAll('.pressark-inline-step');
-					for (var i = 0; i < inlineSteps.length; i++) {
-						inlineSteps[i].remove();
-					}
-					// Unwrap text segments.
-					var segs = contentEl.querySelectorAll('.pressark-stream-text-segment');
-					for (var j = 0; j < segs.length; j++) {
-						while (segs[j].firstChild) {
-							contentEl.insertBefore(segs[j].firstChild, segs[j]);
-						}
-						segs[j].remove();
-					}
-				}
-
-				if (textBuffer) {
-					// Re-render the final text cleanly.
-					if (contentEl) {
-						contentEl.innerHTML = this.renderFormattedMessage(textBuffer);
-					}
-					this.conversation.push({ role: 'assistant', content: textBuffer });
-					this.autoSaveChat();
-				}
+				this.renderInterruptedStream(
+					bubble,
+					'PressArk lost the stream before this response finished. The reply above may be incomplete. Please retry.'
+				);
 			}
 		},
 

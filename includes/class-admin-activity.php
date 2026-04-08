@@ -873,6 +873,12 @@ class PressArk_Admin_Activity {
 		$token_footprint  = is_array( $inspector['token_footprint'] ?? null ) ? $inspector['token_footprint'] : array();
 		$provider_request = is_array( $inspector['provider_request'] ?? null ) ? $inspector['provider_request'] : array();
 		$routing          = is_array( $inspector['routing'] ?? null ) ? $inspector['routing'] : array();
+		$visible_tools    = array_values( array_filter( array_map( 'strval', (array) ( $tool_surface['visible_tools'] ?? array() ) ) ) );
+		$loaded_tools     = array_values( array_filter( array_map( 'strval', (array) ( $tool_surface['loaded_tools'] ?? array() ) ) ) );
+		$searchable_tools = array_values( array_filter( array_map( 'strval', (array) ( $tool_surface['searchable_tools'] ?? array() ) ) ) );
+		$discovered_tools = array_values( array_filter( array_map( 'strval', (array) ( $tool_surface['discovered_tools'] ?? array() ) ) ) );
+		$blocked_tools    = array_values( array_filter( array_map( 'strval', (array) ( $tool_surface['blocked_tools'] ?? array() ) ) ) );
+		$hidden_tools     = array_values( array_filter( array_map( 'strval', (array) ( $tool_surface['hidden_tools'] ?? array() ) ) ) );
 
 		echo '<h3>' . esc_html__( 'Context Inspector', 'pressark' ) . '</h3>';
 		echo '<p class="description">' . esc_html__( 'Shows the composed context shape that reached the model, plus the replay/read sidecars that currently govern future rounds.', 'pressark' ) . '</p>';
@@ -891,7 +897,11 @@ class PressArk_Admin_Activity {
 				'value' => (string) ( $provider_request['provider_format'] ?? '-' ),
 			),
 			array(
-				'label' => __( 'Transport', 'pressark' ),
+				'label' => __( 'Transport Mode', 'pressark' ),
+				'value' => (string) ( $provider_request['transport_mode'] ?? '-' ),
+			),
+			array(
+				'label' => __( 'Transport Provider', 'pressark' ),
 				'value' => (string) ( $provider_request['transport_provider'] ?? '-' ),
 			),
 			array(
@@ -900,11 +910,23 @@ class PressArk_Admin_Activity {
 			),
 			array(
 				'label' => __( 'Visible Tools', 'pressark' ),
-				'value' => number_format_i18n( count( (array) ( $tool_surface['visible_tools'] ?? array() ) ) ),
+				'value' => number_format_i18n( count( $visible_tools ) ),
 			),
 			array(
-				'label' => __( 'Hidden Tools', 'pressark' ),
-				'value' => number_format_i18n( count( (array) ( $tool_surface['hidden_tools'] ?? array() ) ) ),
+				'label' => __( 'Loaded Tools', 'pressark' ),
+				'value' => number_format_i18n( count( $loaded_tools ) ),
+			),
+			array(
+				'label' => __( 'Searchable Tools', 'pressark' ),
+				'value' => number_format_i18n( count( $searchable_tools ) ),
+			),
+			array(
+				'label' => __( 'Discovered Tools', 'pressark' ),
+				'value' => number_format_i18n( count( $discovered_tools ) ),
+			),
+			array(
+				'label' => __( 'Blocked Tools', 'pressark' ),
+				'value' => number_format_i18n( count( $blocked_tools ) ),
 			),
 			array(
 				'label' => __( 'Read Snapshots', 'pressark' ),
@@ -1089,7 +1111,29 @@ class PressArk_Admin_Activity {
 		echo '</details>';
 
 		echo '<details class="pressark-inspector-section"><summary>' . esc_html__( 'Tool Surface', 'pressark' ) . '</summary>';
-		echo '<p><strong>' . esc_html__( 'Visible tools', 'pressark' ) . ':</strong> ' . esc_html( ! empty( $tool_surface['visible_tools'] ) ? implode( ', ', (array) $tool_surface['visible_tools'] ) : '-' ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Visible capability pool', 'pressark' ) . ':</strong> '
+			. esc_html(
+				sprintf(
+					/* translators: %d: tool count */
+					_n( '%d visible tool', '%d visible tools', count( $visible_tools ), 'pressark' ),
+					count( $visible_tools )
+				)
+			)
+			. '</p>';
+		echo '<p><strong>' . esc_html__( 'Loaded now', 'pressark' ) . ':</strong> ' . esc_html( $this->format_capped_list( $loaded_tools ) ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Searchable on demand', 'pressark' ) . ':</strong> ' . esc_html( $this->format_capped_list( $searchable_tools ) ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Discovered but not yet loaded', 'pressark' ) . ':</strong> ' . esc_html( $this->format_capped_list( $discovered_tools ) ) . '</p>';
+		echo '<p><strong>' . esc_html__( 'Blocked or hidden', 'pressark' ) . ':</strong> ' . esc_html( $this->format_capped_list( $blocked_tools ) ) . '</p>';
+		if ( ! empty( $hidden_tools ) ) {
+			echo '<p><strong>' . esc_html__( 'Hidden from this request surface', 'pressark' ) . ':</strong> ' . esc_html( $this->format_capped_list( $hidden_tools ) ) . '</p>';
+		}
+		if ( ! empty( $tool_surface['blocked_summary'] ) ) {
+			$blocked_summary = array();
+			foreach ( (array) $tool_surface['blocked_summary'] as $reason => $count ) {
+				$blocked_summary[] = $reason . ': ' . number_format_i18n( (int) $count );
+			}
+			echo '<p><strong>' . esc_html__( 'Blocked summary', 'pressark' ) . ':</strong> ' . esc_html( implode( ' | ', $blocked_summary ) ) . '</p>';
+		}
 		if ( ! empty( $tool_surface['hidden_summary'] ) ) {
 			$hidden_summary = array();
 			foreach ( (array) $tool_surface['hidden_summary'] as $reason => $count ) {
@@ -1975,6 +2019,33 @@ class PressArk_Admin_Activity {
 		}
 
 		return mb_strlen( $text ) > 80 ? mb_substr( $text, 0, 77 ) . '...' : $text;
+	}
+
+	/**
+	 * Render a capped comma-separated list for dense inspector surfaces.
+	 *
+	 * @param string[] $items Item labels.
+	 * @param int      $limit Maximum items to render before collapsing.
+	 * @return string
+	 */
+	private function format_capped_list( array $items, int $limit = 18 ): string {
+		$items = array_values( array_filter( array_map(
+			static function ( $item ): string {
+				return sanitize_text_field( (string) $item );
+			},
+			$items
+		) ) );
+
+		if ( empty( $items ) ) {
+			return '-';
+		}
+
+		$visible = array_slice( $items, 0, $limit );
+		if ( count( $items ) > count( $visible ) ) {
+			$visible[] = '+' . ( count( $items ) - count( $visible ) ) . ' more';
+		}
+
+		return implode( ', ', $visible );
 	}
 
 	private function render_status_filters( array $counts, string $active, string $view, bool $support_mode ): void {

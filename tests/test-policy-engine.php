@@ -39,6 +39,13 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 	}
 }
 
+if ( ! function_exists( '__' ) ) {
+	function __( $text, $domain = null ) {
+		unset( $domain );
+		return $text;
+	}
+}
+
 if ( ! function_exists( 'wp_json_encode' ) ) {
 	function wp_json_encode( $data ) {
 		return json_encode( $data );
@@ -168,6 +175,16 @@ if ( ! class_exists( 'PressArk_Operation_Registry' ) ) {
 		public static function resolve_alias( string $name ): string {
 			return $name;
 		}
+
+		public static function validate_input( string $name, array $args = array() ): array {
+			unset( $name, $args );
+			return array( 'valid' => true );
+		}
+
+		public static function get_policy_hooks( string $name, string $phase ): array {
+			unset( $name, $phase );
+			return array();
+		}
 	}
 }
 
@@ -281,6 +298,10 @@ if ( ! class_exists( 'PressArk_Entitlements' ) ) {
 			}
 			return array( 'allowed' => true, 'remaining' => 1, 'basis' => 'weekly_remaining' );
 		}
+
+		public static function record_group_usage( string $group ): void {
+			unset( $group );
+		}
 	}
 }
 
@@ -339,6 +360,71 @@ if ( ! class_exists( 'PressArk_Tools' ) ) {
 if ( ! class_exists( 'PressArk_Token_Budget_Manager' ) ) {
 	class PressArk_Token_Budget_Manager {}
 }
+
+if ( ! class_exists( 'PressArk_Action_Logger' ) ) {
+	class PressArk_Action_Logger {}
+}
+
+if ( ! class_exists( 'PressArk_Handler_Registry' ) ) {
+	class PressArk_Handler_Registry {
+		public function __construct( PressArk_Action_Logger $logger ) {
+			unset( $logger );
+		}
+
+		public function set_async_context( string $task_id ): void {
+			unset( $task_id );
+		}
+
+		public function dispatch( PressArk_Operation $operation, array $params ): array {
+			return array(
+				'success'     => true,
+				'message'     => 'Executed ' . $operation->name,
+				'params'      => $params,
+				'action_type' => $operation->name,
+			);
+		}
+	}
+}
+
+if ( ! class_exists( 'PressArk_Preflight' ) ) {
+	class PressArk_Preflight {
+		public const ACTION_PROCEED = 'proceed';
+		public const ACTION_BLOCK   = 'block';
+		public const ACTION_REROUTE = 'reroute';
+		public const ACTION_REWRITE = 'rewrite';
+
+		public static function check( string $type, array $params ): array {
+			unset( $type, $params );
+			return array( 'action' => self::ACTION_PROCEED );
+		}
+	}
+}
+
+if ( ! class_exists( 'PressArk_Error_Tracker' ) ) {
+	class PressArk_Error_Tracker {
+		public static function info( string $component, string $message, array $context = array() ): void {
+			unset( $component, $message, $context );
+		}
+
+		public static function error( string $component, string $message, array $context = array() ): void {
+			unset( $component, $message, $context );
+		}
+
+		public static function critical( string $component, string $message, array $context = array() ): void {
+			unset( $component, $message, $context );
+		}
+	}
+}
+
+if ( ! class_exists( 'PressArk_Usage_Tracker' ) ) {
+	class PressArk_Usage_Tracker {
+		public function is_write_action( string $tool_name ): bool {
+			return 'read' !== PressArk_Operation_Registry::classify( $tool_name );
+		}
+	}
+}
+
+require_once dirname( __DIR__ ) . '/includes/class-action-engine.php';
 
 if ( ! function_exists( 'apply_filters' ) ) {
 	$_test_filters = array();
@@ -633,6 +719,11 @@ $toggle_decision = PressArk_Permission_Service::evaluate(
 assert_test( '15a. Automation hides never-auto-approve plugin toggles before prompt exposure', ! in_array( 'toggle_plugin', $automation_set['tool_names'], true ) );
 assert_test( '15b. Automation still blocks the same dangerous plugin toggle at decision time', PressArk_Permission_Decision::is_denied( $toggle_decision ) );
 assert_test( '15c. Automation still exposes editorial-safe content edits', in_array( 'edit_content', $automation_set['tool_names'], true ) );
+assert_test(
+	'15d. Automation permission surface exposes safe hidden-reason summaries',
+	'approval' === ( $automation_set['permission_surface']['hidden_reason_rows'][0]['kind'] ?? '' )
+		&& false !== strpos( (string) ( $automation_set['permission_surface']['hidden_reason_rows'][0]['hint'] ?? '' ), 'interactive run' )
+);
 
 reset_test_state();
 $pause_state = PressArk_Run_Store::build_pause_state(
@@ -727,6 +818,78 @@ assert_test( '18a. Friction report aggregates repeatedly hidden tools', 'fix_seo
 assert_test( '18b. Friction report aggregates repeatedly denied operations', 'fix_seo' === ( $report['top_denied_operations'][0]['operation'] ?? '' ) );
 assert_test( '18c. Friction report tracks groups that were requested but never visible', 'seo' === ( $report['requested_never_visible_groups'][0]['group'] ?? '' ) );
 assert_test( '18d. Friction report tracks discovery dead-end queries', 'fix seo title' === ( $report['discovery_dead_ends'][0]['query'] ?? '' ) );
+
+reset_test_state();
+PressArk_License::$tier = 'pro';
+add_filter( 'pressark_policy_rules', function ( $rules ) {
+	$rules[] = array(
+		'behavior' => PressArk_Policy_Engine::ASK,
+		'match'    => PressArk_Policy_Engine::MATCH_OPERATION,
+		'value'    => 'fix_seo',
+		'source'   => 'confirm_gate_test',
+		'reasons'  => array( 'SEO fixes require confirmation.' ),
+	);
+	return $rules;
+}, 10, 1 );
+$decision = PressArk_Permission_Service::evaluate(
+	'fix_seo',
+	array( 'post_id' => 42 ),
+	PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+	array( 'tier' => 'pro' )
+);
+$gate = PressArk_Permission_Service::gate_execution(
+	'fix_seo',
+	array( 'post_id' => 42 ),
+	PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+	array( 'tier' => 'pro' )
+);
+$approved_decision = PressArk_Permission_Service::evaluate(
+	'fix_seo',
+	array( 'post_id' => 42 ),
+	PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+	array(
+		'tier'             => 'pro',
+		'approval_granted' => true,
+	)
+);
+$approved_gate = PressArk_Permission_Service::gate_execution(
+	'fix_seo',
+	array( 'post_id' => 42 ),
+	PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+	array(
+		'tier'             => 'pro',
+		'approval_granted' => true,
+	)
+);
+$engine = new PressArk_Action_Engine( new PressArk_Action_Logger() );
+$blocked_execution = $engine->execute_single(
+	array(
+		'type'   => 'fix_seo',
+		'params' => array( 'post_id' => 42 ),
+		'meta'   => array(
+			'permission_context' => PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+			'permission_meta'    => array( 'tier' => 'pro' ),
+		),
+	)
+);
+$approved_execution = $engine->execute_single(
+	array(
+		'type'   => 'fix_seo',
+		'params' => array( 'post_id' => 42 ),
+		'meta'   => array(
+			'approval_granted'   => true,
+			'permission_context' => PressArk_Policy_Engine::CONTEXT_INTERACTIVE,
+			'permission_meta'    => array( 'tier' => 'pro' ),
+		),
+	)
+);
+assert_test( '19a. Canonical permission service marks confirm-gated tool as ask', PressArk_Permission_Decision::is_ask( $decision ) );
+assert_test( '19b. Execution gate reuses the exact canonical permission decision', $decision === (array) ( $gate['permission_decision'] ?? array() ) );
+assert_test( '19c. Execution gate keeps ask decisions blocked before approval', empty( $gate['allowed'] ) );
+assert_test( '19d. Approval flips gate_execution while reusing the same approved-decision shape', ! empty( $approved_gate['allowed'] ) && $approved_decision === (array) ( $approved_gate['permission_decision'] ?? array() ) );
+assert_test( '19e. Action engine blocks execution with the same canonical ask decision', PressArk_Permission_Decision::is_ask( (array) ( $blocked_execution['permission_decision'] ?? array() ) ) );
+assert_test( '19f. Confirm-gated execution stays blocked until approval is granted', empty( $blocked_execution['success'] ) );
+assert_test( '19g. Explicit approval reuses the same canonical gate and allows execution', ! empty( $approved_execution['success'] ) );
 
 function run_policy_fixture_scenario( array $fixture ): array {
 	$input = (array) ( $fixture['input'] ?? array() );

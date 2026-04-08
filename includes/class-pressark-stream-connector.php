@@ -100,7 +100,7 @@ class PressArk_Stream_Connector {
 	 * @return array Accumulated raw response in the same shape as a non-streaming call.
 	 */
 	private function stream_openai( array $messages, array $tools, string $system_prompt ): array {
-		$request = $this->ai->build_openai_request( $messages, $tools, $system_prompt );
+		$request = $this->ai->prepare_streaming_request( $messages, $tools, $system_prompt );
 
 		$request['body']['stream']         = true;
 		$request['body']['stream_options']  = array( 'include_usage' => true );
@@ -210,7 +210,7 @@ class PressArk_Stream_Connector {
 	 * @return array Accumulated raw response in the same shape as a non-streaming call.
 	 */
 	private function stream_anthropic( array $messages, array $tools, string $system_prompt ): array {
-		$request = $this->ai->build_anthropic_request( $messages, $tools, $system_prompt );
+		$request = $this->ai->prepare_streaming_request( $messages, $tools, $system_prompt );
 
 		$request['body']['stream'] = true;
 
@@ -316,12 +316,9 @@ class PressArk_Stream_Connector {
 	private function stream_via_bank( array $messages, array $tools, string $system_prompt ): array {
 		$provider = $this->ai->get_provider();
 
-		// Build the provider-format request body.
-		if ( 'anthropic' === $provider ) {
-			$request = $this->ai->build_anthropic_request( $messages, $tools, $system_prompt );
-		} else {
-			$request = $this->ai->build_openai_request( $messages, $tools, $system_prompt );
-		}
+		// Build the provider-format request body using the same fresh runtime
+		// contract as the direct transport path.
+		$request = $this->ai->prepare_streaming_request( $messages, $tools, $system_prompt );
 
 		$request['body']['stream']        = true;
 		$request['body']['stream_options'] = array( 'include_usage' => true );

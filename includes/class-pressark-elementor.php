@@ -69,6 +69,8 @@ class PressArk_Elementor {
 	 * @param bool  $use_doc_api  Whether to use Document API (default true).
 	 */
 	public function save_elementor_data( int $post_id, array $elements, bool $use_doc_api = true ): bool {
+		$expected_ids = $this->collect_element_ids( $elements );
+
 		if ( $use_doc_api && class_exists( '\Elementor\Plugin' ) ) {
 			try {
 				$document = \Elementor\Plugin::$instance->documents->get( $post_id );
@@ -78,7 +80,23 @@ class PressArk_Elementor {
 						'elements' => $elements,
 						'settings' => $document->get_settings(),
 					) );
-					return true;
+
+					$saved_elements = $this->get_elementor_data( $post_id );
+					if ( $this->document_save_preserved_elements( $expected_ids, $saved_elements ) ) {
+						return true;
+					}
+
+					$missing_ids = array_values( array_diff( $expected_ids, $this->collect_element_ids( is_array( $saved_elements ) ? $saved_elements : array() ) ) );
+					PressArk_Error_Tracker::error(
+						'Elementor',
+						'Document::save() dropped Elementor elements; falling back to direct write',
+						array(
+							'post_id'        => $post_id,
+							'expected_count' => count( $expected_ids ),
+							'saved_count'    => is_array( $saved_elements ) ? count( $this->collect_element_ids( $saved_elements ) ) : 0,
+							'missing_ids'    => array_slice( $missing_ids, 0, 10 ),
+						)
+					);
 				}
 			} catch ( \Throwable $e ) {
 				PressArk_Error_Tracker::error( 'Elementor', 'Document::save() failed', array( 'post_id' => $post_id, 'error' => $e->getMessage() ) );
@@ -91,6 +109,10 @@ class PressArk_Elementor {
 		// which would strip backslashes from JSON (e.g. \u2014 → u2014).
 		// Elementor's own Document::save() does the same (see document.php:1368).
 		update_post_meta( $post_id, '_elementor_data', wp_slash( wp_json_encode( $elements ) ) );
+		update_post_meta( $post_id, '_elementor_edit_mode', 'builder' );
+		if ( defined( 'ELEMENTOR_VERSION' ) ) {
+			update_post_meta( $post_id, '_elementor_version', ELEMENTOR_VERSION );
+		}
 
 		// Save a plain-text version to post_content for SEO / search.
 		$this->save_plain_text( $post_id, $elements );
@@ -98,6 +120,53 @@ class PressArk_Elementor {
 		$this->regenerate_post_css( $post_id );
 
 		return true;
+	}
+
+	/**
+	 * Collect all element IDs from an Elementor element tree.
+	 *
+	 * @param array $elements Elementor elements.
+	 * @return array<string>
+	 */
+	private function collect_element_ids( array $elements ): array {
+		$ids = array();
+
+		foreach ( $elements as $element ) {
+			if ( ! is_array( $element ) ) {
+				continue;
+			}
+
+			if ( ! empty( $element['id'] ) && is_string( $element['id'] ) ) {
+				$ids[] = $element['id'];
+			}
+
+			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
+				$ids = array_merge( $ids, $this->collect_element_ids( $element['elements'] ) );
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
+	}
+
+	/**
+	 * Check whether a Document::save() round-trip preserved all expected IDs.
+	 *
+	 * @param array      $expected_ids  IDs from the input tree.
+	 * @param array|null $saved_elements Tree re-read after save.
+	 * @return bool
+	 */
+	private function document_save_preserved_elements( array $expected_ids, $saved_elements ): bool {
+		if ( ! is_array( $saved_elements ) ) {
+			return false;
+		}
+
+		if ( empty( $expected_ids ) ) {
+			return empty( $this->collect_element_ids( $saved_elements ) );
+		}
+
+		$saved_ids = $this->collect_element_ids( $saved_elements );
+
+		return empty( array_diff( $expected_ids, $saved_ids ) );
 	}
 
 	/**
@@ -320,6 +389,10 @@ class PressArk_Elementor {
 	 * @return string|null The actual settings key, or null if not found.
 	 */
 	public static function resolve_field_key( string $widget_type, string $field_alias ): ?string {
+		if ( method_exists( __CLASS__, 'resolve_runtime_field_key' ) ) {
+			return self::resolve_runtime_field_key( $widget_type, $field_alias );
+		}
+
 		$alias_lower = strtolower( trim( $field_alias ) );
 
 		// 1. Check manual schema aliases first (backward compat).
@@ -358,6 +431,46 @@ class PressArk_Elementor {
 		return $field_alias;
 	}
 
+	/**
+	 * Runtime-safe alias resolution that prefers Elementor's live control schema.
+	 *
+	 * @param string $widget_type Elementor widget type.
+	 * @param string $field_alias Requested field alias.
+	 * @return string|null
+	 */
+	private static function resolve_runtime_field_key( string $widget_type, string $field_alias ): ?string {
+		$alias_lower = strtolower( trim( $field_alias ) );
+		$instance    = new self();
+		$auto_schema = $instance->get_widget_schema_entry( $widget_type );
+		$auto_fields = $auto_schema['fields'] ?? array();
+
+		foreach ( $auto_fields as $control_id => $field ) {
+			if ( strtolower( $control_id ) === $alias_lower ) {
+				return $control_id;
+			}
+			if ( ! empty( $field['label'] ) && strtolower( (string) $field['label'] ) === $alias_lower ) {
+				return $control_id;
+			}
+		}
+
+		$manual_schema = self::get_widget_schema();
+		$manual_widget = $manual_schema[ $widget_type ] ?? null;
+
+		if ( $manual_widget ) {
+			foreach ( $manual_widget['fields'] as $key => $field_def ) {
+				$is_known_live_field = empty( $auto_fields ) || isset( $auto_fields[ $key ] );
+				if ( $key === $alias_lower && $is_known_live_field ) {
+					return $key;
+				}
+				if ( $is_known_live_field && in_array( $alias_lower, $field_def['aliases'] ?? array(), true ) ) {
+					return $key;
+				}
+			}
+		}
+
+		return $field_alias;
+	}
+
 	// ── A2: Structured Page Reader ────────────────────────────────────
 
 	/**
@@ -380,6 +493,10 @@ class PressArk_Elementor {
 		}
 
 		$data   = is_string( $raw ) ? json_decode( $raw, true ) : $raw;
+		if ( ! is_array( $data ) ) {
+			return array( 'error' => 'Elementor data is invalid or could not be parsed.' );
+		}
+
 		$stats  = array( 'sections' => 0, 'columns' => 0, 'containers' => 0, 'widgets' => 0, 'words' => 0 );
 		$issues = array();
 		$tree   = array();
@@ -811,8 +928,7 @@ class PressArk_Elementor {
 			return array( 'error' => "Widget ID '{$widget_id}' not found on this page." );
 		}
 
-		// Direct meta write — bypass Document::save() sanitizer which may strip widgets.
-		$this->save_elementor_data( $post_id, $data, false );
+		$this->save_elementor_data( $post_id, $data );
 
 		return array(
 			'success'   => true,
@@ -863,8 +979,7 @@ class PressArk_Elementor {
 			return $result;
 		}
 
-		// Direct meta write — bypass Document::save() sanitizer.
-		$this->save_elementor_data( $post_id, $data, false );
+		$this->save_elementor_data( $post_id, $data );
 
 		return array(
 			'success'        => true,
@@ -1096,6 +1211,10 @@ class PressArk_Elementor {
 			return array( 'success' => false, 'error' => 'No Elementor data found for post #' . $post_id . '.' );
 		}
 
+		if ( empty( $data ) ) {
+			$data = $this->get_initial_elementor_structure();
+		}
+
 		// Resolve natural-language aliases to real Elementor settings keys.
 		$resolved = array();
 		foreach ( $settings as $alias => $value ) {
@@ -1120,6 +1239,7 @@ class PressArk_Elementor {
 			'settings'   => $this->build_widget_settings( $widget_type, $resolved ),
 			'elements'   => array(),
 		);
+		$new_widget = $this->normalize_new_element_data( $new_widget );
 
 		// Find the target container and insert the widget.
 		$inserted = false;
@@ -1137,11 +1257,8 @@ class PressArk_Elementor {
 			);
 		}
 
-		// Save the updated data.
-		// Use direct meta write (skip Document::save() sanitizer) because the sanitizer
-		// strips widgets that don't pass its strict validation pipeline. Direct write
-		// + CSS regen is safe for adding widgets since we control the structure.
-		$this->save_elementor_data( $post_id, $data, false );
+		// Save the updated data through Elementor's document pipeline when possible.
+		$this->save_elementor_data( $post_id, $data );
 
 		return array(
 			'success'      => true,
@@ -1226,29 +1343,90 @@ class PressArk_Elementor {
 	 * Ensures widgets are usable out-of-the-box even with no settings specified.
 	 */
 	private function build_widget_settings( string $widget_type, array $overrides ): array {
-		$defaults = array(
-			'heading'      => array( 'title' => 'Your Heading Here', 'header_size' => 'h2', 'align' => 'left' ),
-			'text-editor'  => array( 'editor' => '<p>Your text here.</p>' ),
-			'image'        => array( 'image' => array( 'url' => '', 'id' => '' ), 'image_size' => 'large' ),
-			'button'       => array( 'text' => 'Click Here', 'link' => array( 'url' => '#', 'is_external' => '' ) ),
-			'spacer'       => array( 'space' => array( 'size' => 50, 'unit' => 'px' ) ),
-			'divider'      => array( 'style' => 'solid', 'weight' => array( 'size' => 1, 'unit' => 'px' ) ),
-			'icon'         => array( 'selected_icon' => array( 'value' => 'fas fa-star', 'library' => 'fa-solid' ) ),
-			'video'        => array( 'youtube_url' => 'https://www.youtube.com/watch?v=9xwazD5SyVg' ),
-			'html'         => array( 'html' => '<!-- Custom HTML here -->' ),
-			'shortcode'    => array( 'shortcode' => '[your-shortcode]' ),
-			'tabs'         => array( 'tabs' => array(
-				array( '_id' => bin2hex( random_bytes( 3 ) ), 'tab_title' => 'Tab 1', 'tab_content' => 'Content 1' ),
-				array( '_id' => bin2hex( random_bytes( 3 ) ), 'tab_title' => 'Tab 2', 'tab_content' => 'Content 2' ),
+		$schema_defaults = $this->extract_safe_widget_defaults_from_schema( $this->get_widget_schema_entry( $widget_type ) );
+		$defaults        = array(
+			'heading'     => array( 'header_size' => 'h2', 'align' => 'left' ),
+			'image'       => array( 'image' => array( 'url' => '', 'id' => '' ), 'image_size' => 'large' ),
+			'spacer'      => array( 'space' => array( 'size' => 50, 'unit' => 'px' ) ),
+			'divider'     => array( 'style' => 'solid', 'weight' => array( 'size' => 1, 'unit' => 'px' ) ),
+			'icon'        => array( 'selected_icon' => array( 'value' => 'fas fa-star', 'library' => 'fa-solid' ) ),
+			'tabs'        => array( 'tabs' => array(
+				array( '_id' => bin2hex( random_bytes( 3 ) ), 'tab_title' => 'Tab 1', 'tab_content' => '' ),
 			) ),
-			'accordion'    => array( 'tabs' => array(
-				array( '_id' => bin2hex( random_bytes( 3 ) ), 'tab_title' => 'Question 1', 'tab_content' => 'Answer 1' ),
-				array( '_id' => bin2hex( random_bytes( 3 ) ), 'tab_title' => 'Question 2', 'tab_content' => 'Answer 2' ),
+			'accordion'   => array( 'tabs' => array(
+				array( '_id' => bin2hex( random_bytes( 3 ) ), 'tab_title' => 'Question 1', 'tab_content' => '' ),
 			) ),
 		);
 
-		$base = $defaults[ $widget_type ] ?? array();
-		return array_merge( $base, $overrides );
+		$base = array_replace( $schema_defaults, $defaults[ $widget_type ] ?? array() );
+
+		return array_replace_recursive( $base, $overrides );
+	}
+
+	/**
+	 * Extract non-placeholder defaults from Elementor's live widget schema.
+	 *
+	 * Content defaults are intentionally skipped so bare widgets do not ship
+	 * with fake placeholder copy like "Your Heading Here".
+	 *
+	 * @param array $schema Widget schema from get_widget_schema_entry().
+	 * @return array
+	 */
+	private function extract_safe_widget_defaults_from_schema( array $schema ): array {
+		$defaults = array();
+
+		foreach ( $schema['fields'] ?? array() as $field_id => $field ) {
+			if ( str_starts_with( $field_id, '_' ) ) {
+				continue;
+			}
+			if ( ! array_key_exists( 'default', $field ) || null === $field['default'] ) {
+				continue;
+			}
+			if ( ! empty( $field['is_content'] ) ) {
+				continue;
+			}
+
+			$defaults[ $field_id ] = $field['default'];
+		}
+
+		return $defaults;
+	}
+
+	/**
+	 * Let Elementor canonicalize a newly created element when possible.
+	 *
+	 * This reduces malformed raw structures while still letting save fall back
+	 * to the direct meta path if Elementor rejects the final tree.
+	 *
+	 * @param array $element Raw Elementor element data.
+	 * @return array
+	 */
+	private function normalize_new_element_data( array $element ): array {
+		if ( ! class_exists( '\Elementor\Plugin' ) ) {
+			return $element;
+		}
+
+		try {
+			$instance = \Elementor\Plugin::$instance->elements_manager->create_element_instance( $element );
+			if ( $instance && method_exists( $instance, 'get_data_for_save' ) ) {
+				$normalized = $instance->get_data_for_save();
+				if ( is_array( $normalized ) ) {
+					return $normalized;
+				}
+			}
+		} catch ( \Throwable $e ) {
+			PressArk_Error_Tracker::error(
+				'Elementor',
+				'Failed to normalize new Elementor element',
+				array(
+					'element_type' => $element['elType'] ?? '',
+					'widget_type'  => $element['widgetType'] ?? '',
+					'error'        => $e->getMessage(),
+				)
+			);
+		}
+
+		return $element;
 	}
 
 	/**
@@ -1340,6 +1518,7 @@ class PressArk_Elementor {
 				) ),
 			);
 		}
+		$new_element = $this->normalize_new_element_data( $new_element );
 
 		$inserted = false;
 
@@ -1355,8 +1534,8 @@ class PressArk_Elementor {
 			$inserted = true;
 		}
 
-		// Use direct meta write (same as add_widget).
-		$this->save_elementor_data( $post_id, $data, false );
+		// Save through Elementor's document pipeline when available.
+		$this->save_elementor_data( $post_id, $data );
 
 		$container_id = $new_element['id'];
 		// For legacy sections, AI should target the column for widget insertion.
@@ -2052,7 +2231,7 @@ class PressArk_Elementor {
 
 		update_post_meta( $new_id, '_elementor_data', wp_slash( $elementor_data ) );
 		update_post_meta( $new_id, '_elementor_edit_mode', 'builder' );
-		update_post_meta( $new_id, '_elementor_template_type', 'page' );
+		update_post_meta( $new_id, '_elementor_template_type', 'page' === $post_type ? 'wp-page' : 'wp-post' );
 		update_post_meta( $new_id, '_elementor_version', ELEMENTOR_VERSION );
 		if ( $page_settings ) {
 			update_post_meta( $new_id, '_elementor_page_settings', $page_settings );
@@ -2280,70 +2459,120 @@ class PressArk_Elementor {
 
 		$post_type = in_array( $post_type, array( 'page', 'post' ), true ) ? $post_type : 'page';
 
-		// Create initial structure matching site's Elementor mode.
-		$initial_data = wp_json_encode( $this->get_initial_elementor_structure() );
-
 		$template_type = 'page' === $post_type ? 'wp-page' : 'wp-post';
-
-		$insert_args = array(
+		$insert_args   = array(
 			'post_title'  => sanitize_text_field( $title ),
 			'post_status' => in_array( $status, array( 'draft', 'publish', 'private' ), true ) ? $status : 'draft',
 			'post_type'   => $post_type,
-			'meta_input'  => array(
-				'_elementor_data'          => $initial_data,
-				'_elementor_template_type' => $template_type,
-				'_elementor_version'       => ELEMENTOR_VERSION,
-				'_elementor_edit_mode'     => 'builder',
-				'_wp_page_template'        => $this->resolve_template( $template ),
-			),
+		);
+		$meta_input    = array(
+			'_elementor_template_type' => $template_type,
+			'_elementor_version'       => ELEMENTOR_VERSION,
+			'_elementor_edit_mode'     => 'builder',
+			'_wp_page_template'        => $this->resolve_template( $template ),
 		);
 
 		if ( $parent > 0 && 'page' === $post_type ) {
 			$insert_args['post_parent'] = $parent;
 		}
 
-		$page_id = wp_insert_post( $insert_args );
+		$page_id = $this->create_elementor_document_post( $template_type, $insert_args, $meta_input );
 
 		if ( is_wp_error( $page_id ) ) {
 			return array( 'error' => $page_id->get_error_message() );
 		}
 
-		// Regenerate CSS for the new page.
-		$this->regenerate_post_css( $page_id );
+		$current_data = $this->get_elementor_data( $page_id );
+		if ( empty( $this->find_first_container_id( is_array( $current_data ) ? $current_data : array() ) ) ) {
+			$this->save_elementor_data( $page_id, $this->get_initial_elementor_structure() );
+		}
 
 		// Add initial widgets if provided.
+		$created_widgets = array();
+		$widget_errors   = array();
 		if ( ! empty( $widgets ) ) {
 			foreach ( $widgets as $w ) {
-				$this->add_widget(
+				$widget_result = $this->add_widget(
 					$page_id,
 					$w['type']     ?? $w['widget_type'] ?? 'text-editor',
 					$w['settings'] ?? array(),
 					$w['container_id'] ?? '',
 					(int) ( $w['position'] ?? -1 )
 				);
+				if ( ! empty( $widget_result['success'] ) ) {
+					$created_widgets[] = $widget_result['widget_id'] ?? null;
+				} else {
+					$widget_errors[] = array(
+						'widget_type' => $w['type'] ?? $w['widget_type'] ?? 'text-editor',
+						'error'       => $widget_result['error'] ?? $widget_result['message'] ?? 'Unknown widget creation error.',
+					);
+				}
 			}
-			// Re-regenerate CSS after all widgets are added.
-			$this->regenerate_post_css( $page_id );
 		}
 
-		$widget_count  = count( $widgets );
+		$widget_count  = count( $created_widgets );
+		$requested_count = count( $widgets );
 		$type_label    = 'page' === $post_type ? 'Page' : 'Post';
 		$actual_status = get_post_status( $page_id );
 		$status_label  = 'publish' === $actual_status ? 'published' : $actual_status;
 		$message = $widget_count > 0
 			? sprintf( '%s "%s" created as %s with %d widget(s) (post_id: %d).', $type_label, $title, $status_label, $widget_count, $page_id )
 			: sprintf( '%s "%s" created as %s (post_id: %d). Use elementor_add_widget with post_id %d to add content widgets.', $type_label, $title, $status_label, $page_id, $page_id );
+		if ( ! empty( $widget_errors ) ) {
+			$message .= ' ' . sprintf( '%d of %d requested widget(s) failed to insert.', count( $widget_errors ), $requested_count );
+		}
 
 		return array(
-			'success'  => true,
-			'post_id'  => $page_id,
-			'title'    => $title,
-			'status'   => $status,
-			'url'      => get_permalink( $page_id ),
-			'edit_url' => admin_url( 'post.php?post=' . $page_id . '&action=elementor' ),
-			'template' => $template,
-			'message'  => $message,
+			'success'           => true,
+			'post_id'           => $page_id,
+			'title'             => $title,
+			'status'            => $status,
+			'url'               => get_permalink( $page_id ),
+			'edit_url'          => admin_url( 'post.php?post=' . $page_id . '&action=elementor' ),
+			'template'          => $template,
+			'widgets_requested' => $requested_count,
+			'widgets_inserted'  => $widget_count,
+			'widget_errors'     => $widget_errors,
+			'message'           => $message,
 		);
+	}
+
+	/**
+	 * Create an Elementor-ready document, preferring Elementor's own document manager.
+	 *
+	 * @param string $document_type Elementor document type (for example wp-page or wp-post).
+	 * @param array  $post_data     wp_insert_post()-style post args.
+	 * @param array  $meta_input    Elementor meta to seed at creation time.
+	 * @return int|\WP_Error
+	 */
+	private function create_elementor_document_post( string $document_type, array $post_data, array $meta_input ) {
+		if ( class_exists( '\Elementor\Plugin' ) ) {
+			try {
+				$documents = \Elementor\Plugin::$instance->documents ?? null;
+				if ( $documents && method_exists( $documents, 'create' ) ) {
+					$document = $documents->create( $document_type, $post_data, $meta_input );
+					if ( is_wp_error( $document ) ) {
+						return $document;
+					}
+					if ( is_object( $document ) && method_exists( $document, 'get_main_id' ) ) {
+						return (int) $document->get_main_id();
+					}
+				}
+			} catch ( \Throwable $e ) {
+				PressArk_Error_Tracker::error(
+					'Elementor',
+					'Documents_Manager::create() failed; falling back to wp_insert_post',
+					array(
+						'document_type' => $document_type,
+						'error'         => $e->getMessage(),
+					)
+				);
+			}
+		}
+
+		$post_data['meta_input'] = $meta_input;
+
+		return wp_insert_post( $post_data );
 	}
 
 	/**

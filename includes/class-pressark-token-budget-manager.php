@@ -353,6 +353,7 @@ class PressArk_Token_Budget_Manager {
 			'deferred_candidates'         => $deferred,
 			'deferred_tokens'             => $deferred_tokens,
 			'reserved'                    => $reserves,
+			'transport_mode'              => (string) ( $this->financial_snapshot['transport_mode'] ?? '' ),
 			'billing_authority'           => (string) ( $this->financial_snapshot['billing_authority'] ?? '' ),
 			'billing_state'               => (array) ( $this->financial_snapshot['billing_state'] ?? array() ),
 			'billing_service_state'       => (string) ( $this->financial_snapshot['billing_service_state'] ?? '' ),
@@ -599,6 +600,7 @@ class PressArk_Token_Budget_Manager {
 		}
 
 		$is_byok              = ! empty( $snapshot['is_byok'] );
+		$transport_mode       = $this->resolve_transport_mode( $is_byok, $snapshot );
 		$monthly_budget       = max( 0, (int) ( $snapshot['monthly_icu_budget'] ?? $snapshot['monthly_included_icu_budget'] ?? $snapshot['icu_budget'] ?? 0 ) );
 		$monthly_remaining    = $is_byok
 			? PHP_INT_MAX
@@ -617,11 +619,16 @@ class PressArk_Token_Budget_Manager {
 		$budget_pressure      = sanitize_key( (string) ( $snapshot['budget_pressure_state'] ?? '' ) );
 		$using_purchased      = ! empty( $snapshot['using_purchased_credits'] ) || ( ! $is_byok && $monthly_remaining <= 0 && $purchased_remaining > 0 );
 		$using_legacy_bonus   = ! empty( $snapshot['using_legacy_bonus'] ) || ( ! $is_byok && $monthly_remaining <= 0 && 0 === $purchased_remaining && $legacy_bonus > 0 );
-		$verified_handshake   = ! empty( $snapshot['verified_handshake'] );
-		$provisional_handshake = array_key_exists( 'provisional_handshake', $snapshot )
-			? ! empty( $snapshot['provisional_handshake'] )
-			: ( $verified_handshake ? false : ! $is_byok );
-		$billing_service_state = sanitize_key( (string) ( $snapshot['billing_service_state'] ?? $billing_state['service_state'] ?? ( ! empty( $snapshot['offline'] ) ? 'offline_assisted' : 'normal' ) ) );
+		$verified_handshake   = $is_byok ? false : ! empty( $snapshot['verified_handshake'] );
+		$provisional_handshake = $is_byok
+			? false
+			: ( array_key_exists( 'provisional_handshake', $snapshot )
+				? ! empty( $snapshot['provisional_handshake'] )
+				: ( $verified_handshake ? false : ! $is_byok ) );
+		$billing_service_state = $this->normalize_service_state(
+			sanitize_key( (string) ( $snapshot['billing_service_state'] ?? $billing_state['service_state'] ?? 'normal' ) ),
+			! empty( $snapshot['offline'] )
+		);
 		$billing_handshake_state = sanitize_key( (string) ( $snapshot['billing_handshake_state'] ?? $billing_state['handshake_state'] ?? ( $is_byok ? 'byok' : ( $verified_handshake ? 'verified' : 'provisional' ) ) ) );
 		$billing_spend_source = sanitize_key( (string) ( $snapshot['billing_spend_source'] ?? $billing_state['spend_source'] ?? ( $is_byok ? 'byok' : ( $using_purchased ? 'purchased_credits' : ( $using_legacy_bonus ? 'legacy_bonus' : ( $total_remaining > 0 ? 'monthly_included' : 'depleted' ) ) ) ) ) );
 
@@ -634,7 +641,12 @@ class PressArk_Token_Budget_Manager {
 			);
 		}
 
-		if ( empty( $billing_state ) ) {
+		if ( $is_byok ) {
+			$billing_authority       = 'byok';
+			$billing_handshake_state = 'byok';
+			$billing_spend_source    = 'byok';
+			$billing_state           = $this->build_byok_billing_state( $billing_service_state );
+		} elseif ( empty( $billing_state ) ) {
 			$billing_state = array(
 				'version'          => 1,
 				'authority_mode'   => $is_byok ? 'byok' : ( $verified_handshake ? 'bank_verified' : 'bank_provisional' ),
@@ -649,6 +661,7 @@ class PressArk_Token_Budget_Manager {
 		}
 
 		return array(
+			'transport_mode'              => $transport_mode,
 			'billing_authority'          => $billing_authority,
 			'billing_state'              => $billing_state,
 			'billing_service_state'      => $billing_service_state,
@@ -673,6 +686,46 @@ class PressArk_Token_Budget_Manager {
 			'budget_pressure_state'      => $budget_pressure,
 			'is_byok'                    => $is_byok,
 			'offline'                    => ! empty( $snapshot['offline'] ),
+		);
+	}
+
+	private function resolve_transport_mode( bool $is_byok, array $snapshot ): string {
+		$transport_mode = sanitize_key( (string) ( $snapshot['transport_mode'] ?? '' ) );
+		if ( in_array( $transport_mode, array( 'direct', 'proxy' ), true ) ) {
+			return $transport_mode;
+		}
+
+		return ( $is_byok || ! PressArk_AI_Connector::is_proxy_mode() ) ? 'direct' : 'proxy';
+	}
+
+	private function normalize_service_state( string $service_state, bool $offline = false ): string {
+		if ( $offline ) {
+			return 'offline_assisted';
+		}
+
+		return in_array( $service_state, array( 'normal', 'degraded', 'offline_assisted' ), true )
+			? $service_state
+			: 'normal';
+	}
+
+	private function build_byok_billing_state( string $service_state ): array {
+		$service_notice = 'degraded' === $service_state
+			? 'Some billing-side verification data is degraded, but BYOK requests can continue with your provider account.'
+			: 'Using your own provider key. Bundled credit accounting is not in play for these requests.';
+
+		return array(
+			'version'          => 1,
+			'authority_mode'   => 'byok',
+			'handshake_state'  => 'byok',
+			'service_state'    => $service_state,
+			'spend_source'     => 'byok',
+			'estimate_mode'    => 'provider_usage',
+			'authority_label'  => 'BYOK',
+			'service_label'    => 'offline_assisted' === $service_state ? 'Offline assisted' : ( 'degraded' === $service_state ? 'Degraded' : 'Normal' ),
+			'spend_label'      => 'BYOK',
+			'authority_notice' => 'Bundled credits are bypassed in BYOK mode. Your provider account is authoritative for spend while PressArk still enforces plan entitlements.',
+			'service_notice'   => $service_notice,
+			'estimate_notice'  => 'Provider usage is shown directly in BYOK mode and does not settle against bundled credits.',
 		);
 	}
 

@@ -1771,6 +1771,7 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		if ( $dry_run ) {
 			return array(
 				'success' => true,
+				'dry_run' => true,
 				'message' => sprintf(
 					/* translators: 1: search text 2: match count 3: replace text */
 					__( 'Found "%1$s" in %2$d items. Run again with dry_run=false to replace with "%3$s".', 'pressark' ),
@@ -1778,6 +1779,7 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 					count( $matches ),
 					$replace
 				),
+				'post_ids' => array_values( array_filter( array_map( 'absint', wp_list_pluck( $matches, 'post_id' ) ) ) ),
 				'data'    => $matches,
 			);
 		}
@@ -1856,6 +1858,9 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 
 		return array(
 			'success' => true,
+			'dry_run' => false,
+			'post_ids' => array_values( array_filter( array_map( 'absint', wp_list_pluck( $matches, 'post_id' ) ) ) ),
+			'replaced_count' => $replaced_count,
 			'message' => sprintf(
 				/* translators: 1: find text 2: replace text 3: count */
 				__( 'Replaced "%1$s" with "%2$s" in %3$d items.', 'pressark' ),

@@ -1257,6 +1257,9 @@ class PressArk_Task_Store {
 		if ( in_array( $reason, array( 'approval_wait_preview', 'approval_wait_confirm', 'approval_partial_progress' ), true ) ) {
 			return 120;
 		}
+		if ( in_array( $reason, array( 'approval_declined', 'approval_discarded', 'approval_expired', 'approval_aborted' ), true ) ) {
+			return 118;
+		}
 		if ( 'worker.retry_scheduled' === $event_type ) {
 			return 115;
 		}
@@ -1313,6 +1316,10 @@ class PressArk_Task_Store {
 			'approval_wait_preview' === $reason => 'Waiting for preview review',
 			'approval_wait_confirm' === $reason => 'Waiting for confirmation',
 			'approval_partial_progress' === $reason => 'Some confirmations are complete',
+			'approval_declined' === $reason => 'Confirmation declined',
+			'approval_discarded' === $reason => 'Preview discarded',
+			'approval_expired' === $reason => 'Approval expired',
+			'approval_aborted' === $reason => 'Approval ended before completion',
 			'worker.slot_contention' === $event_type => 'Waiting for a worker slot',
 			'worker.deferred' === $event_type && $delay > 0 => 'Re-queued for ' . $delay . 's',
 			'worker.deferred' === $event_type => 'Re-queued for the next slot',

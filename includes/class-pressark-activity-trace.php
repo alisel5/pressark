@@ -26,6 +26,10 @@ class PressArk_Activity_Trace {
 			'client_disconnected'     => 'The client disconnected before completion.',
 			'approval_wait_preview'   => 'The run is waiting for a preview keep/discard decision.',
 			'approval_wait_confirm'   => 'The run is waiting for one or more confirmation decisions.',
+			'approval_declined'       => 'The user explicitly declined a confirmation request.',
+			'approval_discarded'      => 'The user discarded a staged preview before apply.',
+			'approval_aborted'        => 'The flow ended before approval or settlement could complete.',
+			'approval_expired'        => 'The preview or confirmation expired before any changes were applied.',
 			'approval_partial_progress' => 'Some confirmations completed while other actions remain pending.',
 			'retry_format_leak'       => 'The model leaked a tool call and the loop retried with corrective guidance.',
 			'retry_async_failure'     => 'The async worker scheduled a retry after a retryable failure.',
@@ -254,6 +258,8 @@ class PressArk_Activity_Trace {
 					'output_tokens'      => (int) ( $result['output_tokens'] ?? 0 ),
 					'agent_rounds'       => (int) ( $result['agent_rounds'] ?? 0 ),
 					'pending_actions'    => is_array( $result['pending_actions'] ?? null ) ? count( $result['pending_actions'] ) : 0,
+					'approval_outcome'   => (string) ( self::result_approval_outcome( $result )['status'] ?? '' ),
+					'approval_actor'     => (string) ( self::result_approval_outcome( $result )['actor'] ?? '' ),
 					'actual_icus'        => (int) ( $token_status['actual_icus'] ?? 0 ),
 					'raw_actual_tokens'  => (int) ( $token_status['raw_actual_tokens'] ?? 0 ),
 				),
@@ -366,6 +372,23 @@ class PressArk_Activity_Trace {
 	 * @param array<string,mixed> $result Execution result.
 	 */
 	public static function infer_terminal_reason( array $result ): string {
+		$outcome_status = sanitize_key( (string) ( self::result_approval_outcome( $result )['status'] ?? '' ) );
+		if ( 'declined' === $outcome_status ) {
+			return 'approval_declined';
+		}
+		if ( 'discarded' === $outcome_status ) {
+			return 'approval_discarded';
+		}
+		if ( 'expired' === $outcome_status ) {
+			return 'approval_expired';
+		}
+		if ( 'aborted' === $outcome_status ) {
+			return 'approval_aborted';
+		}
+		if ( 'cancelled' === $outcome_status ) {
+			return 'user_cancelled';
+		}
+
 		if ( ! empty( $result['cancelled'] ) ) {
 			return 'user_cancelled';
 		}
@@ -395,6 +418,9 @@ class PressArk_Activity_Trace {
 	public static function infer_failure_reason( string $message ): string {
 		$message = strtolower( $message );
 
+		if ( str_contains( $message, 'expired' ) ) {
+			return 'approval_expired';
+		}
 		if ( str_contains( $message, 'cancel' ) ) {
 			return 'user_cancelled';
 		}
@@ -403,6 +429,160 @@ class PressArk_Activity_Trace {
 		}
 
 		return 'failed';
+	}
+
+	/**
+	 * Convert a canonical trace event into a compact chat-facing activity row.
+	 *
+	 * @param array<string,mixed> $event Trace event.
+	 * @return array<string,string>
+	 */
+	public static function describe_event_for_chat( array $event ): array {
+		$event_type = (string) ( $event['event_type'] ?? '' );
+		$reason     = sanitize_key( (string) ( $event['reason'] ?? '' ) );
+		$status     = sanitize_key( (string) ( $event['status'] ?? '' ) );
+		$payload    = is_array( $event['payload'] ?? null ) ? $event['payload'] : array();
+		$summary    = sanitize_text_field( (string) ( $event['summary'] ?? '' ) );
+		$catalog    = self::reason_catalog();
+		$label      = '';
+		$ui_status  = 'info';
+		$detail     = '' !== $summary ? $summary : (string) ( $catalog[ $reason ] ?? '' );
+		$provider   = sanitize_key( (string) ( $payload['provider'] ?? '' ) );
+		$model      = sanitize_text_field( (string) ( $payload['model'] ?? '' ) );
+		$delay      = max( 0, (int) ( $payload['delay_seconds'] ?? 0 ) );
+
+		switch ( true ) {
+			case 'approval_wait_preview' === $reason:
+				$label     = 'Preview ready for review';
+				$ui_status = 'waiting';
+				break;
+			case 'approval_wait_confirm' === $reason:
+				$label     = 'Waiting for confirmation';
+				$ui_status = 'waiting';
+				break;
+			case 'approval_partial_progress' === $reason:
+				$label     = 'Some confirmations completed';
+				$ui_status = 'waiting';
+				break;
+			case 'approval_declined' === $reason:
+				$label     = 'Confirmation declined';
+				$ui_status = 'done';
+				break;
+			case 'approval_discarded' === $reason:
+				$label     = 'Preview discarded';
+				$ui_status = 'done';
+				break;
+			case 'approval_expired' === $reason:
+				$label     = 'Approval expired';
+				$ui_status = 'blocked';
+				break;
+			case 'approval_aborted' === $reason:
+				$label     = 'Approval ended early';
+				$ui_status = 'blocked';
+				break;
+			case 'fallback_model_policy' === $reason:
+				$label     = 'Fallback model used';
+				$ui_status = 'degraded';
+				if ( '' !== $provider || '' !== $model ) {
+					$detail = trim( implode( ' / ', array_filter( array( $provider, $model ) ) ) );
+				}
+				break;
+			case 'routing_decision_recorded' === $reason:
+				$label     = 'Route selected';
+				$ui_status = 'info';
+				if ( '' !== $provider || '' !== $model ) {
+					$detail = trim( implode( ' / ', array_filter( array( $provider, $model ) ) ) );
+				}
+				break;
+			case 'degraded_request_headroom' === $reason:
+				$label     = 'Context compacted to continue';
+				$ui_status = 'degraded';
+				break;
+			case 'degraded_token_budget' === $reason || 'stop_max_tokens' === $reason:
+				$label     = 'Token budget reached';
+				$ui_status = 'degraded';
+				break;
+			case 'reserve_blocked_budget' === $reason:
+				$label     = 'Budget blocked this run';
+				$ui_status = 'blocked';
+				break;
+			case 'user_cancelled' === $reason:
+				$label     = 'Run cancelled';
+				$ui_status = 'blocked';
+				break;
+			case 'failed' === $reason || 'failed' === $status:
+				$label     = 'Run failed';
+				$ui_status = 'failed';
+				break;
+			case 'completed' === $reason || 'succeeded' === $status:
+				$label     = 'Run complete';
+				$ui_status = 'done';
+				break;
+			case 'worker.retry_scheduled' === $event_type:
+				$label     = $delay > 0 ? 'Retry scheduled in ' . $delay . 's' : 'Retry scheduled';
+				$ui_status = 'retrying';
+				break;
+			case 'worker.slot_contention' === $event_type:
+				$label     = 'Waiting for a worker slot';
+				$ui_status = 'waiting';
+				break;
+			case 'worker.deferred' === $event_type:
+				$label     = $delay > 0 ? 'Re-queued for ' . $delay . 's' : 'Re-queued for the next slot';
+				$ui_status = 'waiting';
+				break;
+			default:
+				$label = '' !== $summary ? rtrim( $summary, '.' ) : '';
+				if ( '' === $label ) {
+					return array();
+				}
+				if ( in_array( $status, array( 'waiting', 'retrying', 'blocked', 'failed' ), true ) ) {
+					$ui_status = $status;
+				}
+				break;
+		}
+
+		if ( $detail === $label ) {
+			$detail = '';
+		}
+
+		return array_filter(
+			array(
+				'status' => $ui_status,
+				'label'  => $label,
+				'detail' => $detail,
+				'reason' => $reason,
+				'source' => 'trace',
+			),
+			static function ( string $value ): bool {
+				return '' !== $value;
+			}
+		);
+	}
+
+	/**
+	 * Extract a normalized approval outcome from a result payload.
+	 *
+	 * @param array<string,mixed> $result Execution result.
+	 * @return array<string,mixed>
+	 */
+	private static function result_approval_outcome( array $result ): array {
+		if ( class_exists( 'PressArk_Permission_Decision' ) ) {
+			$outcome = PressArk_Permission_Decision::normalize_approval_outcome(
+				is_array( $result['approval_outcome'] ?? null ) ? $result['approval_outcome'] : array()
+			);
+			if ( ! empty( $outcome ) ) {
+				return $outcome;
+			}
+		}
+
+		if ( ! empty( $result['discarded'] ) ) {
+			return array( 'status' => 'discarded' );
+		}
+		if ( ! empty( $result['cancelled'] ) ) {
+			return array( 'status' => 'cancelled' );
+		}
+
+		return array();
 	}
 
 	/**

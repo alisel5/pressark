@@ -194,6 +194,95 @@ class PressArk_Policy_Diagnostics {
 	}
 
 	/**
+	 * Build a compact, safe harness visibility summary for prompts and chat UI.
+	 *
+	 * @param array $permission_surface Request-scoped permission surface.
+	 * @param array $tool_state         Loader tool-state snapshot.
+	 * @param array $context            Optional runtime context.
+	 * @return array<string,mixed>
+	 */
+	public static function build_harness_visibility_summary(
+		array $permission_surface,
+		array $tool_state = array(),
+		array $context = array()
+	): array {
+		$loaded_groups  = array_values(
+			array_unique(
+				array_filter(
+					array_map(
+						'sanitize_key',
+						(array) ( $context['loaded_groups'] ?? $tool_state['loaded_groups'] ?? array() )
+					)
+				)
+			)
+		);
+		$blocked_groups = array_values(
+			array_unique(
+				array_filter(
+					array_map(
+						'sanitize_key',
+						(array) ( $tool_state['blocked_groups'] ?? $permission_surface['hidden_groups'] ?? array() )
+					)
+				)
+			)
+		);
+		$hidden_reasons = array_values(
+			array_filter(
+				array_map(
+					static function ( $row ) {
+						return is_array( $row ) ? $row : null;
+					},
+					(array) (
+						$permission_surface['hidden_reason_rows']
+						?? ( class_exists( 'PressArk_Permission_Service' )
+							? PressArk_Permission_Service::summarize_hidden_decisions( (array) ( $permission_surface['hidden_decisions'] ?? array() ) )
+							: array()
+						)
+					)
+				)
+			)
+		);
+		$deferred_rows  = self::normalize_deferred_groups( (array) ( $context['deferred_groups'] ?? array() ) );
+		$recovery_hints = array();
+
+		foreach ( $hidden_reasons as $row ) {
+			$hint = sanitize_text_field( (string) ( $row['hint'] ?? '' ) );
+			if ( '' !== $hint ) {
+				$recovery_hints[ $hint ] = true;
+			}
+		}
+		foreach ( $deferred_rows as $row ) {
+			$hint = sanitize_text_field( (string) ( $row['hint'] ?? '' ) );
+			if ( '' !== $hint ) {
+				$recovery_hints[ $hint ] = true;
+			}
+		}
+
+		return array_filter(
+			array(
+				'loaded_groups'  => $loaded_groups,
+				'deferred_groups'=> array_values(
+					array_filter(
+						array_map(
+							static function ( array $row ): string {
+								return sanitize_key( (string) ( $row['group'] ?? '' ) );
+							},
+							$deferred_rows
+						)
+					)
+				),
+				'deferred_rows'  => $deferred_rows,
+				'blocked_groups' => $blocked_groups,
+				'hidden_reasons' => $hidden_reasons,
+				'recovery_hints' => array_slice( array_keys( $recovery_hints ), 0, 4 ),
+			),
+			static function ( $value ) {
+				return ! ( is_array( $value ) ? empty( $value ) : '' === (string) $value );
+			}
+		);
+	}
+
+	/**
 	 * Build the latest admin-facing report from activity events and live rules.
 	 *
 	 * @param int $days Lookback window.
@@ -730,6 +819,50 @@ class PressArk_Policy_Diagnostics {
 	}
 
 	/**
+	 * Normalize deferred-group rows into a compact, hint-bearing summary.
+	 *
+	 * @param array $deferred_groups Raw deferred-group payload.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private static function normalize_deferred_groups( array $deferred_groups ): array {
+		$rows = array();
+
+		foreach ( $deferred_groups as $candidate ) {
+			$group           = '';
+			$tokens          = 0;
+			$adjusted_tokens = 0;
+
+			if ( is_array( $candidate ) ) {
+				$group           = sanitize_key( (string) ( $candidate['group'] ?? $candidate['name'] ?? '' ) );
+				$tokens          = max( 0, (int) ( $candidate['tokens'] ?? 0 ) );
+				$adjusted_tokens = max( 0, (int) ( $candidate['adjusted_tokens'] ?? 0 ) );
+			} elseif ( is_string( $candidate ) ) {
+				$group = sanitize_key( $candidate );
+			}
+
+			if ( '' === $group ) {
+				continue;
+			}
+
+			$rows[] = array_filter(
+				array(
+					'group'           => $group,
+					'label'           => self::display_group_label( $group ),
+					'summary'         => 'Deferred to keep this run compact.',
+					'hint'            => 'Load ' . $group . ' if the next step needs that capability.',
+					'tokens'          => $tokens > 0 ? $tokens : null,
+					'adjusted_tokens' => $adjusted_tokens > 0 ? $adjusted_tokens : null,
+				),
+				static function ( $value ) {
+					return null !== $value && '' !== (string) $value;
+				}
+			);
+		}
+
+		return $rows;
+	}
+
+	/**
 	 * Sanitize a reason/count map for telemetry payloads.
 	 *
 	 * @param array<string,mixed> $counts Raw counts.
@@ -938,5 +1071,16 @@ class PressArk_Policy_Diagnostics {
 	 */
 	private static function seconds_per_day(): int {
 		return defined( 'DAY_IN_SECONDS' ) ? (int) DAY_IN_SECONDS : 86400;
+	}
+
+	/**
+	 * Render a compact display label for a tool group.
+	 *
+	 * @param string $group Group name.
+	 * @return string
+	 */
+	private static function display_group_label( string $group ): string {
+		$group = sanitize_key( $group );
+		return '' === $group ? 'Tool' : ucwords( str_replace( '_', ' ', $group ) );
 	}
 }

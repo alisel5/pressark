@@ -308,9 +308,17 @@ class PressArk_Read_Metadata {
 	}
 
 	public static function build_invalidation_from_write( string $tool_name, array $args, array $result ): array {
-		$contract = class_exists( 'PressArk_Operation_Registry' )
-			? ( PressArk_Operation_Registry::get_contract( $tool_name )['read_invalidation'] ?? array() )
-			: array();
+		if ( ! empty( $args['dry_run'] ) || ! empty( $result['dry_run'] ) || ! empty( $result['preview_only'] ) || ! empty( $result['skipped_duplicate'] ) ) {
+			return array();
+		}
+
+		$contract = array();
+		if ( class_exists( 'PressArk_Operation_Registry' ) ) {
+			$op = PressArk_Operation_Registry::resolve( $tool_name );
+			if ( $op && $op->has_read_invalidation_policy() ) {
+				$contract = is_array( $op->read_invalidation ) ? $op->read_invalidation : array();
+			}
+		}
 		$targets  = self::extract_targets( $tool_name, $args, $result );
 		$scope    = sanitize_key( (string) ( $contract['scope'] ?? ( ! empty( $targets['post_ids'] ) ? 'target_posts' : 'site_content' ) ) );
 		$payload  = array(
@@ -520,20 +528,33 @@ class PressArk_Read_Metadata {
 
 	private static function extract_targets( string $tool_name, array $args, array $result ): array {
 		$post_ids = array();
-		foreach ( array( 'post_id', 'id' ) as $key ) {
-			if ( ! empty( $args[ $key ] ) ) {
-				$post_ids[] = absint( $args[ $key ] );
+		foreach ( array( $args, $result, is_array( $result['data'] ?? null ) ? $result['data'] : array() ) as $source ) {
+			if ( ! is_array( $source ) ) {
+				continue;
+			}
+
+			foreach ( array( 'post_id', 'id', 'product_id', 'order_id' ) as $key ) {
+				if ( ! empty( $source[ $key ] ) ) {
+					$post_ids[] = absint( $source[ $key ] );
+				}
+			}
+
+			foreach ( array( 'post_ids', 'attachment_ids', 'product_ids', 'order_ids' ) as $key ) {
+				if ( empty( $source[ $key ] ) || ! is_array( $source[ $key ] ) ) {
+					continue;
+				}
+				$post_ids = array_merge( $post_ids, array_map( 'absint', $source[ $key ] ) );
 			}
 		}
 
 		$data = $result['data'] ?? null;
 		if ( is_array( $data ) ) {
-			if ( isset( $data['id'] ) || isset( $data['post_id'] ) ) {
-				$post_ids[] = absint( $data['id'] ?? $data['post_id'] );
+			if ( isset( $data['id'] ) || isset( $data['post_id'] ) || isset( $data['product_id'] ) || isset( $data['order_id'] ) ) {
+				$post_ids[] = absint( $data['id'] ?? $data['post_id'] ?? $data['product_id'] ?? $data['order_id'] );
 			}
 			foreach ( array_slice( self::is_list_array( $data ) ? $data : array(), 0, 8 ) as $item ) {
-				if ( is_array( $item ) && ( isset( $item['id'] ) || isset( $item['post_id'] ) ) ) {
-					$post_ids[] = absint( $item['id'] ?? $item['post_id'] );
+				if ( is_array( $item ) && ( isset( $item['id'] ) || isset( $item['post_id'] ) || isset( $item['product_id'] ) || isset( $item['order_id'] ) ) ) {
+					$post_ids[] = absint( $item['id'] ?? $item['post_id'] ?? $item['product_id'] ?? $item['order_id'] );
 				}
 			}
 		}

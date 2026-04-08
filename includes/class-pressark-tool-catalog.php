@@ -410,6 +410,35 @@ class PressArk_Tool_Catalog {
 	}
 
 	/**
+	 * Get every tool name currently registered for this site, including
+	 * meta-tools that remain part of the user-visible harness surface.
+	 *
+	 * @since 5.5.1
+	 *
+	 * @param bool $include_meta Whether to include discovery/load meta-tools.
+	 * @return string[]
+	 */
+	public function get_all_tool_names( bool $include_meta = true ): array {
+		$has_woo        = class_exists( 'WooCommerce' );
+		$has_elementor  = class_exists( '\\Elementor\\Plugin' );
+		$all_tools      = PressArk_Tools::get_all( $has_woo, $has_elementor );
+		$normalized     = array_values( array_filter( array_map(
+			static function ( array $tool ): string {
+				return sanitize_key( (string) ( $tool['name'] ?? '' ) );
+			},
+			$all_tools
+		) ) );
+
+		if ( $include_meta ) {
+			$normalized[] = 'discover_tools';
+			$normalized[] = 'load_tools';
+			$normalized[] = 'load_tool_group';
+		}
+
+		return array_values( array_unique( $normalized ) );
+	}
+
+	/**
 	 * Get OpenAI function schemas for specific tool names.
 	 * Includes the load_tool_group meta-tool.
 	 * Sorted alphabetically for cache stability.

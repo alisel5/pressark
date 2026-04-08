@@ -619,6 +619,7 @@ class PressArk_Run_Store {
 		global $wpdb;
 		$table = self::table_name();
 		$now   = current_time( 'mysql', true );
+		$result = $this->normalize_terminal_result( $result );
 
 		if ( $result !== null ) {
 			$rows = $wpdb->query( $wpdb->prepare(
@@ -644,14 +645,10 @@ class PressArk_Run_Store {
 		}
 
 		if ( (int) $rows >= 1 ) {
-			$reason = 'completed';
-			if ( is_array( $result ) ) {
-				if ( ! empty( $result['cancelled'] ) ) {
-					$reason = 'user_cancelled';
-				} elseif ( ! empty( $result['discarded'] ) ) {
-					$reason = 'approval_wait_preview';
-				}
-			}
+			$reason = is_array( $result )
+				? PressArk_Activity_Trace::infer_terminal_reason( $result )
+				: 'completed';
+			$outcome = $this->result_approval_outcome( $result );
 
 			$this->publish_transition_event(
 				$run_id,
@@ -660,8 +657,10 @@ class PressArk_Run_Store {
 				'succeeded',
 				$reason,
 				array(
-					'status'      => 'settled',
-					'result_type' => is_array( $result ) ? (string) ( $result['type'] ?? 'final_response' ) : '',
+					'status'                 => 'settled',
+					'result_type'            => is_array( $result ) ? (string) ( $result['type'] ?? 'final_response' ) : '',
+					'approval_outcome'       => (string) ( $outcome['status'] ?? '' ),
+					'approval_outcome_actor' => (string) ( $outcome['actor'] ?? '' ),
 				),
 				'Run settled.'
 			);
@@ -681,34 +680,46 @@ class PressArk_Run_Store {
 	 * @param string $reason Failure reason.
 	 * @return bool True if transition succeeded.
 	 */
-	public function fail( string $run_id, string $reason = '' ): bool {
+	public function fail( string $run_id, string $reason = '', ?array $result = null ): bool {
 		global $wpdb;
 		$table = self::table_name();
 
 		// Truncate reason for the indexed summary column.
 		$summary = mb_substr( $reason, 0, 255 );
+		$result  = $this->normalize_terminal_result( $result );
+		if ( null === $result ) {
+			$result = array( 'fail_reason' => $reason );
+		} elseif ( '' !== $reason && ! isset( $result['fail_reason'] ) ) {
+			$result['fail_reason'] = $reason;
+		}
 
 		$rows = $wpdb->query( $wpdb->prepare(
 			"UPDATE {$table}
 			 SET status = 'failed', result = %s, error_summary = %s, updated_at = %s
 			 WHERE run_id = %s
 			 AND status IN ('running', 'awaiting_preview', 'awaiting_confirm', 'partially_confirmed')",
-			wp_json_encode( array( 'fail_reason' => $reason ) ),
+			wp_json_encode( $result ),
 			$summary,
 			current_time( 'mysql', true ),
 			$run_id
 		) );
 
 		if ( (int) $rows >= 1 ) {
+			$outcome = $this->result_approval_outcome( $result );
+			$reason_key = ! empty( $outcome )
+				? PressArk_Activity_Trace::infer_terminal_reason( $result )
+				: PressArk_Activity_Trace::infer_failure_reason( $reason );
 			$this->publish_transition_event(
 				$run_id,
 				'run.completed',
 				'run',
 				'failed',
-				PressArk_Activity_Trace::infer_failure_reason( $reason ),
+				$reason_key,
 				array(
-					'status'        => 'failed',
-					'error_summary' => $summary,
+					'status'                 => 'failed',
+					'error_summary'          => $summary,
+					'approval_outcome'       => (string) ( $outcome['status'] ?? '' ),
+					'approval_outcome_actor' => (string) ( $outcome['actor'] ?? '' ),
 				),
 				'Run failed.'
 			);
@@ -951,23 +962,95 @@ class PressArk_Run_Store {
 			 AND updated_at < DATE_SUB( UTC_TIMESTAMP(), INTERVAL 30 DAY )"
 		);
 
-		// Stale awaiting runs older than 2 hours — fail them instead of deleting,
-		// so they show up in the activity feed as expired.
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a hardcoded prefixed table name, all values are hardcoded constants.
-		$wpdb->query(
-			"UPDATE {$table}
-			 SET status = 'failed',
-			     error_summary = 'Preview/confirm expired — user did not respond within 2 hours',
-			     result = '{\"fail_reason\":\"Preview or confirm boundary expired after 2 hours\"}',
-			     updated_at = UTC_TIMESTAMP()
+		// Stale awaiting runs older than 2 hours — fail them individually so the
+		// stored result and activity trace preserve a typed expired outcome.
+		$expired_run_ids = $wpdb->get_col(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a hardcoded prefixed table name, all values are hardcoded constants.
+			"SELECT run_id FROM {$table}
 			 WHERE status IN ('awaiting_preview', 'awaiting_confirm', 'partially_confirmed')
 			 AND updated_at < DATE_SUB( UTC_TIMESTAMP(), INTERVAL 2 HOUR )"
 		);
+		foreach ( (array) $expired_run_ids as $expired_run_id ) {
+			$this->fail(
+				(string) $expired_run_id,
+				'Preview or confirm boundary expired after 2 hours',
+				array(
+					'success'          => false,
+					'type'             => 'final_response',
+					'is_error'         => true,
+					'message'          => 'Preview or confirmation expired before any changes were applied.',
+					'approval_outcome' => class_exists( 'PressArk_Permission_Decision' )
+						? PressArk_Permission_Decision::approval_outcome(
+							PressArk_Permission_Decision::OUTCOME_EXPIRED,
+							array(
+								'source'      => 'run_cleanup',
+								'actor'       => 'system',
+								'reason_code' => 'approval_expired',
+							)
+						)
+						: array(),
+				)
+			);
+		}
 
 		return $deleted;
 	}
 
 	// ── Internal ─────────────────────────────────────────────────────
+
+	/**
+	 * Normalize settlement results so terminal rows share one typed outcome shape.
+	 *
+	 * @param array|null $result Terminal result payload.
+	 * @return array|null
+	 */
+	private function normalize_terminal_result( ?array $result ): ?array {
+		if ( ! is_array( $result ) ) {
+			return null;
+		}
+
+		if ( ! empty( $result['approval_outcome'] ) && is_array( $result['approval_outcome'] ) && class_exists( 'PressArk_Permission_Decision' ) ) {
+			$result['approval_outcome'] = PressArk_Permission_Decision::normalize_approval_outcome( $result['approval_outcome'] );
+		} elseif ( ! empty( $result['cancelled'] ) && class_exists( 'PressArk_Permission_Decision' ) ) {
+			$result['approval_outcome'] = PressArk_Permission_Decision::approval_outcome(
+				PressArk_Permission_Decision::OUTCOME_CANCELLED,
+				array(
+					'source'      => 'run_store',
+					'actor'       => 'user',
+					'reason_code' => 'user_cancelled',
+				)
+			);
+		} elseif ( ! empty( $result['discarded'] ) && class_exists( 'PressArk_Permission_Decision' ) ) {
+			$result['approval_outcome'] = PressArk_Permission_Decision::approval_outcome(
+				PressArk_Permission_Decision::OUTCOME_DISCARDED,
+				array(
+					'source'      => 'run_store',
+					'actor'       => 'user',
+					'reason_code' => 'user_discarded',
+				)
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Extract the normalized approval outcome from a terminal result.
+	 *
+	 * @param array|null $result Terminal result payload.
+	 * @return array
+	 */
+	private function result_approval_outcome( ?array $result ): array {
+		if ( ! is_array( $result ) || empty( $result['approval_outcome'] ) || ! is_array( $result['approval_outcome'] ) ) {
+			return array();
+		}
+
+		if ( class_exists( 'PressArk_Permission_Decision' ) ) {
+			return PressArk_Permission_Decision::normalize_approval_outcome( $result['approval_outcome'] );
+		}
+
+		return $result['approval_outcome'];
+	}
 
 	/**
 	 * Decode JSON columns in a run row.

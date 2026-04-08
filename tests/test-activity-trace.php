@@ -103,6 +103,7 @@ class PressArk_Activity_Event_Store {
 }
 
 require_once __DIR__ . '/../includes/class-pressark-activity-trace.php';
+require_once __DIR__ . '/../includes/class-pressark-permission-decision.php';
 require_once __DIR__ . '/../includes/class-pressark-error-tracker.php';
 require_once __DIR__ . '/../includes/class-pressark-token-bank.php';
 
@@ -167,6 +168,80 @@ assert_same_trace( 'Buffered retry event keeps correlation id', 'corr_trace_seed
 assert_same_trace( 'Phase-end event keeps correlation id', 'corr_trace_seed', PressArk_Activity_Event_Store::$events[2]['correlation_id'] ?? '' );
 assert_same_trace( 'Fallback reason preserved', 'fallback_model_policy', PressArk_Activity_Event_Store::$events[0]['reason'] ?? '' );
 assert_same_trace( 'Retry reason preserved', 'retry_async_failure', PressArk_Activity_Event_Store::$events[1]['reason'] ?? '' );
+
+echo "\n--- Typed approval outcomes map to canonical terminal reasons ---\n";
+$declined_reason = PressArk_Activity_Trace::infer_terminal_reason(
+	array(
+		'approval_outcome' => PressArk_Permission_Decision::approval_outcome(
+			PressArk_Permission_Decision::OUTCOME_DECLINED,
+			array( 'action' => 'fix_seo' )
+		),
+	)
+);
+$discarded_reason = PressArk_Activity_Trace::infer_terminal_reason(
+	array(
+		'approval_outcome' => PressArk_Permission_Decision::approval_outcome(
+			PressArk_Permission_Decision::OUTCOME_DISCARDED,
+			array( 'action' => 'preview_apply' )
+		),
+	)
+);
+$expired_reason = PressArk_Activity_Trace::infer_failure_reason( 'Preview or confirmation expired before any changes were applied.' );
+assert_same_trace( 'Declined approval maps to approval_declined', 'approval_declined', $declined_reason );
+assert_same_trace( 'Discarded preview maps to approval_discarded', 'approval_discarded', $discarded_reason );
+assert_same_trace( 'Expired approval failures map to approval_expired', 'approval_expired', $expired_reason );
+
+PressArk_Activity_Event_Store::$events = array();
+PressArk_Activity_Trace::set_current_context(
+	array(
+		'correlation_id' => 'corr_outcome_seed',
+		'run_id'         => 'run_outcome',
+		'route'          => 'agent',
+	)
+);
+PressArk_Activity_Trace::publish_result_events(
+	array(
+		'run_id'            => 'run_outcome',
+		'type'              => 'final_response',
+		'approval_outcome'  => PressArk_Permission_Decision::approval_outcome(
+			PressArk_Permission_Decision::OUTCOME_DISCARDED,
+			array( 'action' => 'preview_apply', 'actor' => 'user' )
+		),
+		'activity_events'   => array(),
+	),
+	'agent'
+);
+$phase_end = PressArk_Activity_Event_Store::$events[0] ?? array();
+assert_same_trace( 'Phase-end reason preserves discarded outcome', 'approval_discarded', $phase_end['reason'] ?? '' );
+assert_same_trace( 'Phase-end payload includes approval outcome status', 'discarded', $phase_end['payload']['approval_outcome'] ?? '' );
+
+echo "\n--- Chat-facing summaries preserve richer canonical reasons ---\n";
+$fallback_summary = PressArk_Activity_Trace::describe_event_for_chat(
+	array(
+		'event_type' => 'provider.fallback',
+		'reason'     => 'fallback_model_policy',
+		'status'     => 'degraded',
+		'payload'    => array(
+			'provider' => 'anthropic',
+			'model'    => 'claude-sonnet',
+		),
+	)
+);
+$headroom_summary = PressArk_Activity_Trace::describe_event_for_chat(
+	array(
+		'event_type' => 'run.transition',
+		'reason'     => 'degraded_request_headroom',
+		'status'     => 'degraded',
+		'summary'    => 'Context compacted after request headroom dropped below threshold.',
+	)
+);
+
+assert_same_trace( 'fallback chat label', 'Fallback model used', $fallback_summary['label'] ?? '' );
+assert_same_trace( 'fallback chat status', 'degraded', $fallback_summary['status'] ?? '' );
+assert_same_trace( 'fallback chat detail preserves provider and model', 'anthropic / claude-sonnet', $fallback_summary['detail'] ?? '' );
+assert_same_trace( 'headroom chat label', 'Context compacted to continue', $headroom_summary['label'] ?? '' );
+assert_same_trace( 'headroom chat status', 'degraded', $headroom_summary['status'] ?? '' );
+assert_same_trace( 'headroom chat source', 'trace', $headroom_summary['source'] ?? '' );
 
 echo "\n--- Error tracker inherits correlation context for existing logs ---\n";
 $GLOBALS['pressark_test_options'] = array();

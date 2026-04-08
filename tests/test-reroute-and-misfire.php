@@ -112,6 +112,17 @@ if ( ! class_exists( 'PressArk_Operation' ) ) {
 
 if ( ! class_exists( 'PressArk_Operation_Registry' ) ) {
 	class PressArk_Operation_Registry {
+		public static function all(): array {
+			return array(
+				'read_content'   => new PressArk_Operation(),
+				'search_content' => new PressArk_Operation(),
+			);
+		}
+
+		public static function get_aliases(): array {
+			return array();
+		}
+
 		public static function resolve_alias( string $name ): string {
 			return $name;
 		}
@@ -202,6 +213,14 @@ if ( ! class_exists( 'PressArk_Entitlements' ) ) {
 
 if ( ! class_exists( 'PressArk_Permission_Service' ) ) {
 	class PressArk_Permission_Service {
+		public static function gate_execution( string $type, array $params, string $context, array $meta = array() ): array {
+			unset( $type, $context, $meta );
+			return array(
+				'allowed' => true,
+				'params'  => $params,
+			);
+		}
+
 		public static function build_entitlement_denial(
 			string $type,
 			string $context,
@@ -288,6 +307,11 @@ if ( ! class_exists( 'PressArk_Tool_Catalog' ) ) {
 			return array();
 		}
 
+		public function classify( string $name, array $args = array() ): string {
+			unset( $args );
+			return 'read_content' === $name ? 'read' : 'preview';
+		}
+
 		public function match_groups( string $query, array $conversation = array() ): array {
 			unset( $conversation );
 			return false !== strpos( $query, 'billing' ) ? array( 'settings' ) : array( 'content' );
@@ -297,6 +321,12 @@ if ( ! class_exists( 'PressArk_Tool_Catalog' ) ) {
 
 if ( ! class_exists( 'PressArk_Tool_Loader' ) ) {
 	class PressArk_Tool_Loader {
+		public function mark_discovered_tools( array $tool_set, array $tools, array $options = array() ): array {
+			unset( $options );
+			$tool_set['tool_names'] = array_values( array_unique( array_merge( (array) ( $tool_set['tool_names'] ?? array() ), $tools ) ) );
+			return $tool_set;
+		}
+
 		public function expand( array $tool_set, string $group, array $options = array() ): array {
 			unset( $group, $options );
 			return $tool_set;
@@ -422,6 +452,27 @@ assert_telemetry(
 	'Repeated misfires return the operator-facing load-groups hint',
 	false !== strpos( (string) ( $last_result['result']['message'] ?? '' ), 'Available tool groups you can load directly' ),
 	'Last result: ' . var_export( $last_result, true )
+);
+
+$has_leaked_tool_pattern = new ReflectionMethod( PressArk_Agent::class, 'has_leaked_tool_pattern' );
+$has_leaked_tool_pattern->setAccessible( true );
+$reconstruct_leaked_tool_call = new ReflectionMethod( PressArk_Agent::class, 'reconstruct_leaked_tool_call' );
+$reconstruct_leaked_tool_call->setAccessible( true );
+
+$leaked_text = "I'll read the current page.\n\nread_content(id=33, mode=\"detail\")";
+$recovered_call = $reconstruct_leaked_tool_call->invoke( $agent, $leaked_text );
+
+assert_telemetry(
+	'Parenthesized leaked read calls are detected as leaked tool output',
+	true === $has_leaked_tool_pattern->invoke( $agent, $leaked_text ),
+	'Text: ' . $leaked_text
+);
+assert_telemetry(
+	'Parenthesized leaked read calls are reconstructed into a native read_content call',
+	'read_content' === ( $recovered_call['name'] ?? '' )
+		&& 33 === (int) ( $recovered_call['arguments']['post_id'] ?? 0 )
+		&& 'detail' === ( $recovered_call['arguments']['mode'] ?? '' ),
+	'Reconstructed: ' . var_export( $recovered_call, true )
 );
 
 echo "\nResults: {$passed} passed, {$failed} failed\n";

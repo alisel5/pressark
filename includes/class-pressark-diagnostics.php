@@ -146,6 +146,7 @@ class PressArk_Diagnostics {
 		}
 
 		// SSRF guard: only allow URLs on the same host as this WordPress install.
+		$site_url  = home_url( '/' );
 		$site_host = wp_parse_url( home_url(), PHP_URL_HOST );
 		$req_host  = wp_parse_url( $url, PHP_URL_HOST );
 		if ( ! $req_host || strcasecmp( $req_host, $site_host ) !== 0 ) {
@@ -155,10 +156,37 @@ class PressArk_Diagnostics {
 			];
 		}
 
-		// Single HTTP request — prefer cURL for TTFB timing, fall back to wp_remote_get.
-		$fetch = $this->timed_fetch( $url );
+		// Prefer the requested URL, but fall back to container-reachable transports for
+		// same-site loopback installs (for example WP-CLI running beside a web container).
+		$plans          = $this->build_measurement_fetch_plans( $url, $site_url );
+		$fetch          = array();
+		$transport_url  = $url;
+		$canonical_url  = $url;
+		$transport_note = '';
+		$attempted_urls = array();
+		foreach ( $plans as $plan ) {
+			$attempted_urls[] = $plan['transport_url'];
+			$fetch            = $this->timed_fetch( $plan['transport_url'], $plan['headers'] ?? array() );
+			if ( ! isset( $fetch['error'] ) ) {
+				$transport_url  = $plan['transport_url'];
+				$canonical_url  = $plan['canonical_url'] ?? $url;
+				$transport_note = $plan['note'] ?? '';
+				break;
+			}
+		}
+
 		if ( isset( $fetch['error'] ) ) {
-			return [ 'url' => $url, 'error' => $fetch['error'] ];
+			$result = array(
+				'url'            => $url,
+				'error'          => $this->format_measure_page_speed_fetch_error( $url, $fetch['error'] ),
+				'attempted_urls' => $attempted_urls,
+			);
+
+			if ( $this->url_uses_loopback_host( $url ) ) {
+				$result['hint'] = __( 'Loopback hosts like localhost can point at the CLI/runtime container instead of the web server. Configure PRESSARK_INTERNAL_SITE_URL or the pressark_measure_page_speed_transport_urls filter with an internal web URL if needed.', 'pressark' );
+			}
+
+			return $result;
 		}
 
 		$elapsed = $fetch['total_ms'];
@@ -228,10 +256,256 @@ class PressArk_Diagnostics {
 			'recommendations' => $this->speed_recommendations( $elapsed, $cache_status, $script_count ),
 		];
 
+		if ( $canonical_url !== $url ) {
+			$result['canonical_url'] = $canonical_url;
+		}
+
+		if ( $transport_url !== $canonical_url ) {
+			$result['transport_url'] = $transport_url;
+		}
+
+		if ( '' !== $transport_note ) {
+			$result['network_note'] = $transport_note;
+		}
+
 		// Cache for site_brief() and repeat calls (15 min).
 		set_transient( 'pressark_speed_check', $result, 15 * MINUTE_IN_SECONDS );
 
 		return $result;
+	}
+
+	/**
+	 * Build same-site fetch plans for page-speed diagnostics.
+	 *
+	 * @param string $url      Requested public URL.
+	 * @param string $site_url Canonical home URL.
+	 * @return array<int,array{transport_url:string,canonical_url:string,headers:array<string,string>,note:string}>
+	 */
+	private function build_measurement_fetch_plans( string $url, string $site_url ): array {
+		$plans         = array();
+		$site_parts    = wp_parse_url( $site_url );
+		$request_parts = wp_parse_url( $url );
+		$site_parts    = is_array( $site_parts ) ? $site_parts : array();
+		$request_parts = is_array( $request_parts ) ? $request_parts : array();
+
+		$canonical_parts = $request_parts;
+		if ( empty( $canonical_parts['scheme'] ) && ! empty( $site_parts['scheme'] ) ) {
+			$canonical_parts['scheme'] = $site_parts['scheme'];
+		}
+		if ( empty( $canonical_parts['host'] ) && ! empty( $site_parts['host'] ) ) {
+			$canonical_parts['host'] = $site_parts['host'];
+		}
+		if ( empty( $canonical_parts['path'] ) ) {
+			$canonical_parts['path'] = $site_parts['path'] ?? '/';
+		}
+		if ( ! isset( $canonical_parts['port'] ) && isset( $site_parts['port'] ) ) {
+			$canonical_parts['port'] = $site_parts['port'];
+		}
+
+		$canonical_url = $this->build_url_from_parts( $canonical_parts );
+		$this->add_measurement_fetch_plan(
+			$plans,
+			$url,
+			$canonical_url,
+			array(),
+			''
+		);
+
+		if ( $canonical_url && $canonical_url !== $url ) {
+			$this->add_measurement_fetch_plan(
+				$plans,
+				$canonical_url,
+				$canonical_url,
+				array(),
+				__( 'Measured against the site\'s canonical home_url() because the requested URL omitted the configured port/path.', 'pressark' )
+			);
+		}
+
+		if ( $this->url_uses_loopback_host( $canonical_url ?: $url ) ) {
+			$host_header = $this->build_measurement_host_header( $canonical_parts, $site_parts );
+			foreach ( $this->loopback_transport_base_urls( $site_parts, $site_url ) as $base_url ) {
+				$transport_url = $this->build_transport_url_from_base( $base_url, $canonical_parts );
+				if ( '' === $transport_url ) {
+					continue;
+				}
+
+				$this->add_measurement_fetch_plan(
+					$plans,
+					$transport_url,
+					$canonical_url,
+					'' !== $host_header ? array( 'Host' => $host_header ) : array(),
+					__( 'Measured via an internal loopback transport because the public loopback host is not directly reachable from this runtime.', 'pressark' )
+				);
+			}
+		}
+
+		return $plans;
+	}
+
+	/**
+	 * Add a unique measurement fetch plan.
+	 *
+	 * @param array  $plans         Existing plans.
+	 * @param string $transport_url Runtime-reachable transport URL.
+	 * @param string $canonical_url Canonical same-site URL.
+	 * @param array  $headers       Optional request headers.
+	 * @param string $note          Resolution note for the result.
+	 */
+	private function add_measurement_fetch_plan( array &$plans, string $transport_url, string $canonical_url, array $headers, string $note ): void {
+		if ( '' === $transport_url ) {
+			return;
+		}
+
+		$key = $transport_url . '|' . ( $headers['Host'] ?? '' );
+		foreach ( $plans as $existing ) {
+			$existing_key = ( $existing['transport_url'] ?? '' ) . '|' . ( $existing['headers']['Host'] ?? '' );
+			if ( $existing_key === $key ) {
+				return;
+			}
+		}
+
+		$plans[] = array(
+			'transport_url' => $transport_url,
+			'canonical_url' => $canonical_url,
+			'headers'       => $headers,
+			'note'          => $note,
+		);
+	}
+
+	/**
+	 * Build the Host header used when an internal transport URL differs from the public URL.
+	 *
+	 * @param array $request_parts Parsed requested URL.
+	 * @param array $site_parts    Parsed site URL.
+	 * @return string
+	 */
+	private function build_measurement_host_header( array $request_parts, array $site_parts ): string {
+		$host = (string) ( $request_parts['host'] ?? $site_parts['host'] ?? '' );
+		if ( '' === $host ) {
+			return '';
+		}
+
+		$port = $request_parts['port'] ?? $site_parts['port'] ?? null;
+		if ( null !== $port && '' !== (string) $port ) {
+			return $host . ':' . $port;
+		}
+
+		return $host;
+	}
+
+	/**
+	 * Get internal transport base URLs for loopback sites.
+	 *
+	 * @param array  $site_parts Parsed site URL.
+	 * @param string $site_url   Canonical site URL.
+	 * @return array<int,string>
+	 */
+	private function loopback_transport_base_urls( array $site_parts, string $site_url ): array {
+		$base_urls = array();
+		$override  = '';
+
+		if ( defined( 'PRESSARK_INTERNAL_SITE_URL' ) ) {
+			$override = (string) PRESSARK_INTERNAL_SITE_URL;
+		} else {
+			$env_override = getenv( 'PRESSARK_INTERNAL_SITE_URL' );
+			if ( false !== $env_override ) {
+				$override = (string) $env_override;
+			}
+		}
+
+		if ( '' !== trim( $override ) ) {
+			$base_urls[] = trim( $override );
+		}
+
+		$scheme     = (string) ( $site_parts['scheme'] ?? 'http' );
+		$port       = isset( $site_parts['port'] ) ? ':' . $site_parts['port'] : '';
+		$base_urls[] = $scheme . '://host.docker.internal' . $port;
+
+		$filtered = apply_filters( 'pressark_measure_page_speed_transport_urls', $base_urls, $site_url );
+		$filtered = is_array( $filtered ) ? $filtered : array( $filtered );
+
+		$result = array();
+		foreach ( $filtered as $candidate ) {
+			$candidate = trim( (string) $candidate );
+			if ( '' !== $candidate ) {
+				$result[] = $candidate;
+			}
+		}
+
+		return array_values( array_unique( $result ) );
+	}
+
+	/**
+	 * Build a transport URL from an internal base URL and canonical path/query parts.
+	 *
+	 * @param string $base_url        Internal transport base URL.
+	 * @param array  $canonical_parts Parsed canonical request URL.
+	 * @return string
+	 */
+	private function build_transport_url_from_base( string $base_url, array $canonical_parts ): string {
+		$base_parts = wp_parse_url( $base_url );
+		if ( ! is_array( $base_parts ) || empty( $base_parts['host'] ) ) {
+			return '';
+		}
+
+		$transport_parts = $base_parts;
+		foreach ( array( 'path', 'query', 'fragment' ) as $key ) {
+			if ( array_key_exists( $key, $canonical_parts ) ) {
+				$transport_parts[ $key ] = $canonical_parts[ $key ];
+			}
+		}
+
+		return $this->build_url_from_parts( $transport_parts );
+	}
+
+	/**
+	 * Build a URL from parse_url-style parts.
+	 *
+	 * @param array $parts URL parts.
+	 * @return string
+	 */
+	private function build_url_from_parts( array $parts ): string {
+		if ( empty( $parts['host'] ) ) {
+			return '';
+		}
+
+		$scheme   = (string) ( $parts['scheme'] ?? 'http' );
+		$user     = isset( $parts['user'] ) ? $parts['user'] : '';
+		$pass     = isset( $parts['pass'] ) ? ':' . $parts['pass'] : '';
+		$auth     = '' !== $user ? $user . $pass . '@' : '';
+		$host     = $parts['host'];
+		$port     = isset( $parts['port'] ) ? ':' . $parts['port'] : '';
+		$path     = isset( $parts['path'] ) && '' !== $parts['path'] ? $parts['path'] : '/';
+		$query    = isset( $parts['query'] ) && '' !== $parts['query'] ? '?' . $parts['query'] : '';
+		$fragment = isset( $parts['fragment'] ) && '' !== $parts['fragment'] ? '#' . $parts['fragment'] : '';
+
+		return $scheme . '://' . $auth . $host . $port . $path . $query . $fragment;
+	}
+
+	/**
+	 * Whether a URL targets a loopback host.
+	 *
+	 * @param string $url URL to inspect.
+	 * @return bool
+	 */
+	private function url_uses_loopback_host( string $url ): bool {
+		$host = (string) wp_parse_url( $url, PHP_URL_HOST );
+		return in_array( strtolower( $host ), array( 'localhost', '127.0.0.1', '::1' ), true );
+	}
+
+	/**
+	 * Format a clearer page-speed fetch failure.
+	 *
+	 * @param string $url   Requested URL.
+	 * @param string $error Final transport error.
+	 * @return string
+	 */
+	private function format_measure_page_speed_fetch_error( string $url, string $error ): string {
+		if ( $this->url_uses_loopback_host( $url ) ) {
+			return __( 'Loopback request could not reach this site from the current runtime.', 'pressark' ) . ' ' . $error;
+		}
+
+		return $error;
 	}
 
 	/**
@@ -241,9 +515,13 @@ class PressArk_Diagnostics {
 	 * @param string $url Same-site URL to fetch.
 	 * @return array{total_ms:int,ttfb_ms:?int,http_code:int,body:string,headers:array<string,string>}|array{error:string}
 	 */
-	private function timed_fetch( string $url ): array {
+	private function timed_fetch( string $url, array $headers = array() ): array {
 		if ( function_exists( 'curl_init' ) ) {
 			$ch = curl_init( $url );
+			$curl_headers = array();
+			foreach ( $headers as $key => $value ) {
+				$curl_headers[] = $key . ': ' . $value;
+			}
 			curl_setopt_array( $ch, [
 				CURLOPT_RETURNTRANSFER => true,
 				CURLOPT_HEADER         => true,
@@ -251,6 +529,7 @@ class PressArk_Diagnostics {
 				CURLOPT_SSL_VERIFYPEER => false,
 				CURLOPT_USERAGENT      => 'PressArk-Diagnostics/1.0',
 				CURLOPT_FOLLOWLOCATION => false,
+				CURLOPT_HTTPHEADER     => $curl_headers,
 			] );
 
 			$start = microtime( true );
@@ -294,6 +573,7 @@ class PressArk_Diagnostics {
 			'sslverify'   => false,
 			'redirection' => 0,
 			'user-agent'  => 'PressArk-Diagnostics/1.0',
+			'headers'     => $headers,
 		] );
 		$total = (int) round( ( microtime( true ) - $start ) * 1000 );
 

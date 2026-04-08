@@ -1491,8 +1491,17 @@ class PressArk_Admin {
 		$is_byok      = PressArk_Entitlements::is_byok();
 		$upgrade_url  = pressark_get_upgrade_url();
 		$models       = $this->get_supported_model_options();
+		$auto_description = $is_byok
+			? __( 'Auto mode reuses your BYOK main model for background tasks like planning, context compression, and memory selection. Choose another model here only if you want a dedicated Back-Agent.', 'pressark' )
+			: __( 'Auto mode uses a cheap model for background tasks: planning, context compression, and memory selection. Does not affect chat responses.', 'pressark' );
+		$back_agent_summary = $is_byok
+			? __( 'Auto mode reuses your BYOK main model for task-aware planning and context compression unless you choose a dedicated Back-Agent override.', 'pressark' )
+			: __( 'Auto mode uses DeepSeek V3.2 for task-aware context compression. This affects continuation capsules only, not normal chat execution.', 'pressark' );
+		$back_agent_detail = $is_byok
+			? __( 'Back-Agent handles task planning, context compression, and memory selection behind the scenes. Leave it on Auto to match your BYOK main model, or override it with a separate model.', 'pressark' )
+			: __( 'Handles task planning, context compression, and memory selection behind the scenes. A cheaper model saves credits without affecting response quality.', 'pressark' );
 		$descriptions = $this->get_model_option_descriptions(
-			__( 'Auto mode uses a cheap model for background tasks: planning, context compression, and memory selection. Does not affect chat responses.', 'pressark' )
+			$auto_description
 		);
 		?>
 		<select name="pressark_summarize_model" id="pressark-summarize-model-select">
@@ -1555,10 +1564,10 @@ class PressArk_Admin {
 			style="display: <?php echo 'custom' === $model ? 'block' : 'none'; ?>; margin-top: 8px;" />
 
 		<p class="description" id="pressark-summarize-model-description">
-			<?php esc_html_e( 'Auto mode uses DeepSeek V3.2 for task-aware context compression. This affects continuation capsules only, not normal chat execution.', 'pressark' ); ?>
+			<?php echo esc_html( $back_agent_summary ); ?>
 		</p>
 		<p class="description" style="margin-top:4px;">
-			<?php esc_html_e( 'Handles task planning, context compression, and memory selection behind the scenes. A cheaper model saves credits without affecting response quality.', 'pressark' ); ?>
+			<?php echo esc_html( $back_agent_detail ); ?>
 		</p>
 
 		<?php if ( ! $is_pro ) : ?>
@@ -1626,7 +1635,7 @@ class PressArk_Admin {
 			'anthropic/claude-opus-4.6'   => __( 'Premium class model. Most capable option at about 15× credits. Requires Team+ plan.', 'pressark' ),
 			'openai/gpt-5.3-codex'        => __( 'Standard class model. Optimized for code generation at about 8× credits. Requires Team+ plan.', 'pressark' ),
 			'openai/gpt-5.4'              => __( "Standard class model. OpenAI's flagship at about 8× credits. Requires Team+ plan.", 'pressark' ),
-			'custom'                      => __( 'Enter any OpenRouter-compatible model identifier below.', 'pressark' ),
+			'custom'                      => __( 'Enter any provider-compatible model identifier below.', 'pressark' ),
 		);
 	}
 
@@ -1923,6 +1932,7 @@ class PressArk_Admin {
 			esc_attr( $model )
 		);
 		echo '<p class="description">' . esc_html__( 'Any model identifier supported by your provider (e.g., gpt-5.4-mini, claude-sonnet-4.6, deepseek-v3.2).', 'pressark' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Leave Back-Agent on Auto to reuse this model for planning, context compression, and memory selection, or choose a separate Back-Agent model above.', 'pressark' ) . '</p>';
 	}
 
 	/**

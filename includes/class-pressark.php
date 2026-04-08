@@ -156,6 +156,34 @@ class PressArk {
 	}
 
 	/**
+	 * Resolve the chat stylesheet path.
+	 *
+	 * Mirrors the script resolver so style hotfixes are not blocked on a minified
+	 * rebuild during development or incident response.
+	 */
+	private function resolve_chat_style_path(): string {
+		$source_rel = 'assets/css/pressark-panel.css';
+		$min_rel    = 'assets/css/pressark-panel.min.css';
+
+		if ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) {
+			return $source_rel;
+		}
+
+		$source_path = PRESSARK_PATH . $source_rel;
+		$min_path    = PRESSARK_PATH . $min_rel;
+
+		if ( ! file_exists( $min_path ) ) {
+			return $source_rel;
+		}
+
+		if ( file_exists( $source_path ) && filemtime( $source_path ) > filemtime( $min_path ) ) {
+			return $source_rel;
+		}
+
+		return $min_rel;
+	}
+
+	/**
 	 * Enqueue CSS and JS on admin pages where the chat panel is active.
 	 */
 	public function enqueue_assets(): void {
@@ -163,14 +191,14 @@ class PressArk {
 			return;
 		}
 
-		$suffix      = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
 		$chat_script = $this->resolve_chat_script_path();
+		$chat_style  = $this->resolve_chat_style_path();
 
 		wp_enqueue_style(
 			'pressark-panel',
-			PRESSARK_URL . "assets/css/pressark-panel{$suffix}.css",
+			PRESSARK_URL . $chat_style,
 			array(),
-			$this->asset_version( "assets/css/pressark-panel{$suffix}.css" )
+			$this->asset_version( $chat_style )
 		);
 
 		wp_enqueue_script(
@@ -283,14 +311,14 @@ class PressArk {
 			return;
 		}
 
-		$suffix      = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
 		$chat_script = $this->resolve_chat_script_path();
+		$chat_style  = $this->resolve_chat_style_path();
 
 		wp_enqueue_style(
 			'pressark-panel',
-			PRESSARK_URL . "assets/css/pressark-panel{$suffix}.css",
+			PRESSARK_URL . $chat_style,
 			array(),
-			$this->asset_version( "assets/css/pressark-panel{$suffix}.css" )
+			$this->asset_version( $chat_style )
 		);
 
 		wp_enqueue_script(

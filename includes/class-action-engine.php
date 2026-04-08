@@ -94,7 +94,7 @@ class PressArk_Action_Engine {
 				);
 			}
 
-			$params = $action['params'] ?? array();
+			$params = $this->extract_action_params( $action );
 
 			// v5.3.0: Pre-permission input validation (fail-fast before approval).
 			$validation = PressArk_Operation_Registry::validate_input( $type, $params );
@@ -107,6 +107,10 @@ class PressArk_Action_Engine {
 			}
 
 			// v5.5.0: Central preflight — canonicalization, rerouting, and guards.
+			if ( isset( $validation['params'] ) && is_array( $validation['params'] ) ) {
+				$params = $validation['params'];
+			}
+
 			$preflight = PressArk_Preflight::check( $type, $params );
 
 			switch ( $preflight['action'] ?? PressArk_Preflight::ACTION_PROCEED ) {
@@ -141,6 +145,9 @@ class PressArk_Action_Engine {
 						'type'   => $preflight['tool'],
 						'params' => $preflight['params'] ?? array(),
 					);
+					if ( ! empty( $action['meta'] ) && is_array( $action['meta'] ) ) {
+						$rerouted_action['meta'] = $action['meta'];
+					}
 
 					PressArk_Error_Tracker::info(
 						'Preflight',
@@ -217,100 +224,71 @@ class PressArk_Action_Engine {
 					break;
 			}
 
-			if ( empty( $params ) ) {
-				$params = $action;
-				unset( $params['type'], $params['description'] );
-			} else {
-				$reserved = array( 'type', 'params', 'description' );
-				foreach ( $action as $key => $value ) {
-					if ( ! in_array( $key, $reserved, true ) && ! isset( $params[ $key ] ) ) {
-						$params[ $key ] = $value;
-					}
-				}
-			}
-
 			$tool_group      = PressArk_Operation_Registry::get_group( $type );
 			$tool_capability = PressArk_Operation_Registry::classify( $type, $params );
-			$exec_context    = $skip_log
-				? PressArk_Policy_Engine::CONTEXT_AGENT_READ
-				: PressArk_Policy_Engine::CONTEXT_INTERACTIVE;
+			$execution_meta  = is_array( $action['meta'] ?? null ) ? $action['meta'] : array();
+			$permission_meta = is_array( $execution_meta['permission_meta'] ?? null ) ? $execution_meta['permission_meta'] : array();
+			$exec_context    = sanitize_key(
+				(string) (
+					$execution_meta['permission_context']
+					?? ( $skip_log
+						? PressArk_Policy_Engine::CONTEXT_AGENT_READ
+						: PressArk_Policy_Engine::CONTEXT_INTERACTIVE )
+				)
+			);
+			if ( '' === $exec_context ) {
+				$exec_context = $skip_log
+					? PressArk_Policy_Engine::CONTEXT_AGENT_READ
+					: PressArk_Policy_Engine::CONTEXT_INTERACTIVE;
+			}
 
-			if ( ! empty( $tool_group ) ) {
-				$current_tier = ( new PressArk_License() )->get_tier();
-				$usage_check  = PressArk_Entitlements::check_group_usage( $current_tier, $tool_group, $tool_capability );
-				if ( ! $usage_check['allowed'] ) {
-					$usage_check['action_type']         = $type;
-					$usage_check['permission_decision'] = PressArk_Permission_Service::build_entitlement_denial(
-						$type,
-						$exec_context,
+			if ( ! array_key_exists( 'tier', $permission_meta ) && class_exists( 'PressArk_License' ) ) {
+				$permission_meta['tier'] = ( new PressArk_License() )->get_tier();
+			}
+			if ( ! empty( $execution_meta['approval_granted'] ) ) {
+				$permission_meta['approval_granted'] = true;
+			}
+
+			$gate = PressArk_Permission_Service::gate_execution(
+				$type,
+				$params,
+				$exec_context,
+				$permission_meta
+			);
+
+			if ( empty( $gate['allowed'] ) ) {
+				$decision = (array) ( $gate['permission_decision'] ?? array() );
+				$pre_check = (array) ( $gate['pre_operation'] ?? array() );
+
+				if ( class_exists( 'PressArk_Policy_Diagnostics' ) ) {
+					PressArk_Policy_Diagnostics::record_execution_denial(
+						$decision,
 						array(
-							'tier' => $current_tier,
-						),
-						$tool_group,
-						$tool_capability,
-						( PressArk_Operation_Registry::resolve( $type )->risk ?? 'moderate' ),
-						$current_tier,
-						$usage_check
+							'operation'  => $type,
+							'context'    => $exec_context,
+							'group'      => $tool_group,
+							'capability' => $tool_capability,
+							'meta'       => $permission_meta,
+						)
 					);
-					if ( class_exists( 'PressArk_Policy_Diagnostics' ) ) {
-						PressArk_Policy_Diagnostics::record_execution_denial(
-							(array) $usage_check['permission_decision'],
-							array(
-								'operation'  => $type,
-								'context'    => $exec_context,
-								'group'      => $tool_group,
-								'capability' => $tool_capability,
-								'meta'       => array(
-									'tier' => $current_tier,
-								),
-							)
-						);
-					}
-					return $usage_check;
 				}
+
+				$blocked = array(
+					'success'             => false,
+					'message'             => ! empty( $pre_check ) && array_key_exists( 'proceed', $pre_check ) && empty( $pre_check['proceed'] )
+						? ( $pre_check['reason'] ?? __( 'Blocked by pre-operation filter.', 'pressark' ) )
+						: implode( ' ', $decision['reasons'] ?? array( 'Blocked by permission policy.' ) ),
+					'action_type'         => $type,
+					'permission_decision' => $decision,
+				);
+				if ( ! empty( $decision ) && 'entitlements' !== ( $decision['source'] ?? '' ) ) {
+					$blocked['policy_verdict'] = $decision;
+				}
+
+				return $blocked;
 			}
 
-			// v5.4.0: Policy engine evaluation — deny/ask before execution.
-			if ( class_exists( 'PressArk_Policy_Engine' ) ) {
-				$verdict = PressArk_Policy_Engine::evaluate( $type, $params, $exec_context );
-
-				if ( PressArk_Policy_Engine::is_denied( $verdict ) ) {
-					return array(
-						'success'        => false,
-						'message'        => implode( ' ', $verdict['reasons'] ?? array( 'Blocked by policy.' ) ),
-						'action_type'    => $type,
-						'policy_verdict' => $verdict,
-						'permission_decision' => $verdict,
-					);
-				}
-
-				// ASK verdicts in the action engine don't block — the existing
-				// preview/confirm flow already handles interactive confirmation.
-				// We surface the verdict for callers that need it (e.g., agentic loop).
-				if ( PressArk_Policy_Engine::is_ask( $verdict ) && $skip_log ) {
-					// In agent-read context, ask = deny (no human to confirm).
-					return array(
-						'success'        => false,
-						'message'        => implode( ' ', $verdict['reasons'] ?? array( 'Requires human confirmation.' ) ),
-						'action_type'    => $type,
-						'policy_verdict' => $verdict,
-						'permission_decision' => $verdict,
-					);
-				}
-			}
-
-			// v5.4.0: Global pre-operation hook (can transform params or block).
-			if ( class_exists( 'PressArk_Policy_Engine' ) ) {
-				$pre_check = PressArk_Policy_Engine::pre_operation( $type, $params, $exec_context ?? PressArk_Policy_Engine::CONTEXT_INTERACTIVE );
-				if ( ! $pre_check['proceed'] ) {
-					return array(
-						'success'     => false,
-						'message'     => $pre_check['reason'] ?? __( 'Blocked by pre-operation filter.', 'pressark' ),
-						'action_type' => $type,
-					);
-				}
-				$params = $pre_check['params'];
-			}
+			$params = is_array( $gate['params'] ?? null ) ? $gate['params'] : $params;
 
 			// v5.3.0: Fire per-operation pre_execute policy hooks.
 			$pre_hooks = PressArk_Operation_Registry::get_policy_hooks( $type, 'pre_execute' );
@@ -432,5 +410,29 @@ class PressArk_Action_Engine {
 		}
 
 		return $action;
+	}
+
+	/**
+	 * Build the canonical parameter bag for validation, preflight, and dispatch.
+	 *
+	 * Older tool payloads sometimes place arguments at the top level instead of
+	 * inside params. Merge them before contract validation so authoritative
+	 * contracts stay backward-compatible with legacy action shapes.
+	 *
+	 * @since 5.5.0
+	 */
+	private function extract_action_params( array $action ): array {
+		$params   = is_array( $action['params'] ?? null ) ? $action['params'] : array();
+		$reserved = array( 'type', 'params', 'description', 'meta' );
+
+		foreach ( $action as $key => $value ) {
+			if ( in_array( $key, $reserved, true ) || array_key_exists( $key, $params ) ) {
+				continue;
+			}
+
+			$params[ $key ] = $value;
+		}
+
+		return $params;
 	}
 }

@@ -272,6 +272,7 @@ class PressArk_History_Manager {
 			|| ! empty( $data['retrieval'] )
 			|| ! empty( $data['selected_target'] )
 			|| ! empty( $data['approvals'] )
+			|| ! empty( $data['approval_outcomes'] )
 			|| ! empty( $data['blockers'] )
 			|| ! empty( $data['context_capsule'] )
 			|| ! empty( $data['loaded_tool_groups'] )

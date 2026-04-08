@@ -314,6 +314,48 @@ PROMPT;
 	}
 
 	/**
+	 * Prepare a streaming execution request with a fresh runtime contract.
+	 *
+	 * Streaming rounds do not pass through send_message_raw(), so they must
+	 * recompute tool-choice/schema routing instead of reusing whatever state
+	 * the planner or a previous phase left in active_request_options.
+	 *
+	 * @param array  $messages      Provider-facing conversation messages.
+	 * @param array  $tools         Tool definitions for this execution round.
+	 * @param string $system_prompt Full round system prompt.
+	 * @param bool   $deep_mode     Whether deep mode is active.
+	 * @param array  $options       Optional request overrides.
+	 * @return array{endpoint:string,headers:array,body:array}
+	 */
+	public function prepare_streaming_request(
+		array $messages,
+		array $tools = array(),
+		string $system_prompt = '',
+		bool $deep_mode = false,
+		array $options = array()
+	): array {
+		$model_pinned    = 'auto' !== get_option( 'pressark_model', 'auto' );
+		$is_byok         = $this->get_tracker()->is_byok();
+		$options         = $this->normalize_request_options( $tools, $options, $deep_mode, $model_pinned, $is_byok );
+		$runtime_options = $this->resolve_request_runtime_options( $tools, $options, $this->provider, $this->model );
+
+		$this->active_request_options = $runtime_options;
+		$this->record_request_snapshot(
+			$messages,
+			$tools,
+			$system_prompt,
+			$system_prompt,
+			$runtime_options,
+			$this->provider,
+			$this->model
+		);
+
+		return 'anthropic' === $this->provider
+			? $this->build_anthropic_request( $messages, $tools, $system_prompt )
+			: $this->build_openai_request( $messages, $tools, $system_prompt );
+	}
+
+	/**
 	 * Build the compact RoutingDecision sidecar for the current selection.
 	 *
 	 * @param string $basis   Selection basis: default|task|phase.
@@ -345,6 +387,7 @@ PROMPT;
 			'version'  => 1,
 			'provider' => $provider,
 			'model'    => $model,
+			'transport_mode' => self::is_proxy_mode() ? 'proxy' : 'direct',
 			'selection' => array(
 				'basis'               => sanitize_key( $basis ),
 				'task_type'           => sanitize_key( (string) ( $context['task_type'] ?? '' ) ),
@@ -732,6 +775,55 @@ PROMPT;
 	}
 
 	/**
+	 * Send a follow-up message that turns read-only results into a user-facing reply.
+	 *
+	 * @param string $user_message Original user request.
+	 * @param string $read_results JSON-encoded read results.
+	 * @param array  $conversation Full conversation history including the original request.
+	 * @return array{message: string, actions: array|null, error: string|null}
+	 */
+	public function send_read_followup( string $user_message, string $read_results, array $conversation ): array {
+		$followup = sprintf(
+			"Original user request:\n%s\n\nRetrieved WordPress data:\n%s\n\nWrite the assistant reply that should be shown to the user. Base it strictly on the retrieved data. If the retrieved data is not enough to fully complete the request, say exactly what you were able to inspect and what remains unknown. Do NOT include any action JSON blocks. Do NOT claim any edits were made unless the retrieved data explicitly shows that.",
+			$user_message,
+			$read_results
+		);
+		$system_content = "You are PressArk, an AI co-pilot for WordPress. Turn retrieved site data into a concise, accurate user-facing reply. Do NOT include any action JSON blocks.";
+
+		return $this->send_minimal_followup( $followup, $system_content, $conversation );
+	}
+
+	/**
+	 * Send a lightweight follow-up prompt without the full tool surface.
+	 *
+	 * @param string $followup       Prompt to send as the user message.
+	 * @param string $system_content Minimal system instructions.
+	 * @param array  $conversation   Full conversation history.
+	 * @return array{message: string, actions: array|null, error: string|null}
+	 */
+	private function send_minimal_followup( string $followup, string $system_content, array $conversation ): array {
+		$minimal_history = array_slice( $conversation, -4 );
+
+		return $this->with_byok_context( function () use ( $followup, $system_content, $minimal_history ) {
+			if ( empty( $this->api_key ) ) {
+				return array(
+					'message' => '',
+					'actions' => null,
+					'error'   => __( 'API key not configured.', 'pressark' ),
+				);
+			}
+			if ( 'anthropic' === $this->provider ) {
+				return $this->send_anthropic( $followup, $system_content, $minimal_history );
+			}
+			return $this->send_openai_compatible( $followup, $system_content, $minimal_history );
+		} ) ?? array(
+			'message' => '',
+			'actions' => null,
+			'error'   => __( 'BYOK enabled but no API key configured.', 'pressark' ),
+		);
+	}
+
+	/**
 	 * Normalize model name for the active provider.
 	 *
 	 * OpenRouter uses prefixed names like "google/gemini-2.5-flash", but
@@ -1069,7 +1161,7 @@ Responsive: use device parameter (desktop|tablet|mobile|widescreen|laptop|tablet
 
 Repeaters: use item_index (0-based) and item_fields to edit list items without replacing entire lists.
 
-Page building: Only use elementor_create_page when the user explicitly asks for Elementor (e.g. "create a page with Elementor", "build an Elementor landing page"). For all other content creation, use create_post (standard WordPress) — even on Elementor sites. Elementor-created content is always saved as a draft. elementor_create_page → add_container/add_widget → edit_widget. On legacy sites, use widget_target_id from add_container. Build real content, not pixel-perfect layouts.
+Page building: Only use elementor_create_page when the user explicitly asks for Elementor (e.g. "create a page with Elementor", "build an Elementor landing page"). For all other content creation, use create_post (standard WordPress) — even on Elementor sites. Elementor-created content is always saved as a draft. Prefer passing final widget settings up front in elementor_create_page/widgets or elementor_add_widget/settings. Use edit_widget for follow-up adjustments, not as the primary content-writing step. On legacy sites, use widget_target_id from add_container. Re-read the page after create/add/edit to confirm the content actually landed. Build real content, not pixel-perfect layouts.
 
 Cloning: elementor_clone_page for duplicate/copy/clone requests. Element IDs auto-regenerate.
 
@@ -1230,9 +1322,10 @@ FSEPROMPT;
 		// BYOK users — strict check with model + provider.
 		$tracker = $this->get_tracker();
 		if ( $tracker->is_byok() ) {
+			$byok_model = sanitize_text_field( (string) get_option( 'pressark_byok_model', $this->model ) );
 			return PressArk_Model_Policy::supports_tools_byok(
 				$tracker->get_byok_provider(),
-				$this->model
+				$byok_model
 			);
 		}
 
@@ -1494,19 +1587,22 @@ FSEPROMPT;
 		$request = 'anthropic' === $provider
 			? $this->build_anthropic_request( $messages, $tools, $augmented_system_prompt )
 			: $this->build_openai_request( $messages, $tools, $augmented_system_prompt );
-		$body    = is_array( $request['body'] ?? null ) ? $request['body'] : array();
-		$addendum = $this->extract_prompt_addendum( $original_system_prompt, $augmented_system_prompt );
-		$tool_names = array_values( array_filter( array_map(
+		$body              = is_array( $request['body'] ?? null ) ? $request['body'] : array();
+		$addendum          = $this->extract_prompt_addendum( $original_system_prompt, $augmented_system_prompt );
+		$transport_contract = is_array( $options['transport_contract'] ?? null ) ? (array) $options['transport_contract'] : array();
+		$tool_names        = array_values( array_filter( array_map(
 			static function ( array $tool ): string {
 				return sanitize_key( (string) ( $tool['function']['name'] ?? $tool['name'] ?? '' ) );
 			},
-			$tools
+			(array) ( $body['tools'] ?? array() )
 		) ) );
 
 		$this->last_request_snapshot = array(
+			'transport_mode'     => self::is_proxy_mode() ? 'proxy' : 'direct',
 			'transport_provider' => sanitize_key( $provider ),
 			'provider_format'    => 'anthropic' === $provider ? 'anthropic_messages' : 'openai_chat_completions',
 			'model'              => sanitize_text_field( $model ),
+			'transport_contract' => $transport_contract,
 			'cached_blocks'      => $this->get_cached_prompt_block_inventory(),
 			'dynamic_prompt'     => array_filter( array(
 				'chars'            => mb_strlen( trim( $original_system_prompt ) ),
@@ -1520,8 +1616,12 @@ FSEPROMPT;
 			'phase_addendum'     => array_filter( array(
 				'phase'           => sanitize_key( (string) ( $options['phase'] ?? '' ) ),
 				'effort_budget'   => sanitize_key( (string) ( $options['effort_budget'] ?? '' ) ),
+				'requested_tool_choice' => sanitize_key( (string) ( $options['requested_tool_choice'] ?? '' ) ),
 				'tool_choice'     => sanitize_key( (string) ( $options['tool_choice'] ?? '' ) ),
+				'provider_tool_choice' => sanitize_key( (string) ( $options['provider_tool_choice'] ?? '' ) ),
+				'requested_schema_mode' => sanitize_key( (string) ( $options['requested_schema_mode'] ?? '' ) ),
 				'schema_mode'     => sanitize_key( (string) ( $options['schema_mode'] ?? '' ) ),
+				'structured_output_transport' => sanitize_key( (string) ( $options['structured_output_transport'] ?? '' ) ),
 				'stop_conditions' => array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['stop_conditions'] ?? array() ) ) ) ),
 				'tool_heuristics' => array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['tool_heuristics'] ?? array() ) ) ) ),
 				'chars'           => mb_strlen( $addendum ),
@@ -1539,6 +1639,8 @@ FSEPROMPT;
 				'message_count'       => count( (array) ( $body['messages'] ?? array() ) ),
 				'tool_schema_count'   => count( (array) ( $body['tools'] ?? array() ) ),
 				'parallel_tool_calls' => ! empty( $body['parallel_tool_calls'] ),
+				'tool_choice_transport' => sanitize_key( (string) ( $options['provider_tool_choice'] ?? '' ) ),
+				'structured_output_native' => isset( $body['response_format'] ) || isset( $body['output_config'] ),
 				'message_roles'       => $this->summarize_request_roles( $body, $provider ),
 			), static function ( $value ) {
 				return ! ( is_array( $value ) ? empty( $value ) : false === $value || 0 === $value || '' === (string) $value );
@@ -1673,15 +1775,33 @@ AUTOMATION;
 		$options['phase']              = $phase;
 		$options['deep_mode']          = ! empty( $options['deep_mode'] ) || $deep_mode;
 		$options['requires_tools']     = array_key_exists( 'requires_tools', $options ) ? (bool) $options['requires_tools'] : ! empty( $tools );
+		$options['requested_requires_tools'] = $options['requires_tools'];
 		$options['model_pinned']       = $model_pinned || ! empty( $options['model_pinned'] );
 		$options['data_policy_locked'] = $is_byok || ! empty( $options['data_policy_locked'] ) || ! empty( $options['model_pinned'] );
 		$options['same_vendor_only']   = ! empty( $options['same_vendor_only'] ) || ( 'openrouter' !== $this->provider );
 		$options['effort_budget']      = sanitize_key( (string) ( $options['effort_budget'] ?? $this->default_effort_budget( $phase ) ) );
-		$options['tool_choice']        = sanitize_key( (string) ( $options['tool_choice'] ?? ( ! empty( $tools ) ? 'restricted_auto' : 'text_only' ) ) );
+		$requested_tool_choice         = sanitize_key( (string) ( $options['tool_choice'] ?? ( ! empty( $tools ) ? 'restricted_auto' : 'text_only' ) ) );
+		if ( 'auto' === $requested_tool_choice ) {
+			$requested_tool_choice = 'restricted_auto';
+		}
+		if ( ! in_array( $requested_tool_choice, array( 'text_only', 'restricted_auto', 'required', 'any' ), true ) ) {
+			$requested_tool_choice = ! empty( $tools ) ? 'restricted_auto' : 'text_only';
+		}
+		$options['requested_tool_choice'] = $requested_tool_choice;
+		$options['tool_choice']        = $requested_tool_choice;
 		$options['stop_conditions']    = array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['stop_conditions'] ?? $this->default_stop_conditions( $phase ) ) ) ) );
-		$options['tool_heuristics']    = array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['tool_heuristics'] ?? $this->default_tool_heuristics( $phase, $tools ) ) ) ) );
+		$options['tool_heuristics']    = array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $options['tool_heuristics'] ?? array() ) ) ) );
 		$options['deliverable_schema'] = is_array( $options['deliverable_schema'] ?? null ) ? $options['deliverable_schema'] : array();
-		$options['schema_mode']        = sanitize_key( (string) ( $options['schema_mode'] ?? ( ! empty( $options['deliverable_schema'] ) ? 'strict' : 'none' ) ) );
+		$requested_schema_mode         = sanitize_key( (string) ( $options['schema_mode'] ?? ( ! empty( $options['deliverable_schema'] ) ? 'strict' : 'none' ) ) );
+		if ( ! in_array( $requested_schema_mode, array( 'strict', 'prompt_only', 'none' ), true ) ) {
+			$requested_schema_mode = ! empty( $options['deliverable_schema'] ) ? 'strict' : 'none';
+		}
+		$options['requested_schema_mode'] = $requested_schema_mode;
+		$options['schema_mode']        = $requested_schema_mode;
+		$options['compiled_deliverable_schema'] = array();
+		$options['provider_tool_choice'] = 'omitted';
+		$options['structured_output_transport'] = 'none';
+		$options['transport_contract']  = array();
 		$proxy_route                   = sanitize_key( (string) ( $options['proxy_route'] ?? ( 'summarize' === $phase && ! $is_byok ? 'summarize' : 'chat' ) ) );
 		$options['proxy_route']        = ! $is_byok && in_array( $proxy_route, array( 'chat', 'summarize' ), true ) ? $proxy_route : 'chat';
 		$options['estimated_icus']     = $is_byok ? 0 : max( 0, (int) ( $options['estimated_icus'] ?? 0 ) );
@@ -1691,14 +1811,459 @@ AUTOMATION;
 	}
 
 	/**
+	 * Resolve the provider/model-specific request contract for the current call.
+	 *
+	 * Converts caller intent into the actual transport behavior that the
+	 * provider request can enforce. Unsupported strictness is downgraded
+	 * explicitly instead of silently preserved in metadata.
+	 *
+	 * @param array  $tools    Tool definitions sent with the request.
+	 * @param array  $options  Request options after baseline normalization.
+	 * @param string $provider Active transport provider.
+	 * @param string $model    Active model.
+	 * @return array
+	 */
+	private function resolve_request_runtime_options( array $tools, array $options, string $provider, string $model ): array {
+		$compiled_schema = is_array( $options['compiled_deliverable_schema'] ?? null )
+			&& ! empty( $options['compiled_deliverable_schema'] )
+			? (array) $options['compiled_deliverable_schema']
+			: $this->compile_deliverable_schema( (array) ( $options['deliverable_schema'] ?? array() ) );
+
+		$tool_contract = $this->resolve_tool_choice_contract( $tools, $options, $provider, $model );
+		$schema_contract = $this->resolve_structured_output_contract( $options, $provider, $model, $compiled_schema );
+
+		$options['compiled_deliverable_schema'] = $compiled_schema;
+		$options['tool_choice']                 = (string) ( $tool_contract['effective'] ?? 'text_only' );
+		$options['schema_mode']                 = (string) ( $schema_contract['effective'] ?? 'none' );
+		$options['provider_tool_choice']        = (string) ( $tool_contract['transport'] ?? 'omitted' );
+		$options['structured_output_transport'] = (string) ( $schema_contract['transport'] ?? 'none' );
+		$options['requires_tools']              = ! empty( $tools ) && 'text_only' !== ( $tool_contract['effective'] ?? 'text_only' );
+		$options['transport_contract']          = array(
+			'tool_choice'       => $tool_contract,
+			'structured_output' => $schema_contract,
+		);
+
+		return $options;
+	}
+
+	/**
+	 * Resolve the actual tool-choice behavior the provider request can enforce.
+	 *
+	 * @param array  $tools    Tool definitions for the call.
+	 * @param array  $options  Request options.
+	 * @param string $provider Active transport provider.
+	 * @param string $model    Active model.
+	 * @return array<string,mixed>
+	 */
+	private function resolve_tool_choice_contract( array $tools, array $options, string $provider, string $model ): array {
+		$has_tools = ! empty( $tools );
+		$requested = sanitize_key(
+			(string) (
+				$options['requested_tool_choice']
+				?? $options['tool_choice']
+				?? ( $has_tools ? 'restricted_auto' : 'text_only' )
+			)
+		);
+		$transport_supported = $this->provider_supports_tool_choice( $provider, $model );
+		$downgraded          = false;
+		$reason              = '';
+		$transport           = 'omitted';
+		$effective           = 'text_only';
+
+		if ( ! $has_tools ) {
+			if ( in_array( $requested, array( 'required', 'any', 'restricted_auto' ), true ) ) {
+				$downgraded = true;
+				$reason     = 'no_tools_exposed';
+			}
+		} elseif ( 'text_only' === $requested ) {
+			if ( $transport_supported ) {
+				$effective = 'text_only';
+				$transport = 'none';
+			} else {
+				$effective  = 'restricted_auto';
+				$transport  = 'omitted';
+				$downgraded = true;
+				$reason     = 'provider_cannot_disable_tools';
+			}
+		} elseif ( in_array( $requested, array( 'required', 'any' ), true ) ) {
+			if ( $transport_supported ) {
+				$effective = 'required';
+				$transport = 'anthropic' === $provider ? 'any' : 'required';
+			} else {
+				$effective  = 'restricted_auto';
+				$transport  = 'omitted';
+				$downgraded = true;
+				$reason     = 'provider_cannot_require_tools';
+			}
+		} else {
+			$effective = 'restricted_auto';
+			$transport = $transport_supported ? 'auto' : 'omitted';
+		}
+
+		return array(
+			'requested'  => $requested,
+			'effective'  => $effective,
+			'transport'  => $transport,
+			'supported'  => $transport_supported,
+			'downgraded' => $downgraded,
+			'reason'     => $reason,
+		);
+	}
+
+	/**
+	 * Resolve the actual structured-output contract for the active provider/model.
+	 *
+	 * @param array  $options         Request options.
+	 * @param string $provider        Active transport provider.
+	 * @param string $model           Active model.
+	 * @param array  $compiled_schema Provider-ready JSON Schema.
+	 * @return array<string,mixed>
+	 */
+	private function resolve_structured_output_contract( array $options, string $provider, string $model, array $compiled_schema ): array {
+		$requested = sanitize_key(
+			(string) (
+				$options['requested_schema_mode']
+				?? $options['schema_mode']
+				?? ( ! empty( $compiled_schema ) ? 'strict' : 'none' )
+			)
+		);
+		$schema_name = $this->build_structured_output_name( $options );
+
+		if ( empty( $compiled_schema ) ) {
+			return array(
+				'requested'  => $requested,
+				'effective'  => 'none',
+				'transport'  => 'none',
+				'supported'  => false,
+				'downgraded' => 'strict' === $requested,
+				'reason'     => 'schema_missing',
+				'name'       => $schema_name,
+			);
+		}
+
+		if ( 'strict' !== $requested ) {
+			$effective = 'prompt_only' === $requested ? 'prompt_only' : 'none';
+			return array(
+				'requested'  => $requested,
+				'effective'  => $effective,
+				'transport'  => 'prompt_only' === $effective ? 'prompt_only' : 'none',
+				'supported'  => false,
+				'downgraded' => false,
+				'reason'     => '',
+				'name'       => $schema_name,
+			);
+		}
+
+		if ( $this->provider_supports_structured_outputs( $provider, $model ) ) {
+			return array(
+				'requested'  => $requested,
+				'effective'  => 'strict',
+				'transport'  => 'anthropic' === $provider ? 'output_config.format' : 'response_format',
+				'supported'  => true,
+				'downgraded' => false,
+				'reason'     => '',
+				'name'       => $schema_name,
+			);
+		}
+
+		return array(
+			'requested'  => $requested,
+			'effective'  => 'prompt_only',
+			'transport'  => 'prompt_only',
+			'supported'  => false,
+			'downgraded' => true,
+			'reason'     => 'provider_model_lacks_native_structured_outputs',
+			'name'       => $schema_name,
+		);
+	}
+
+	/**
+	 * Whether the active transport can enforce tool_choice beyond default auto behavior.
+	 */
+	private function provider_supports_tool_choice( string $provider, string $model ): bool {
+		unset( $model );
+
+		return in_array(
+			sanitize_key( $provider ),
+			array( 'openai', 'openrouter', 'deepseek', 'gemini', 'anthropic' ),
+			true
+		);
+	}
+
+	/**
+	 * Whether the active provider/model can enforce a strict deliverable schema natively.
+	 */
+	private function provider_supports_structured_outputs( string $provider, string $model ): bool {
+		return match ( sanitize_key( $provider ) ) {
+			'openai'     => $this->model_supports_openai_structured_outputs( $model ),
+			'anthropic'  => $this->model_supports_anthropic_structured_outputs( $model ),
+			'openrouter' => $this->model_supports_openrouter_structured_outputs( $model ),
+			default      => false,
+		};
+	}
+
+	/**
+	 * OpenAI structured outputs are available on GPT-4o/4.1/5 and reasoning families.
+	 */
+	private function model_supports_openai_structured_outputs( string $model ): bool {
+		$signature = $this->normalize_model_signature( $model );
+
+		return $this->model_matches_any(
+			$signature,
+			array(
+				'openai/gpt-5',
+				'gpt-5',
+				'openai/gpt-4o',
+				'gpt-4o',
+				'openai/gpt-4-1',
+				'gpt-4-1',
+				'openai/o3',
+				'o3',
+				'openai/o4',
+				'o4',
+			)
+		);
+	}
+
+	/**
+	 * Anthropic structured outputs are supported on Claude 4.5+ current families.
+	 */
+	private function model_supports_anthropic_structured_outputs( string $model ): bool {
+		$signature = $this->normalize_model_signature( $model );
+
+		return 1 === preg_match(
+			'#(?:^|/)(?:anthropic/)?claude-(?:opus|sonnet|haiku)-4-(?:5|6)\b#',
+			$signature
+		);
+	}
+
+	/**
+	 * OpenRouter exposes structured outputs only for compatible underlying models.
+	 */
+	private function model_supports_openrouter_structured_outputs( string $model ): bool {
+		$signature = $this->normalize_model_signature( $model );
+
+		if ( $this->model_matches_any(
+			$signature,
+			array(
+				'openai/gpt-5',
+				'gpt-5',
+				'openai/gpt-4o',
+				'gpt-4o',
+				'openai/gpt-4-1',
+				'gpt-4-1',
+				'openai/o3',
+				'o3',
+				'openai/o4',
+				'o4',
+			)
+		) ) {
+			return true;
+		}
+
+		return 1 === preg_match(
+			'#(?:^|/)(?:anthropic/)?claude-(?:sonnet-4-(?:5|6)|opus-4-(?:1|5|6))\b#',
+			$signature
+		);
+	}
+
+	/**
+	 * Normalize model identifiers to a predictable signature for capability checks.
+	 */
+	private function normalize_model_signature( string $model ): string {
+		return str_replace( '.', '-', strtolower( trim( $model ) ) );
+	}
+
+	/**
+	 * Check whether a model signature matches any supported prefix.
+	 *
+	 * @param string   $signature Normalized model signature.
+	 * @param string[] $prefixes  Candidate prefixes.
+	 * @return bool
+	 */
+	private function model_matches_any( string $signature, array $prefixes ): bool {
+		foreach ( $prefixes as $prefix ) {
+			if ( str_starts_with( $signature, strtolower( $prefix ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Compile a deliverable schema shorthand into provider JSON Schema.
+	 */
+	private function compile_deliverable_schema( array $schema ): array {
+		if ( empty( $schema ) ) {
+			return array();
+		}
+
+		if ( $this->looks_like_json_schema( $schema ) ) {
+			return $schema;
+		}
+
+		return $this->compile_deliverable_schema_node( $schema, true );
+	}
+
+	/**
+	 * Recursively compile a deliverable-schema node.
+	 *
+	 * @param mixed $node Deliverable schema node.
+	 * @param bool  $is_root Whether the node is the schema root.
+	 * @return array<string,mixed>
+	 */
+	private function compile_deliverable_schema_node( $node, bool $is_root = false ): array {
+		if ( is_string( $node ) ) {
+			return array(
+				'type' => match ( strtolower( trim( $node ) ) ) {
+					'bool', 'boolean' => 'boolean',
+					'int', 'integer'  => 'integer',
+					'float', 'number' => 'number',
+					'object'          => 'object',
+					'array'           => 'array',
+					default           => 'string',
+				},
+			);
+		}
+
+		if ( is_bool( $node ) ) {
+			return array( 'type' => 'boolean' );
+		}
+
+		if ( is_int( $node ) ) {
+			return array( 'type' => 'integer' );
+		}
+
+		if ( is_float( $node ) ) {
+			return array( 'type' => 'number' );
+		}
+
+		if ( ! is_array( $node ) ) {
+			return array( 'type' => 'string' );
+		}
+
+		if ( $this->looks_like_json_schema( $node ) ) {
+			return $node;
+		}
+
+		if ( ! $this->is_assoc_array( $node ) ) {
+			$item_schema = ! empty( $node )
+				? $this->compile_deliverable_schema_node( reset( $node ), false )
+				: array( 'type' => 'string' );
+
+			return array(
+				'type'  => 'array',
+				'items' => $item_schema,
+			);
+		}
+
+		$properties = array();
+		foreach ( $node as $key => $child ) {
+			$key = sanitize_key( (string) $key );
+			if ( '' === $key ) {
+				continue;
+			}
+
+			$properties[ $key ] = $this->compile_deliverable_schema_node( $child, false );
+		}
+
+		$schema = array(
+			'type'                 => 'object',
+			'properties'           => empty( $properties ) ? new \stdClass() : $properties,
+			'required'             => array_values( array_keys( $properties ) ),
+			'additionalProperties' => false,
+		);
+
+		if ( ! $is_root && empty( $properties ) ) {
+			unset( $schema['required'] );
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Detect whether an array already looks like JSON Schema.
+	 */
+	private function looks_like_json_schema( array $schema ): bool {
+		return ! empty(
+			array_intersect(
+				array_keys( $schema ),
+				array(
+					'type',
+					'properties',
+					'items',
+					'required',
+					'additionalProperties',
+					'oneOf',
+					'anyOf',
+					'allOf',
+					'$ref',
+					'$defs',
+				)
+			)
+		);
+	}
+
+	/**
+	 * Determine whether an array is associative.
+	 */
+	private function is_assoc_array( array $array ): bool {
+		return array_keys( $array ) !== range( 0, count( $array ) - 1 );
+	}
+
+	/**
+	 * Build a stable schema name for OpenAI-compatible structured outputs.
+	 */
+	private function build_structured_output_name( array $options ): string {
+		$phase = sanitize_key( (string) ( $options['phase'] ?? '' ) );
+		$name  = 'pressark_' . ( '' !== $phase ? $phase : 'deliverable' ) . '_output';
+		$name  = preg_replace( '/[^a-z0-9_]/', '_', strtolower( $name ) );
+
+		return substr( trim( (string) $name, '_' ), 0, 64 ) ?: 'pressark_output';
+	}
+
+	/**
+	 * Ensure bundled fallback candidates preserve the enforceable request contract.
+	 *
+	 * Fallbacks should not silently drop a strict schema guarantee or a forced
+	 * tool policy when the original model can enforce it.
+	 */
+	private function fallback_preserves_request_contract(
+		array $tools,
+		array $options,
+		string $provider,
+		string $current_model,
+		string $candidate_model
+	): bool {
+		$current   = $this->resolve_request_runtime_options( $tools, $options, $provider, $current_model );
+		$candidate = $this->resolve_request_runtime_options( $tools, $options, $provider, $candidate_model );
+		$current_schema = sanitize_key( (string) ( $current['schema_mode'] ?? 'none' ) );
+		$candidate_schema = sanitize_key( (string) ( $candidate['schema_mode'] ?? 'none' ) );
+		$current_tool = sanitize_key( (string) ( $current['tool_choice'] ?? 'text_only' ) );
+		$candidate_tool = sanitize_key( (string) ( $candidate['tool_choice'] ?? 'text_only' ) );
+
+		if ( 'strict' === $current_schema && 'strict' !== $candidate_schema ) {
+			return false;
+		}
+
+		if ( in_array( $current_tool, array( 'text_only', 'required' ), true )
+			&& $candidate_tool !== $current_tool
+		) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Add a compact phase contract to the dynamic system prompt.
 	 *
 	 * @param string $system_prompt Base prompt/context.
-	 * @param array  $tools         Tools available for the call.
 	 * @param array  $options       Normalized request options.
 	 * @return string
 	 */
-	private function augment_system_prompt( string $system_prompt, array $tools, array $options ): string {
+	private function augment_system_prompt( string $system_prompt, array $options ): string {
 		$parts = array();
 
 		if ( ! empty( $options['phase'] ) ) {
@@ -1723,29 +2288,27 @@ AUTOMATION;
 			(array) ( $options['tool_heuristics'] ?? array() )
 		) ) );
 		if ( ! empty( $tool_heuristics ) ) {
-			$parts[] = 'Heuristics: ' . implode( ' | ', $tool_heuristics ) . '.';
+			$parts[] = 'Phase guidance: ' . implode( ' | ', $tool_heuristics ) . '.';
 		}
 
-		if ( ! empty( $tools ) && ! empty( $options['phase'] ) ) {
-			$tool_names = array();
-			foreach ( $tools as $tool ) {
-				$tool_names[] = $tool['function']['name'] ?? $tool['name'] ?? '';
-			}
-			$tool_names = array_values( array_filter( array_map( 'sanitize_text_field', $tool_names ) ) );
-			if ( ! empty( $tool_names ) ) {
-				$visible_tools = array_slice( $tool_names, 0, 8 );
-				if ( count( $tool_names ) > count( $visible_tools ) ) {
-					$visible_tools[] = '+' . ( count( $tool_names ) - count( $visible_tools ) ) . ' more';
-				}
-				$parts[] = 'Allowed tools: ' . implode( ', ', $visible_tools ) . '.';
-			}
-		}
-
-		if ( 'strict' === ( $options['schema_mode'] ?? '' ) && ! empty( $options['deliverable_schema'] ) ) {
-			$parts[] = 'Strict schema: ' . wp_json_encode(
-				$options['deliverable_schema'],
-				JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+		$schema_contract = is_array( $options['transport_contract']['structured_output'] ?? null )
+			? (array) $options['transport_contract']['structured_output']
+			: array();
+		$compiled_schema = is_array( $options['compiled_deliverable_schema'] ?? null )
+			? (array) $options['compiled_deliverable_schema']
+			: array();
+		if ( 'strict' === ( $options['schema_mode'] ?? '' ) && ! empty( $compiled_schema ) ) {
+			$parts[] = sprintf(
+				'Structured output is transport-enforced via %s.',
+				sanitize_text_field( (string) ( $schema_contract['transport'] ?? 'native_schema' ) )
 			);
+		} elseif ( 'prompt_only' === ( $options['schema_mode'] ?? '' ) && ! empty( $compiled_schema ) ) {
+			$reason = sanitize_key( (string) ( $schema_contract['reason'] ?? '' ) );
+			$parts[] = 'Structured output downgraded to prompt guidance only' . ( '' !== $reason ? " ({$reason})" : '' ) . ': '
+				. wp_json_encode(
+					$compiled_schema,
+					JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+				);
 		}
 
 		if ( empty( $parts ) ) {
@@ -1885,34 +2448,6 @@ AUTOMATION;
 		};
 	}
 
-	private function default_tool_heuristics( string $phase, array $tools ): array {
-		if ( empty( $tools ) ) {
-			return array(
-				'do not invent tool calls or mention missing tools unless the task is blocked',
-			);
-		}
-
-		return match ( $phase ) {
-			'classification' => array(
-				'avoid tools unless classification depends on fresh state',
-			),
-			'retrieval_planning' => array(
-				'prefer one decisive read over broad exploratory reads',
-				'stop after the minimum read needed to unblock the next deterministic step',
-			),
-			'summarize' => array(
-				'compress durable state, not conversational filler',
-				'prefer exact IDs, values, and task labels over prose paraphrase',
-			),
-			'diagnosis' => array(
-				'use tools only to confirm or refute the leading hypothesis',
-			),
-			default => array(
-				'choose the smallest tool set that can complete the phase',
-			),
-		};
-	}
-
 	/**
 	 * Send message with native tool calling and return raw response + provider.
 	 *
@@ -1939,10 +2474,9 @@ AUTOMATION;
 		$do_work = function () use ( $messages, $tools, $system_prompt, $deep_mode, $options, $model_pinned ) {
 			$is_byok = $this->get_tracker()->is_byok();
 			$options = $this->normalize_request_options( $tools, $options, $deep_mode, $model_pinned, $is_byok );
-			$this->active_request_options = $options;
 			$original_system_prompt = $system_prompt;
 
-			if ( ! $is_byok && ! empty( $options['phase'] ) ) {
+			if ( ! empty( $options['phase'] ) ) {
 				$this->resolve_for_phase( (string) $options['phase'], $options );
 			} elseif ( $deep_mode && ! $is_byok ) {
 				$this->model = $this->resolve_model( true );
@@ -1954,16 +2488,30 @@ AUTOMATION;
 			$fallback_used      = false;
 			$attempts           = 0;
 			$attempt_trace      = array();
+			$runtime_options    = $this->resolve_request_runtime_options( $tools, $options, $effective_provider, $effective_model );
+			$this->active_request_options = $runtime_options;
 			$fallback_constraints = array(
 				'transport_provider' => $effective_provider,
-				'requires_tools'     => ! empty( $options['requires_tools'] ),
-				'same_vendor_only'   => ! empty( $options['same_vendor_only'] ),
+				'requires_tools'     => ! empty( $runtime_options['requires_tools'] ),
+				'same_vendor_only'   => ! empty( $runtime_options['same_vendor_only'] ),
 				'model_pinned'       => $model_pinned,
-				'data_policy_locked' => ! empty( $options['data_policy_locked'] ),
+				'data_policy_locked' => ! empty( $runtime_options['data_policy_locked'] ),
 			);
-			$fallback_candidates = PressArk_Model_Policy::fallback_candidates( $effective_model, $fallback_constraints );
+			$fallback_candidates = array_values( array_filter(
+				PressArk_Model_Policy::fallback_candidates( $effective_model, $fallback_constraints ),
+				function ( string $candidate_model ) use ( $tools, $options, $effective_provider, $effective_model ): bool {
+					return $this->fallback_preserves_request_contract(
+						$tools,
+						$options,
+						$effective_provider,
+						$effective_model,
+						$candidate_model
+					);
+				}
+			) );
 
-			$system_prompt = $this->augment_system_prompt( $system_prompt, $tools, $options );
+			$attempt_options      = $runtime_options;
+			$attempt_system_prompt = $this->augment_system_prompt( $original_system_prompt, $attempt_options );
 
 			if ( empty( $this->api_key ) && ! self::is_proxy_mode() ) {
 				return $this->attach_routing_decision( array(
@@ -1978,6 +2526,7 @@ AUTOMATION;
 				), array(
 					'provider' => $effective_provider,
 					'model'    => $effective_model,
+					'request_contract' => (array) ( $attempt_options['transport_contract'] ?? array() ),
 					'fallback' => array(
 						'eligible'      => PressArk_Model_Policy::can_use_fallback( $effective_provider, $is_byok, $fallback_constraints ),
 						'considered'    => $fallback_candidates,
@@ -1986,42 +2535,48 @@ AUTOMATION;
 				) );
 			}
 
-			$raw = $this->call_provider( $messages, $tools, $system_prompt );
+			$raw = $this->call_provider( $messages, $tools, $attempt_system_prompt );
 			$attempts++;
-			$failure_class = $this->classify_failure( $raw, $effective_provider, $options );
+			$failure_class = $this->classify_failure( $raw, $effective_provider, $attempt_options );
 			$attempt_trace[] = array(
 				'model'         => $effective_model,
 				'failure_class' => $failure_class,
 			);
 
-			if ( $this->should_attempt_fallback( $raw, $effective_provider, $effective_model, $options, $is_byok, $model_pinned ) ) {
+			if ( $this->should_attempt_fallback( $raw, $effective_provider, $effective_model, $attempt_options, $is_byok, $model_pinned ) ) {
 				foreach ( $fallback_candidates as $candidate_model ) {
 					$this->model = $candidate_model;
-					$candidate_raw = $this->call_provider( $messages, $tools, $system_prompt );
+					$candidate_options = $this->resolve_request_runtime_options( $tools, $options, $effective_provider, $candidate_model );
+					$this->active_request_options = $candidate_options;
+					$candidate_system_prompt = $this->augment_system_prompt( $original_system_prompt, $candidate_options );
+					$candidate_raw = $this->call_provider( $messages, $tools, $candidate_system_prompt );
 					$attempts++;
-					$candidate_failure = $this->classify_failure( $candidate_raw, $effective_provider, $options );
+					$candidate_failure = $this->classify_failure( $candidate_raw, $effective_provider, $candidate_options );
 					$attempt_trace[] = array(
 						'model'         => $candidate_model,
 						'failure_class' => $candidate_failure,
 					);
 
 					if ( '' === $candidate_failure ) {
-						$raw           = $candidate_raw;
-						$failure_class = '';
+						$raw             = $candidate_raw;
+						$failure_class   = '';
 						$effective_model = $candidate_model;
-						$fallback_used = true;
+						$attempt_options = $candidate_options;
+						$attempt_system_prompt = $candidate_system_prompt;
+						$fallback_used    = true;
 						break;
 					}
 				}
 			}
 
 			$this->model = $effective_model;
+			$this->active_request_options = $attempt_options;
 			$this->record_request_snapshot(
 				$messages,
 				$tools,
 				$original_system_prompt,
-				$system_prompt,
-				$options,
+				$attempt_system_prompt,
+				$attempt_options,
 				$effective_provider,
 				$effective_model
 			);
@@ -2038,10 +2593,11 @@ AUTOMATION;
 			), array(
 				'provider' => $effective_provider,
 				'model'    => $effective_model,
+				'request_contract' => (array) ( $attempt_options['transport_contract'] ?? array() ),
 				'capability_assumptions' => array(
-					'requires_tools'       => ! empty( $options['requires_tools'] ),
-					'same_vendor_only'     => ! empty( $options['same_vendor_only'] ),
-					'data_policy_locked'   => ! empty( $options['data_policy_locked'] ) || $is_byok || $model_pinned,
+					'requires_tools'       => ! empty( $attempt_options['requires_tools'] ),
+					'same_vendor_only'     => ! empty( $attempt_options['same_vendor_only'] ),
+					'data_policy_locked'   => ! empty( $attempt_options['data_policy_locked'] ) || $is_byok || $model_pinned,
 					'supports_native_tools'=> $is_byok
 						? PressArk_Model_Policy::supports_tools_byok( $effective_provider, $effective_model )
 						: PressArk_Model_Policy::supports_tools_bundled( $effective_model, $effective_provider ),
@@ -2367,8 +2923,16 @@ AUTOMATION;
 	 * @return array Raw decoded JSON response from the provider (via bank).
 	 */
 	private function send_to_bank_proxy( array $request_body, string $route = 'chat', int $estimated_icus = 0, int $estimated_raw_tokens = 0 ): array {
-		$route          = in_array( $route, array( 'chat', 'summarize' ), true ) ? $route : 'chat';
-		$estimated_icus = $estimated_icus > 0 ? $estimated_icus : $this->estimate_proxy_icus( $route );
+		$route = in_array( $route, array( 'chat', 'summarize' ), true ) ? $route : 'chat';
+		if ( $estimated_icus <= 0 || $estimated_raw_tokens <= 0 ) {
+			$calibrated = $this->estimate_proxy_reserve( $request_body, $route );
+			if ( $estimated_icus <= 0 ) {
+				$estimated_icus = (int) ( $calibrated['estimated_icus'] ?? 0 );
+			}
+			if ( $estimated_raw_tokens <= 0 ) {
+				$estimated_raw_tokens = (int) ( $calibrated['estimated_raw_tokens'] ?? 0 );
+			}
+		}
 
 		// Ensure we have a site_token before calling the bank.
 		$bank = new PressArk_Token_Bank();
@@ -2494,6 +3058,249 @@ AUTOMATION;
 	}
 
 	/**
+	 * Calibrate a proxy-side reserve using request shape instead of a flat route split.
+	 *
+	 * @return array{estimated_icus:int,estimated_raw_tokens:int,model_class:string,prompt_tokens:int,tool_count:int,phase:string}
+	 */
+	private function estimate_proxy_reserve( array $request_body = array(), string $route = 'chat' ): array {
+		$route   = in_array( $route, array( 'chat', 'summarize' ), true ) ? $route : 'chat';
+		$options = is_array( $this->active_request_options ?? null ) ? $this->active_request_options : array();
+		$model   = sanitize_text_field( (string) ( $request_body['model'] ?? $this->model ?? '' ) );
+		$phase   = sanitize_key( (string) ( $options['phase'] ?? '' ) );
+		$effort  = sanitize_key( (string) ( $options['effort_budget'] ?? '' ) );
+		$tool_choice = sanitize_key( (string) ( $options['tool_choice'] ?? '' ) );
+		$schema_mode = sanitize_key( (string) ( $options['schema_mode'] ?? 'none' ) );
+		$structured_output_transport = sanitize_key( (string) ( $options['structured_output_transport'] ?? 'none' ) );
+		$native_schema = array();
+		if ( is_array( $request_body['response_format']['json_schema']['schema'] ?? null ) ) {
+			$native_schema = (array) $request_body['response_format']['json_schema']['schema'];
+		} elseif ( is_array( $request_body['output_config']['format']['schema'] ?? null ) ) {
+			$native_schema = (array) $request_body['output_config']['format']['schema'];
+		}
+		$tools       = is_array( $request_body['tools'] ?? null ) ? (array) $request_body['tools'] : array();
+		$tool_count  = count( $tools );
+		$model_class = class_exists( 'PressArk_Model_Policy' )
+			? sanitize_key( (string) PressArk_Model_Policy::get_model_class( $model ) )
+			: 'standard';
+
+		$prompt_tokens         = max( 1, $this->estimate_request_body_tokens( $request_body ) );
+		$tool_surface_tokens   = $this->estimate_tool_surface_tokens( $tools );
+		$schema_surface_tokens = in_array( $structured_output_transport, array( 'response_format', 'output_config.format' ), true )
+			? $this->estimate_schema_surface_tokens( $native_schema )
+			: 0;
+
+		if ( ! empty( $options['requires_tools'] ) ) {
+			$tool_surface_tokens += 160;
+		}
+		if ( 'required' === $tool_choice || 'any' === $tool_choice ) {
+			$tool_surface_tokens += 180;
+		} elseif ( 'restricted_auto' === $tool_choice ) {
+			$tool_surface_tokens += 90;
+		}
+		if ( ! empty( $request_body['parallel_tool_calls'] ) ) {
+			$tool_surface_tokens += 120;
+		}
+
+		$phase_output_ratio = match ( $phase ) {
+			'classification'       => 0.18,
+			'retrieval_planning'   => 0.24,
+			'memory_selection'     => 0.16,
+			'summarize'            => 0.22,
+			'diagnosis'            => 0.46,
+			'ambiguity_resolution' => 0.56,
+			'final_synthesis'      => 0.7,
+			default                => 'summarize' === $route ? 0.22 : 0.35,
+		};
+
+		$phase_output_floor = match ( $phase ) {
+			'classification'       => 160,
+			'retrieval_planning'   => 220,
+			'memory_selection'     => 140,
+			'summarize'            => 220,
+			'diagnosis'            => 420,
+			'ambiguity_resolution' => 520,
+			'final_synthesis'      => 680,
+			default                => 'summarize' === $route ? 220 : 360,
+		};
+
+		$effort_multiplier = match ( $effort ) {
+			'low'   => 0.85,
+			'high'  => 1.18,
+			default => 1.0,
+		};
+
+		$model_multiplier = match ( $model_class ) {
+			'economy' => 0.88,
+			'premium' => 1.15,
+			default   => 1.0,
+		};
+
+		$likely_output_tokens = (int) round(
+			(
+				$phase_output_floor
+				+ ( $prompt_tokens * $phase_output_ratio )
+				+ min( 900, $tool_count * 110 )
+				+ ( $schema_surface_tokens * 0.35 )
+			) * $effort_multiplier * $model_multiplier
+		);
+		$likely_output_tokens = max( 'summarize' === $route ? 180 : 260, $likely_output_tokens );
+
+		if ( $tool_count > 0 && ! empty( $options['requires_tools'] ) ) {
+			$likely_output_tokens += min( 640, $tool_count * 90 );
+		}
+		if ( 'strict' === $schema_mode && ! empty( $native_schema ) ) {
+			$likely_output_tokens += 120;
+		}
+
+		$estimated_input_tokens = $prompt_tokens + $tool_surface_tokens + $schema_surface_tokens + 96;
+		$estimated_raw_tokens   = max(
+			$estimated_input_tokens + $likely_output_tokens,
+			'summarize' === $route ? 480 : 1200
+		);
+
+		$resolved = ( new PressArk_Token_Bank() )->resolve_icus(
+			array(
+				'model'         => $model,
+				'input_tokens'  => $estimated_input_tokens,
+				'output_tokens' => $likely_output_tokens,
+			)
+		);
+
+		$hold_multiplier = 1.08;
+		if ( $tool_count > 0 ) {
+			$hold_multiplier += 0.04;
+		}
+		if ( 'high' === $effort ) {
+			$hold_multiplier += 0.05;
+		}
+		if ( in_array( $phase, array( 'diagnosis', 'ambiguity_resolution', 'final_synthesis' ), true ) ) {
+			$hold_multiplier += 0.04;
+		}
+		if ( 'strict' === $schema_mode && ! empty( $native_schema ) ) {
+			$hold_multiplier += 0.02;
+		}
+
+		$estimated_icus = max(
+			'summarize' === $route ? 900 : 1800,
+			(int) ceil( max( 0, (int) ( $resolved['icu_total'] ?? 0 ) ) * $hold_multiplier )
+		);
+
+		return array(
+			'estimated_icus'       => $estimated_icus,
+			'estimated_raw_tokens' => $estimated_raw_tokens,
+			'model_class'          => $model_class,
+			'prompt_tokens'        => $prompt_tokens,
+			'tool_count'           => $tool_count,
+			'phase'                => $phase,
+		);
+	}
+
+	private function estimate_request_body_tokens( array $request_body = array() ): int {
+		$total = 0;
+
+		if ( array_key_exists( 'system', $request_body ) ) {
+			$total += $this->estimate_request_content_tokens( $request_body['system'] );
+		}
+
+		foreach ( (array) ( $request_body['messages'] ?? array() ) as $message ) {
+			if ( ! is_array( $message ) ) {
+				$total += $this->estimate_request_content_tokens( $message );
+				continue;
+			}
+
+			$total += 12;
+			$total += $this->estimate_request_content_tokens( $message['content'] ?? '' );
+
+			if ( ! empty( $message['tool_calls'] ) ) {
+				$total += min(
+					600,
+					$this->estimate_text_tokens(
+						(string) wp_json_encode( $message['tool_calls'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+					)
+				);
+			}
+		}
+
+		if ( array_key_exists( 'input', $request_body ) ) {
+			$total += $this->estimate_request_content_tokens( $request_body['input'] );
+		}
+
+		return max( 0, $total );
+	}
+
+	private function estimate_request_content_tokens( $content ): int {
+		if ( is_string( $content ) ) {
+			return $this->estimate_text_tokens( $content );
+		}
+
+		if ( is_array( $content ) ) {
+			$total = 0;
+			foreach ( $content as $block ) {
+				if ( is_string( $block ) ) {
+					$total += $this->estimate_text_tokens( $block );
+					continue;
+				}
+				if ( ! is_array( $block ) ) {
+					continue;
+				}
+
+				$type = sanitize_key( (string) ( $block['type'] ?? '' ) );
+				if ( in_array( $type, array( 'text', 'input_text' ), true ) ) {
+					$total += $this->estimate_text_tokens( (string) ( $block['text'] ?? '' ) );
+					continue;
+				}
+
+				$total += min(
+					300,
+					$this->estimate_text_tokens(
+						(string) wp_json_encode( $block, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+					)
+				);
+			}
+			return $total;
+		}
+
+		return 0;
+	}
+
+	private function estimate_tool_surface_tokens( array $tools = array() ): int {
+		$total = 0;
+		foreach ( $tools as $tool ) {
+			if ( ! is_array( $tool ) ) {
+				continue;
+			}
+
+			$total += min(
+				320,
+				max(
+					24,
+					$this->estimate_text_tokens(
+						(string) wp_json_encode( $tool, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+					)
+				)
+			);
+		}
+
+		return min( 2400, $total );
+	}
+
+	private function estimate_schema_surface_tokens( array $schema = array() ): int {
+		if ( empty( $schema ) ) {
+			return 0;
+		}
+
+		return min(
+			1200,
+			max(
+				60,
+				$this->estimate_text_tokens(
+					(string) wp_json_encode( $schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+				)
+			)
+		);
+	}
+
+	/**
 	 * Build the OpenAI-compatible request body and headers.
 	 *
 	 * Extracts the body-building logic from call_openai_raw() so the
@@ -2503,6 +3310,12 @@ AUTOMATION;
 	 * @return array{ endpoint: string, headers: array, body: array }
 	 */
 	public function build_openai_request( array $messages, array $tools, string $system_prompt ): array {
+		$runtime_options = $this->resolve_request_runtime_options(
+			$tools,
+			is_array( $this->active_request_options ?? null ) ? $this->active_request_options : array(),
+			$this->provider,
+			$this->model
+		);
 		$api_messages   = array();
 		$api_messages[] = array(
 			'role'    => 'system',
@@ -2547,11 +3360,31 @@ AUTOMATION;
 			'messages' => $api_messages,
 		);
 
+		if ( 'response_format' === ( $runtime_options['structured_output_transport'] ?? '' )
+			&& ! empty( $runtime_options['compiled_deliverable_schema'] )
+		) {
+			$schema_contract = is_array( $runtime_options['transport_contract']['structured_output'] ?? null )
+				? (array) $runtime_options['transport_contract']['structured_output']
+				: array();
+			$body['response_format'] = array(
+				'type'        => 'json_schema',
+				'json_schema' => array(
+					'name'   => sanitize_key( (string) ( $schema_contract['name'] ?? 'pressark_output' ) ),
+					'strict' => true,
+					'schema' => (array) $runtime_options['compiled_deliverable_schema'],
+				),
+			);
+		}
+
 		if ( ! empty( $tools ) ) {
 			$body['tools']       = $tools;
-			$body['tool_choice'] = 'auto';
+			if ( 'omitted' !== ( $runtime_options['provider_tool_choice'] ?? 'omitted' ) ) {
+				$body['tool_choice'] = (string) $runtime_options['provider_tool_choice'];
+			}
 
-			if ( PressArk_Model_Policy::provider_supports( $this->provider, 'parallel_tool_calls' ) ) {
+			if ( 'text_only' !== ( $runtime_options['tool_choice'] ?? 'text_only' )
+				&& PressArk_Model_Policy::provider_supports( $this->provider, 'parallel_tool_calls' )
+			) {
 				$body['parallel_tool_calls'] = true;
 			}
 		}
@@ -2573,6 +3406,12 @@ AUTOMATION;
 	 * @return array{ endpoint: string, headers: array, body: array }
 	 */
 	public function build_anthropic_request( array $messages, array $tools, string $system_prompt ): array {
+		$runtime_options = $this->resolve_request_runtime_options(
+			$tools,
+			is_array( $this->active_request_options ?? null ) ? $this->active_request_options : array(),
+			$this->provider,
+			$this->model
+		);
 		$api_messages = array();
 
 		foreach ( $messages as $msg ) {
@@ -2686,10 +3525,26 @@ AUTOMATION;
 			'messages'   => $api_messages,
 		);
 
+		if ( 'output_config.format' === ( $runtime_options['structured_output_transport'] ?? '' )
+			&& ! empty( $runtime_options['compiled_deliverable_schema'] )
+		) {
+			$body['output_config'] = array(
+				'format' => array(
+					'type'   => 'json_schema',
+					'schema' => (array) $runtime_options['compiled_deliverable_schema'],
+				),
+			);
+		}
+
 		if ( ! empty( $anthropic_tools ) ) {
 			$last_idx = count( $anthropic_tools ) - 1;
 			$anthropic_tools[ $last_idx ]['cache_control'] = array( 'type' => self::CACHE_TYPE );
 			$body['tools'] = $anthropic_tools;
+			if ( 'omitted' !== ( $runtime_options['provider_tool_choice'] ?? 'omitted' ) ) {
+				$body['tool_choice'] = array(
+					'type' => (string) $runtime_options['provider_tool_choice'],
+				);
+			}
 		}
 
 		$headers = array(
@@ -2703,6 +3558,43 @@ AUTOMATION;
 			'headers'  => $headers,
 			'body'     => $body,
 		);
+	}
+
+	/**
+	 * Normalize shared request-builder headers for wp_safe_remote_post().
+	 *
+	 * Streaming paths consume raw `Header: value` lines. The WP HTTP client
+	 * expects an associative array, so convert those lines here without
+	 * re-shaping the request contract itself.
+	 *
+	 * @param array $headers Header lines or key/value pairs.
+	 * @return array<string,string>
+	 */
+	private function build_wp_remote_headers( array $headers ): array {
+		$normalized = array();
+
+		foreach ( $headers as $key => $value ) {
+			if ( is_string( $key ) && '' !== trim( $key ) ) {
+				$normalized[ trim( $key ) ] = trim( (string) $value );
+				continue;
+			}
+
+			if ( ! is_string( $value ) || false === strpos( $value, ':' ) ) {
+				continue;
+			}
+
+			$parts       = explode( ':', $value, 2 );
+			$header_name = trim( (string) ( $parts[0] ?? '' ) );
+			$header_body = trim( (string) ( $parts[1] ?? '' ) );
+
+			if ( '' === $header_name ) {
+				continue;
+			}
+
+			$normalized[ $header_name ] = $header_body;
+		}
+
+		return $normalized;
 	}
 
 	/**
@@ -2746,39 +3638,10 @@ AUTOMATION;
 			}
 		}
 
-		$endpoint = self::ENDPOINTS[ $this->provider ] ?? self::ENDPOINTS['openrouter'];
-
-		$headers = array(
-			'Content-Type'  => 'application/json',
-			'Authorization' => 'Bearer ' . $this->api_key,
-		);
-
-		if ( 'openrouter' === $this->provider ) {
-			$headers['HTTP-Referer'] = home_url();
-			$headers['X-Title']     = 'PressArk';
-		}
-
-		$body = array(
-			'model'        => $this->normalize_model_for_provider(),
-			'messages'     => $api_messages,
-		);
-
-		if ( ! empty( $tools ) ) {
-			$body['tools']       = $tools;
-			$body['tool_choice'] = 'auto';
-
-			// Enable parallel tool calls for providers that support the parameter.
-			// This allows the model to return multiple tool calls in a single
-			// response (e.g. batching independent reads). Anthropic handles this
-			// natively without a parameter; OpenAI-compatible APIs need it explicit.
-			if ( PressArk_Model_Policy::provider_supports( $this->provider, 'parallel_tool_calls' ) ) {
-				$body['parallel_tool_calls'] = true;
-			}
-		}
-
-		$response = wp_safe_remote_post( $endpoint, array(
-			'headers' => $headers,
-			'body'    => wp_json_encode( $body ),
+		$request  = $this->build_openai_request( $messages, $tools, $system_prompt );
+		$response = wp_safe_remote_post( $request['endpoint'], array(
+			'headers' => $this->build_wp_remote_headers( (array) ( $request['headers'] ?? array() ) ),
+			'body'    => wp_json_encode( (array) ( $request['body'] ?? array() ) ),
 			'timeout' => $this->get_timeout( true ),
 		) );
 
@@ -2892,13 +3755,10 @@ AUTOMATION;
 			$body['tools'] = $anthropic_tools;
 		}
 
-		$response = wp_safe_remote_post( self::ENDPOINTS['anthropic'], array(
-			'headers' => array(
-				'Content-Type'      => 'application/json',
-				'x-api-key'         => $this->api_key,
-				'anthropic-version' => '2023-06-01',
-			),
-			'body'    => wp_json_encode( $body ),
+		$request  = $this->build_anthropic_request( $messages, $tools, $system_prompt );
+		$response = wp_safe_remote_post( $request['endpoint'], array(
+			'headers' => $this->build_wp_remote_headers( (array) ( $request['headers'] ?? array() ) ),
+			'body'    => wp_json_encode( (array) ( $request['body'] ?? array() ) ),
 			'timeout' => $this->get_timeout( true ),
 		) );
 

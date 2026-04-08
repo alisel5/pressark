@@ -481,6 +481,10 @@ class PressArk_Token_Bank {
 	}
 
 	public function get_status(): array {
+		if ( $this->is_byok() ) {
+			return $this->build_byok_status();
+		}
+
 		$cached = get_transient( $this->status_cache_key() );
 		if ( false !== $cached ) {
 			return $this->normalize_status( is_array( $cached ) ? $cached : array() );
@@ -652,36 +656,7 @@ class PressArk_Token_Bank {
 
 	public function get_financial_snapshot(): array {
 		if ( $this->is_byok() ) {
-			$billing_state = $this->normalize_billing_state(
-				array(),
-				array(
-					'is_byok' => true,
-				)
-			);
-
-			return array_merge(
-				array(
-				'billing_authority'       => 'byok',
-				'verified_handshake'      => false,
-				'provisional_handshake'   => false,
-				'monthly_icu_budget'      => 0,
-				'monthly_included_icu_budget' => 0,
-				'monthly_remaining'       => PHP_INT_MAX,
-				'monthly_included_remaining' => PHP_INT_MAX,
-				'credits_remaining'       => 0,
-				'purchased_credits_remaining' => 0,
-				'legacy_bonus_remaining'  => 0,
-				'total_available'         => PHP_INT_MAX,
-				'total_remaining'         => PHP_INT_MAX,
-				'spendable_credits_remaining' => PHP_INT_MAX,
-				'spendable_icus_remaining' => PHP_INT_MAX,
-				'using_purchased_credits' => false,
-				'using_legacy_bonus'      => false,
-				'budget_pressure_state'   => 'normal',
-				'is_byok'                 => true,
-				),
-				$this->billing_state_aliases( $billing_state )
-			);
+			return $this->build_byok_status();
 		}
 
 		$status = $this->get_status();
@@ -700,6 +675,7 @@ class PressArk_Token_Bank {
 
 		return array_merge(
 			array(
+			'transport_mode'              => (string) ( $status['transport_mode'] ?? $this->current_transport_mode() ),
 			'billing_authority'           => $this->billing_state_to_legacy_authority( $billing_state ),
 			'verified_handshake'          => ! empty( $status['verified_handshake'] ),
 			'provisional_handshake'       => ! empty( $status['provisional_handshake'] ),
@@ -722,6 +698,56 @@ class PressArk_Token_Bank {
 			'offline'                     => ! empty( $status['offline'] ),
 			),
 			$this->billing_state_aliases( $billing_state )
+		);
+	}
+
+	private function build_byok_status(): array {
+		$tier = $this->get_current_tier();
+
+		return $this->normalize_status(
+			array(
+				'tier'                        => $tier,
+				'billing_tier'                => $tier,
+				'billing_authority'           => 'byok',
+				'billing_state'               => array(
+					'authority_mode' => 'byok',
+					'handshake_state'=> 'byok',
+					'service_state'  => 'normal',
+					'spend_source'   => 'byok',
+					'estimate_mode'  => 'provider_usage',
+				),
+				'billing_service_state'       => 'normal',
+				'billing_handshake_state'     => 'byok',
+				'billing_spend_source'        => 'byok',
+				'verified_handshake'          => false,
+				'provisional_handshake'       => false,
+				'monthly_icu_budget'          => 0,
+				'monthly_included_icu_budget' => 0,
+				'icu_budget'                  => 0,
+				'icus_used'                   => 0,
+				'icus_reserved'               => 0,
+				'icus_remaining'              => PHP_INT_MAX,
+				'monthly_remaining'           => PHP_INT_MAX,
+				'monthly_included_remaining'  => PHP_INT_MAX,
+				'credits_remaining'           => 0,
+				'purchased_credits_remaining' => 0,
+				'legacy_bonus_remaining'      => 0,
+				'total_available'             => PHP_INT_MAX,
+				'total_remaining'             => PHP_INT_MAX,
+				'spendable_credits_remaining' => PHP_INT_MAX,
+				'spendable_icus_remaining'    => PHP_INT_MAX,
+				'budget_pressure_state'       => 'normal',
+				'using_purchased_credits'     => false,
+				'using_legacy_bonus'          => false,
+				'raw_tokens_used'             => 0,
+				'tokens_used'                 => 0,
+				'tokens_reserved'             => 0,
+				'tokens_limit'                => 0,
+				'tokens_remaining'            => PHP_INT_MAX,
+				'is_byok'                     => true,
+				'transport_mode'              => $this->current_transport_mode(),
+			),
+			$tier
 		);
 	}
 
@@ -1156,6 +1182,10 @@ class PressArk_Token_Bank {
 		return PressArk_AI_Connector::is_proxy_mode();
 	}
 
+	private function current_transport_mode(): string {
+		return $this->is_proxy_mode() ? 'proxy' : 'direct';
+	}
+
 	private function get_current_tier(): string {
 		return PressArk_Entitlements::normalize_tier( (string) get_option( 'pressark_cached_tier', 'free' ) );
 	}
@@ -1234,58 +1264,160 @@ class PressArk_Token_Bank {
 			$tier
 		);
 
-		if ( is_array( $last ) && isset( $last['snapshot_at'] ) ) {
+		$snapshot_at = is_array( $last ) ? (string) ( $last['snapshot_at'] ?? '' ) : '';
+		if ( '' !== $snapshot_at ) {
 			$ledger      = new PressArk_Cost_Ledger();
-			$local_since = $ledger->get_settled_icus_since( $user_id, (string) $last['snapshot_at'] );
+			$local_since = $ledger->get_settled_icus_since( $user_id, $snapshot_at );
 			$remaining   = max( 0, (int) ( $last['icus_remaining'] ?? $budget ) - $local_since );
+			$envelope    = $this->build_offline_reserve_envelope( $budget, $remaining, $estimated_icus, $snapshot_at );
+			$allowed     = max( 0, (int) ( $envelope['limit_icus'] ?? $remaining ) );
+			$billing_state = $this->normalize_billing_state(
+				(array) ( $fallback_status['billing_state'] ?? array() ),
+				array(
+					'offline'          => true,
+					'monthly_remaining' => (int) ( $fallback_status['monthly_remaining'] ?? 0 ),
+					'credits_remaining' => (int) ( $fallback_status['credits_remaining'] ?? 0 ),
+					'legacy_bonus_remaining' => (int) ( $fallback_status['legacy_bonus_remaining'] ?? 0 ),
+					'total_remaining'  => (int) ( $fallback_status['total_remaining'] ?? $allowed ),
+					'reserve_envelope' => $envelope,
+				)
+			);
+			$billing_state['reserve_certainty'] = 'reduced';
+			$billing_state['reserve_envelope']  = $envelope;
+			$billing_state['estimate_mode']     = sanitize_key( (string) ( $envelope['mode'] ?? 'offline_snapshot_envelope' ) );
+			$billing_state['estimate_notice']   = $this->billing_estimate_notice( false, (string) $billing_state['estimate_mode'], $envelope );
 
-			if ( $estimated_icus > $remaining ) {
+			if ( $estimated_icus > $allowed ) {
 				return array_merge(
 					array(
-					'ok'               => false,
-					'offline'          => true,
-					'error'            => 'token_limit_reached',
-					'icus_remaining'   => $remaining,
-					'tokens_remaining' => $remaining,
+						'ok'               => false,
+						'offline'          => true,
+						'error'            => 'token_limit_reached',
+						'icus_remaining'   => $allowed,
+						'tokens_remaining' => $allowed,
+						'reserve_envelope' => $envelope,
+						'reserve_certainty' => 'reduced',
 					),
-					$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
+					$this->billing_state_aliases( $billing_state )
 				);
 			}
 
 			return array_merge(
 				array(
-				'ok'               => true,
-				'offline'          => true,
-				'icus_remaining'   => max( 0, $remaining - $estimated_icus ),
-				'tokens_remaining' => max( 0, $remaining - $estimated_icus ),
+					'ok'               => true,
+					'offline'          => true,
+					'icus_remaining'   => max( 0, $allowed - $estimated_icus ),
+					'tokens_remaining' => max( 0, $allowed - $estimated_icus ),
+					'reserve_envelope' => $envelope,
+					'reserve_certainty' => 'reduced',
 				),
-				$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
+				$this->billing_state_aliases( $billing_state )
 			);
 		}
 
-		$emergency_cap = min( $budget, 50000 );
-		if ( $estimated_icus > $emergency_cap ) {
+		$envelope = $this->build_offline_reserve_envelope( $budget, $budget, $estimated_icus );
+		$allowed  = max( 0, (int) ( $envelope['limit_icus'] ?? 0 ) );
+		$billing_state = $this->normalize_billing_state(
+			(array) ( $fallback_status['billing_state'] ?? array() ),
+			array(
+				'offline'          => true,
+				'monthly_remaining' => (int) ( $fallback_status['monthly_remaining'] ?? 0 ),
+				'credits_remaining' => (int) ( $fallback_status['credits_remaining'] ?? 0 ),
+				'legacy_bonus_remaining' => (int) ( $fallback_status['legacy_bonus_remaining'] ?? 0 ),
+				'total_remaining'  => (int) ( $fallback_status['total_remaining'] ?? $allowed ),
+				'reserve_envelope' => $envelope,
+			)
+		);
+		$billing_state['reserve_certainty'] = 'reduced';
+		$billing_state['reserve_envelope']  = $envelope;
+		$billing_state['estimate_mode']     = sanitize_key( (string) ( $envelope['mode'] ?? 'offline_emergency_envelope' ) );
+		$billing_state['estimate_notice']   = $this->billing_estimate_notice( false, (string) $billing_state['estimate_mode'], $envelope );
+
+		if ( $estimated_icus > $allowed ) {
 			return array_merge(
 				array(
-				'ok'               => false,
-				'offline'          => true,
-				'error'            => 'token_limit_reached',
-				'icus_remaining'   => 0,
-				'tokens_remaining' => 0,
+					'ok'               => false,
+					'offline'          => true,
+					'error'            => 'token_limit_reached',
+					'icus_remaining'   => 0,
+					'tokens_remaining' => 0,
+					'reserve_envelope' => $envelope,
+					'reserve_certainty' => 'reduced',
 				),
-				$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
+				$this->billing_state_aliases( $billing_state )
 			);
 		}
 
 		return array_merge(
 			array(
-			'ok'               => true,
-			'offline'          => true,
-			'icus_remaining'   => max( 0, $emergency_cap - $estimated_icus ),
-			'tokens_remaining' => max( 0, $emergency_cap - $estimated_icus ),
+				'ok'               => true,
+				'offline'          => true,
+				'icus_remaining'   => max( 0, $allowed - $estimated_icus ),
+				'tokens_remaining' => max( 0, $allowed - $estimated_icus ),
+				'reserve_envelope' => $envelope,
+				'reserve_certainty' => 'reduced',
 			),
-			$this->billing_state_aliases( (array) ( $fallback_status['billing_state'] ?? array() ) )
+			$this->billing_state_aliases( $billing_state )
 		);
+	}
+
+	private function build_offline_reserve_envelope( int $budget, int $remaining, int $estimated_icus, string $snapshot_at = '' ): array {
+		$remaining = max( 0, $remaining );
+		$budget    = max( 0, $budget );
+		$floor     = max( max( 1500, $estimated_icus ), min( 12000, max( 2500, (int) round( $budget * 0.03 ) ) ) );
+
+		if ( '' !== $snapshot_at ) {
+			$age_seconds = $this->seconds_since_snapshot( $snapshot_at );
+			$fraction    = 0.85;
+			$label       = 'Snapshot reserve envelope';
+			$detail      = 'Reserve uses the last verified bank snapshot with a reduced-certainty cap until live bank checks resume.';
+			$mode        = 'offline_snapshot_envelope';
+
+			if ( $age_seconds > 30 * MINUTE_IN_SECONDS ) {
+				$fraction = 0.35;
+				$label    = 'Stale snapshot reserve';
+				$detail   = 'Reserve uses a tighter degraded envelope because the last bank snapshot is stale.';
+			} elseif ( $age_seconds > 5 * MINUTE_IN_SECONDS ) {
+				$fraction = 0.55;
+				$label    = 'Reduced-certainty snapshot reserve';
+				$detail   = 'Reserve uses a reduced-certainty envelope because the plugin is relying on a non-live bank snapshot.';
+			}
+
+			$limit = min( $remaining, max( $floor, (int) round( $remaining * $fraction ) ) );
+
+			return array(
+				'mode'                 => $mode,
+				'label'                => $label,
+				'detail'               => $detail,
+				'limit_icus'           => max( 0, $limit ),
+				'basis_remaining_icus' => $remaining,
+				'snapshot_at'          => $snapshot_at,
+				'snapshot_age_seconds' => $age_seconds,
+				'certainty'            => 'reduced',
+			);
+		}
+
+		$limit = min( $budget, max( 3000, min( 15000, (int) round( $budget * 0.05 ) ) ) );
+		return array(
+			'mode'                 => 'offline_emergency_envelope',
+			'label'                => 'Offline emergency reserve',
+			'detail'               => 'Reserve is running inside a temporary degraded envelope until the bank is reachable again.',
+			'limit_icus'           => max( 0, $limit ),
+			'basis_remaining_icus' => $remaining,
+			'snapshot_at'          => '',
+			'snapshot_age_seconds' => 0,
+			'certainty'            => 'reduced',
+		);
+	}
+
+	private function seconds_since_snapshot( string $snapshot_at ): int {
+		$snapshot_ts = strtotime( $snapshot_at );
+		$current_ts  = strtotime( (string) current_time( 'mysql' ) );
+		if ( false === $snapshot_ts || false === $current_ts ) {
+			return 0;
+		}
+
+		return max( 0, $current_ts - $snapshot_ts );
 	}
 
 	private function resolve_icus_locally( array $usage ): array {
@@ -1336,6 +1468,7 @@ class PressArk_Token_Bank {
 		} else {
 			$resolved_tier = $this->get_current_tier();
 		}
+		$is_byok = ! empty( $data['is_byok'] ) || $this->is_byok();
 
 		$icu_budget         = (int) ( $data['monthly_included_icu_budget'] ?? $data['monthly_icu_budget'] ?? $data['icu_budget'] ?? $data['tokens_limit'] ?? PressArk_Entitlements::icu_budget( $resolved_tier ) );
 		$icus_used          = (int) ( $data['icus_used'] ?? $data['tokens_used'] ?? 0 );
@@ -1350,15 +1483,37 @@ class PressArk_Token_Bank {
 		$using_purchased    = ! empty( $data['using_purchased_credits'] ) || ( $monthly_remaining <= 0 && $credits_remaining > 0 );
 		$using_legacy_bonus = ! empty( $data['using_legacy_bonus'] ) || ( $monthly_remaining <= 0 && 0 === $credits_remaining && $legacy_bonus > 0 );
 		$pressure_state     = (string) ( $data['budget_pressure_state'] ?? $this->calculate_budget_pressure_state( $icu_budget, $monthly_remaining, $total_remaining, $total_available ) );
-		$verified_handshake = array_key_exists( 'verified_handshake', $data )
-			? ! empty( $data['verified_handshake'] )
-			: ( ! empty( $data['verified'] ) || (bool) get_option( 'pressark_handshake_verified', false ) );
-		$provisional_handshake = array_key_exists( 'provisional_handshake', $data )
-			? ! empty( $data['provisional_handshake'] )
-			: ! $verified_handshake;
+
+		if ( $is_byok ) {
+			$icu_budget         = 0;
+			$icus_used          = 0;
+			$icus_reserved      = 0;
+			$monthly_remaining  = PHP_INT_MAX;
+			$credits_remaining  = 0;
+			$legacy_bonus       = 0;
+			$icus_remaining     = PHP_INT_MAX;
+			$total_remaining    = PHP_INT_MAX;
+			$total_available    = PHP_INT_MAX;
+			$raw_tokens_used    = 0;
+			$using_purchased    = false;
+			$using_legacy_bonus = false;
+			$pressure_state     = 'normal';
+		}
+
+		$verified_handshake = $is_byok
+			? false
+			: ( array_key_exists( 'verified_handshake', $data )
+				? ! empty( $data['verified_handshake'] )
+				: ( ! empty( $data['verified'] ) || (bool) get_option( 'pressark_handshake_verified', false ) ) );
+		$provisional_handshake = $is_byok
+			? false
+			: ( array_key_exists( 'provisional_handshake', $data )
+				? ! empty( $data['provisional_handshake'] )
+				: ! $verified_handshake );
 		$billing_state = $this->normalize_billing_state(
 			is_array( $data['billing_state'] ?? null ) ? (array) $data['billing_state'] : array(),
 			array(
+				'is_byok'                => $is_byok,
 				'verified'               => $verified_handshake,
 				'provisional'            => $provisional_handshake,
 				'offline'                => ! empty( $data['offline'] ),
@@ -1371,7 +1526,11 @@ class PressArk_Token_Bank {
 				'total_remaining'        => $total_remaining,
 			)
 		);
-		$billing_authority = $this->billing_state_to_legacy_authority( $billing_state );
+		$billing_authority = $is_byok ? 'byok' : $this->billing_state_to_legacy_authority( $billing_state );
+		$transport_mode    = sanitize_key( (string) ( $data['transport_mode'] ?? $this->current_transport_mode() ) );
+		if ( ! in_array( $transport_mode, array( 'direct', 'proxy' ), true ) ) {
+			$transport_mode = $this->current_transport_mode();
+		}
 
 		$data['tier']              = $resolved_tier;
 		$data['billing_tier']      = $resolved_tier;
@@ -1406,6 +1565,8 @@ class PressArk_Token_Bank {
 		$data['billing_spend_source'] = (string) $billing_state['spend_source'];
 		$data['verified_handshake'] = $verified_handshake;
 		$data['provisional_handshake'] = $provisional_handshake;
+		$data['is_byok']           = $is_byok;
+		$data['transport_mode']    = $transport_mode;
 		$data['tokens_used']       = $icus_used;
 		$data['tokens_reserved']   = $icus_reserved;
 		$data['tokens_limit']      = $icu_budget;
@@ -1479,12 +1640,16 @@ class PressArk_Token_Bank {
 		$provisional = array_key_exists( 'provisional', $context ) ? ! empty( $context['provisional'] ) : ! $verified;
 
 		$authority_mode = sanitize_key( (string) ( $state['authority_mode'] ?? $context['authority_mode'] ?? '' ) );
-		if ( ! in_array( $authority_mode, array( 'bank_verified', 'bank_provisional', 'byok' ), true ) ) {
+		if ( $is_byok ) {
+			$authority_mode = 'byok';
+		} elseif ( ! in_array( $authority_mode, array( 'bank_verified', 'bank_provisional', 'byok' ), true ) ) {
 			$authority_mode = $is_byok ? 'byok' : ( $verified ? 'bank_verified' : 'bank_provisional' );
 		}
 
 		$handshake_state = sanitize_key( (string) ( $state['handshake_state'] ?? $context['handshake_state'] ?? '' ) );
-		if ( ! in_array( $handshake_state, array( 'verified', 'provisional', 'byok' ), true ) ) {
+		if ( $is_byok ) {
+			$handshake_state = 'byok';
+		} elseif ( ! in_array( $handshake_state, array( 'verified', 'provisional', 'byok' ), true ) ) {
 			$handshake_state = $is_byok ? 'byok' : ( $verified && ! $provisional ? 'verified' : 'provisional' );
 		}
 
@@ -1496,7 +1661,9 @@ class PressArk_Token_Bank {
 		}
 
 		$spend_source = sanitize_key( (string) ( $state['spend_source'] ?? $context['spend_source'] ?? '' ) );
-		if ( ! in_array( $spend_source, array( 'monthly_included', 'purchased_credits', 'legacy_bonus', 'mixed', 'depleted', 'byok' ), true ) ) {
+		if ( $is_byok ) {
+			$spend_source = 'byok';
+		} elseif ( ! in_array( $spend_source, array( 'monthly_included', 'purchased_credits', 'legacy_bonus', 'mixed', 'depleted', 'byok' ), true ) ) {
 			$spend_source = $this->resolve_billing_spend_source(
 				(int) ( $context['monthly_remaining'] ?? 0 ),
 				(int) ( $context['credits_remaining'] ?? 0 ),
@@ -1507,8 +1674,17 @@ class PressArk_Token_Bank {
 		}
 
 		$estimate_mode = sanitize_key( (string) ( $state['estimate_mode'] ?? '' ) );
-		if ( '' === $estimate_mode ) {
-			$estimate_mode = $is_byok ? 'provider_usage' : 'plugin_local_advisory';
+		$reserve_envelope = $this->normalize_reserve_envelope(
+			is_array( $state['reserve_envelope'] ?? null )
+				? (array) $state['reserve_envelope']
+				: (array) ( $context['reserve_envelope'] ?? array() )
+		);
+		if ( ! empty( $reserve_envelope['mode'] ) ) {
+			$estimate_mode = sanitize_key( (string) $reserve_envelope['mode'] );
+		} elseif ( $is_byok ) {
+			$estimate_mode = 'provider_usage';
+		} elseif ( '' === $estimate_mode ) {
+			$estimate_mode = 'plugin_local_advisory';
 		}
 
 		return array(
@@ -1518,12 +1694,41 @@ class PressArk_Token_Bank {
 			'service_state'     => $service_state,
 			'spend_source'      => $spend_source,
 			'estimate_mode'     => $estimate_mode,
-			'authority_label'   => (string) ( $state['authority_label'] ?? $this->billing_authority_label( $authority_mode ) ),
+			'reserve_certainty' => ! empty( $reserve_envelope ) ? 'reduced' : 'normal',
+			'reserve_envelope'  => $reserve_envelope,
+			'authority_label'   => $is_byok
+				? $this->billing_authority_label( $authority_mode )
+				: (string) ( $state['authority_label'] ?? $this->billing_authority_label( $authority_mode ) ),
 			'service_label'     => (string) ( $state['service_label'] ?? $this->billing_service_label( $service_state ) ),
-			'spend_label'       => (string) ( $state['spend_label'] ?? $this->billing_spend_label( $spend_source ) ),
-			'authority_notice'  => (string) ( $state['authority_notice'] ?? $this->billing_authority_notice( $authority_mode ) ),
-			'service_notice'    => (string) ( $state['service_notice'] ?? $this->billing_service_notice( $service_state, $authority_mode ) ),
-			'estimate_notice'   => (string) ( $state['estimate_notice'] ?? $this->billing_estimate_notice( $is_byok ) ),
+			'spend_label'       => $is_byok
+				? $this->billing_spend_label( $spend_source )
+				: (string) ( $state['spend_label'] ?? $this->billing_spend_label( $spend_source ) ),
+			'authority_notice'  => $is_byok
+				? $this->billing_authority_notice( $authority_mode )
+				: (string) ( $state['authority_notice'] ?? $this->billing_authority_notice( $authority_mode ) ),
+			'service_notice'    => $is_byok
+				? $this->billing_service_notice( $service_state, $authority_mode )
+				: (string) ( $state['service_notice'] ?? $this->billing_service_notice( $service_state, $authority_mode ) ),
+			'estimate_notice'   => $is_byok
+				? $this->billing_estimate_notice( $is_byok, $estimate_mode, $reserve_envelope )
+				: (string) ( $state['estimate_notice'] ?? $this->billing_estimate_notice( $is_byok, $estimate_mode, $reserve_envelope ) ),
+		);
+	}
+
+	private function normalize_reserve_envelope( array $envelope = array() ): array {
+		if ( empty( $envelope ) ) {
+			return array();
+		}
+
+		return array(
+			'mode'                 => sanitize_key( (string) ( $envelope['mode'] ?? '' ) ),
+			'label'                => sanitize_text_field( (string) ( $envelope['label'] ?? '' ) ),
+			'detail'               => sanitize_text_field( (string) ( $envelope['detail'] ?? '' ) ),
+			'limit_icus'           => max( 0, (int) ( $envelope['limit_icus'] ?? 0 ) ),
+			'basis_remaining_icus' => max( 0, (int) ( $envelope['basis_remaining_icus'] ?? 0 ) ),
+			'snapshot_at'          => sanitize_text_field( (string) ( $envelope['snapshot_at'] ?? '' ) ),
+			'snapshot_age_seconds' => max( 0, (int) ( $envelope['snapshot_age_seconds'] ?? 0 ) ),
+			'certainty'            => sanitize_key( (string) ( $envelope['certainty'] ?? '' ) ),
 		);
 	}
 
@@ -1538,6 +1743,8 @@ class PressArk_Token_Bank {
 			'billing_service_state'   => (string) ( $billing_state['service_state'] ?? '' ),
 			'billing_handshake_state' => (string) ( $billing_state['handshake_state'] ?? '' ),
 			'billing_spend_source'    => (string) ( $billing_state['spend_source'] ?? '' ),
+			'reserve_certainty'       => (string) ( $billing_state['reserve_certainty'] ?? '' ),
+			'reserve_envelope'        => (array) ( $billing_state['reserve_envelope'] ?? array() ),
 		);
 	}
 
@@ -1651,10 +1858,29 @@ class PressArk_Token_Bank {
 			: 'The bank is healthy and serving live billing truth for this installation.';
 	}
 
-	private function billing_estimate_notice( bool $is_byok ): string {
+	private function billing_estimate_notice( bool $is_byok, string $estimate_mode = '', array $reserve_envelope = array() ): string {
 		return $is_byok
 			? 'Provider usage is shown directly in BYOK mode and does not settle against bundled credits.'
-			: 'Plugin-side token and ICU estimates are advisory. Billable ICUs are finalized only when the bank settles provider usage.';
+			: ( ! empty( $reserve_envelope )
+				? $this->offline_estimate_notice( $estimate_mode, $reserve_envelope )
+				: 'Plugin-side token and ICU estimates are advisory. Billable ICUs are finalized only when the bank settles provider usage.' );
+	}
+
+	private function offline_estimate_notice( string $estimate_mode, array $reserve_envelope ): string {
+		$limit = max( 0, (int) ( $reserve_envelope['limit_icus'] ?? 0 ) );
+		$limit_label = number_format( $limit );
+
+		if ( 'offline_emergency_envelope' === $estimate_mode ) {
+			return sprintf(
+				'Reduced-certainty reserve is temporarily capped at %s ICUs while the bank is offline. Final spend still settles at the bank.',
+				$limit_label
+			);
+		}
+
+		return sprintf(
+			'Reduced-certainty reserve is capped at %s ICUs from the last verified bank snapshot. Final spend still settles at the bank.',
+			$limit_label
+		);
 	}
 
 	private function local_billing_authority( bool $offline = false ): string {

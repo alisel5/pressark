@@ -1458,6 +1458,8 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				'messenger_channel' => false,
 			) );
 
+			$this->bootstrap_customizer_manager( $wp_customize );
+			$this->prime_customizer_support_loaders( $wp_customize );
 			do_action( 'customize_register', $wp_customize );
 
 			$panels = array();
@@ -1523,6 +1525,81 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 				'error'    => sprintf( __( 'Could not load Customizer schema: %s', 'pressark' ), $e->getMessage() ),
 				'fallback' => __( 'Use get_theme_settings to see current theme_mods values.', 'pressark' ),
 			);
+		}
+	}
+
+	/**
+	 * Prepare a Customizer manager for schema inspection outside customize.php.
+	 *
+	 * @param \WP_Customize_Manager $wp_customize Manager instance.
+	 * @return void
+	 */
+	private function bootstrap_customizer_manager( \WP_Customize_Manager $wp_customize ): void {
+		$GLOBALS['wp_customize'] = $wp_customize;
+
+		if ( method_exists( $wp_customize, 'setup_theme' ) ) {
+			$wp_customize->setup_theme();
+		}
+
+		if ( method_exists( $wp_customize, 'after_setup_theme' ) ) {
+			$wp_customize->after_setup_theme();
+		}
+
+		if ( method_exists( $wp_customize, 'register_controls' ) ) {
+			$wp_customize->register_controls();
+			if ( function_exists( 'remove_action' ) ) {
+				remove_action( 'customize_register', array( $wp_customize, 'register_controls' ) );
+			}
+		}
+	}
+
+	/**
+	 * Prime theme/plugin support loaders that are only registered in admin/customizer context.
+	 *
+	 * Some classic themes defer helper includes behind `is_admin()` checks, which means
+	 * CLI or non-admin schema reads need a one-time preload before customize_register runs.
+	 *
+	 * @param \WP_Customize_Manager $wp_customize Manager instance.
+	 * @return void
+	 */
+	private function prime_customizer_support_loaders( \WP_Customize_Manager $wp_customize ): void {
+		global $wp_filter;
+
+		$callbacks = $wp_filter['customize_register']->callbacks ?? array();
+		$callbacks = is_array( $callbacks ) ? $callbacks : array();
+
+		$objects         = array();
+		$methods_by_hash = array();
+
+		foreach ( $callbacks as $rows ) {
+			if ( ! is_array( $rows ) ) {
+				continue;
+			}
+
+			foreach ( $rows as $row ) {
+				$callback = $row['function'] ?? null;
+				if ( ! is_array( $callback ) || ! is_object( $callback[0] ?? null ) || ! is_string( $callback[1] ?? null ) ) {
+					continue;
+				}
+
+				$hash                    = spl_object_hash( $callback[0] );
+				$objects[ $hash ]        = $callback[0];
+				$methods_by_hash[ $hash ][] = $callback[1];
+			}
+		}
+
+		foreach ( $objects as $hash => $object ) {
+			$methods = array_unique( $methods_by_hash[ $hash ] ?? array() );
+			if ( ! method_exists( $object, 'include_configurations' ) || in_array( 'include_configurations', $methods, true ) ) {
+				continue;
+			}
+
+			$reflection = new \ReflectionMethod( $object, 'include_configurations' );
+			if ( $reflection->getNumberOfParameters() > 0 ) {
+				$reflection->invoke( $object, $wp_customize );
+			} else {
+				$reflection->invoke( $object );
+			}
 		}
 	}
 

@@ -101,7 +101,7 @@ class PressArk_Notification_Email {
 		$site_name   = esc_html( get_bloginfo( 'name' ) );
 		$logo_url    = self::get_logo_url();
 		$admin_url   = ! empty( $metadata['admin_url'] ) ? esc_url( $metadata['admin_url'] ) : '';
-		$watchdog_url = esc_url( admin_url( 'admin.php?page=pressark-watchdog' ) );
+		$settings_url = esc_url( admin_url( 'admin.php?page=pressark' ) );
 		$body_escaped = nl2br( esc_html( $body ) );
 
 		$logo_html = $logo_url
@@ -125,7 +125,7 @@ class PressArk_Notification_Email {
 			<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:20px;font-size:14px;line-height:1.6;color:#334155;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;">
 				' . $body_escaped . '
 			</div>
-			' . $button_html, $site_name, $watchdog_url );
+			' . $button_html, $site_name, $settings_url );
 	}
 
 	/**
@@ -135,7 +135,7 @@ class PressArk_Notification_Email {
 		$site_name    = esc_html( get_bloginfo( 'name' ) );
 		$logo_url     = self::get_logo_url();
 		$admin_url    = ! empty( $metadata['admin_url'] ) ? esc_url( $metadata['admin_url'] ) : '';
-		$watchdog_url = esc_url( admin_url( 'admin.php?page=pressark-watchdog' ) );
+		$settings_url = esc_url( admin_url( 'admin.php?page=pressark' ) );
 
 		$logo_html = $logo_url
 			? '<img src="' . esc_url( $logo_url ) . '" alt="PressArk" width="140" style="display:block;margin:0 auto 16px;max-width:140px;height:auto;">'
@@ -168,7 +168,7 @@ class PressArk_Notification_Email {
 				</table>';
 		}
 
-		return self::wrap_email( $banner . $body_html . $button_html, $site_name, $watchdog_url, false );
+		return self::wrap_email( $banner . $body_html . $button_html, $site_name, $settings_url, false );
 	}
 
 	/**
@@ -210,12 +210,12 @@ class PressArk_Notification_Email {
 	/**
 	 * Wrap email content in the outer table structure.
 	 *
-	 * @param string $inner       Inner HTML content.
-	 * @param string $site_name   Site name for the footer.
-	 * @param string $watchdog_url URL to watchdog settings.
-	 * @param bool   $show_logo   Whether to show the logo in the header (digest has its own).
+	 * @param string $inner        Inner HTML content.
+	 * @param string $site_name    Site name for the footer.
+	 * @param string $settings_url URL to PressArk settings page (for the manage-notifications footer link).
+	 * @param bool   $show_logo    Whether to show the logo in the header (digest has its own).
 	 */
-	private static function wrap_email( string $inner, string $site_name, string $watchdog_url, bool $show_logo = true ): string {
+	private static function wrap_email( string $inner, string $site_name, string $settings_url, bool $show_logo = true ): string {
 		$logo_section = '';
 		if ( $show_logo ) {
 			$logo_url = self::get_logo_url();
@@ -243,8 +243,8 @@ class PressArk_Notification_Email {
 				<tr>
 					<td style="padding:16px 32px 24px;border-top:1px solid #E2E8F0;">
 						<p style="margin:0;font-size:12px;line-height:1.5;color:#94A3B8;text-align:center;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;">
-							You\'re receiving this because PressArk Watchdog is active on ' . $site_name . '.<br>
-							<a href="' . $watchdog_url . '" style="color:' . self::BRAND_COLOR . ';text-decoration:underline;">Manage alerts in Settings &gt; PressArk &gt; Watchdog</a>
+							You\'re receiving this because PressArk is active on ' . $site_name . '.<br>
+							<a href="' . $settings_url . '" style="color:' . self::BRAND_COLOR . ';text-decoration:underline;">Manage notifications in PressArk settings</a>
 						</p>
 					</td>
 				</tr>

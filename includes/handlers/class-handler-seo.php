@@ -120,6 +120,72 @@ class PressArk_Handler_SEO extends PressArk_Handler_Base {
 		$fixes = $params['fixes'] ?? array();
 		$force = ! empty( $params['force'] );
 
+		// v5.4.0: Mirror the preview-builder's normalization. Accept both:
+		//   (canonical) list of objects: [{post_id, meta_title, ...}, ...]
+		//   (per-post shorthand)         flat map for top-level post_id: {meta_title, ...}
+		// Without this, the shorthand falls through to the legacy "type=update_meta"
+		// branch and silently applies nothing — chain succeeds but the actual fixes
+		// are dropped. Detection: $fixes is associative and its first value isn't an array.
+		if ( ! empty( $fixes ) && is_array( $fixes ) ) {
+			$first_value = reset( $fixes );
+			if ( false !== $first_value && ! is_array( $first_value ) ) {
+				$top_post_id = intval( $params['post_id'] ?? 0 );
+				$fixes       = array( array_merge( array( 'post_id' => $top_post_id ), $params['fixes'] ) );
+			}
+		}
+
+		// v5.6.8 (2026-05-12): Validate proposed fix field names against the
+		// canonical allowlist. Observed 2026-05-12 on a "Audit the SEO of …
+		// and fix the biggest issues" chain: model emitted fix_seo with
+		// `h1`, `og_tags`, and `canonical` — none of which fix_seo supports.
+		// Old behavior: format detection at line below would see no recognized
+		// keys, fall through the legacy `type=update_meta` branch (which
+		// requires a different schema), match nothing, and return silent
+		// success with empty fixes — empty-diff guard then fires at preview
+		// stage with a generic error. That wasted a full LLM round.
+		//
+		// New behavior: fail loud at the handler boundary with a structured
+		// error naming the canonical keys. The next model round can read the
+		// error from the tool_result and re-emit with valid keys (or pivot
+		// to edit_content for h1, theme edits for canonical, etc.).
+		// v5.7.1: After dropping the legacy `{type: "update_meta", key, value}`
+		// fallback branch, the canonical shape is the only valid one: each
+		// entry is a per-post object keyed by field name (or a flat-map
+		// shorthand for the top-level post_id). Allowlist is the field names.
+		$allowed_fix_keys = array(
+			'post_id', 'meta_title', 'meta_description',
+			'og_title', 'og_description', 'og_image', 'focus_keyword',
+		);
+		if ( ! empty( $fixes ) && is_array( $fixes ) ) {
+			$unsupported_keys = array();
+			foreach ( $fixes as $fix ) {
+				if ( ! is_array( $fix ) ) {
+					continue;
+				}
+				foreach ( array_keys( $fix ) as $key ) {
+					$key = sanitize_key( (string) $key );
+					if ( '' === $key || in_array( $key, $allowed_fix_keys, true ) ) {
+						continue;
+					}
+					$unsupported_keys[ $key ] = true;
+				}
+			}
+			if ( ! empty( $unsupported_keys ) ) {
+				return array(
+					'success'           => false,
+					'error'             => 'unsupported_fix_keys',
+					'unsupported_keys'  => array_keys( $unsupported_keys ),
+					'supported_keys'    => array( 'meta_title', 'meta_description', 'og_title', 'og_description', 'og_image', 'focus_keyword' ),
+					'message'           => sprintf(
+						/* translators: 1: comma-separated list of unsupported keys, 2: comma-separated list of supported keys */
+						__( 'fix_seo does not support these keys: %1$s. Supported keys are: %2$s. For content-level issues (h1, headings, structure), use edit_content. For technical issues (canonical, og_tags rendering), the active SEO plugin handles them automatically once meta_title/meta_description/og_title/og_description/og_image are set.', 'pressark' ),
+						implode( ', ', array_keys( $unsupported_keys ) ),
+						'meta_title, meta_description, og_title, og_description, og_image, focus_keyword'
+					),
+				);
+			}
+		}
+
 		// If specific fixes with the new format are provided, apply them.
 		if ( ! empty( $fixes ) && is_array( $fixes ) ) {
 			// Detect format: new format has meta_title/meta_description directly, legacy has type: "update_meta".
@@ -204,63 +270,22 @@ class PressArk_Handler_SEO extends PressArk_Handler_Base {
 				);
 			}
 
-			// Legacy format: [{type: "update_meta", post_id, key, suggested_value}]
-			$results     = array();
-			$last_log_id = null;
-
-			foreach ( $fixes as $fix ) {
-				$fix_type = sanitize_text_field( $fix['type'] ?? '' );
-
-				if ( 'update_meta' === $fix_type ) {
-					$fix_post_id = absint( $fix['post_id'] ?? 0 );
-					$fix_key     = sanitize_text_field( $fix['key'] ?? '' );
-					// PressArk v5.1.1 hardening: allow only supported SEO keys through the legacy update path.
-					$allowed     = array( 'meta_title', 'meta_description', 'og_title', 'og_description', 'og_image', 'focus_keyword' );
-					if ( ! in_array( $fix_key, $allowed, true ) ) {
-						continue;
-					}
-					$raw_value = $fix['suggested_value'] ?? ( $fix['value'] ?? '' );
-					$fix_value = 'og_image' === $fix_key
-						? esc_url_raw( $raw_value )
-						: sanitize_text_field( $raw_value );
-
-					if ( $fix_post_id && $fix_key && current_user_can( 'edit_post', $fix_post_id ) ) {
-						$resolved_key = PressArk_SEO_Resolver::resolve_key( $fix_key );
-						$old           = PressArk_SEO_Resolver::read( $fix_post_id, $fix_key ) ?: get_post_meta( $fix_post_id, $resolved_key, true );
-						$last_log_id   = $this->logger->log(
-							'update_meta',
-							$fix_post_id,
-							get_post_type( $fix_post_id ),
-							wp_json_encode( array( 'key' => $resolved_key, 'value' => $old ) ),
-							wp_json_encode( array( 'key' => $resolved_key, 'value' => $fix_value ) )
-						);
-						// Resolver handles known SEO fields (including AIOSEO table writes).
-						// Falls back to post_meta for unrecognized keys.
-						if ( ! PressArk_SEO_Resolver::write( $fix_post_id, $fix_key, $fix_value ) ) {
-							update_post_meta( $fix_post_id, $resolved_key, $fix_value );
-						}
-						$results[] = sprintf(
-							/* translators: 1: meta key 2: post ID */
-							__( 'Set %1$s on post #%2$d.', 'pressark' ),
-							$resolved_key,
-							$fix_post_id
-						);
-					}
-				}
-			}
-
-			if ( empty( $results ) ) {
-				return array( 'success' => false, 'message' => __( 'No fixes could be applied.', 'pressark' ) );
-			}
-
-			return array(
-				'success' => true,
-				'message' => __( 'SEO fixes applied: ', 'pressark' ) . implode( '; ', $results ),
-				'log_id'  => $last_log_id,
-			);
+			// v5.7.1 (2026-05-12): Removed the legacy `[{type: "update_meta",
+			// post_id, key, suggested_value}]` fallback shape. Keeping it as a
+			// silent acceptance path was misleading the model — it signalled
+			// "fix_seo also accepts {key, value} pair records" which contradicts
+			// the canonical flat-map shape documented in the tool description.
+			// Across observed chains the model emitted 4 distinct wrong shapes
+			// in sequence (`{h1, og_tags, canonical}` / `{field, value}` /
+			// `{key, value}` / `{meta_key, meta_value}`), each treating fix_seo
+			// args as a key/value record list. With this branch gone, only the
+			// canonical shape (per-post objects keyed by field name) ever
+			// reaches the handler. Combined with iter-19b's allowlist guard
+			// (preview-side) the API surface is now narrow enough that the
+			// model has only one valid shape to converge on.
 		}
 
-		return array( 'success' => false, 'message' => __( 'No fixes provided.', 'pressark' ) );
+		return array( 'success' => false, 'message' => __( 'No fixes provided in canonical shape. Use a list of per-post objects with field names as keys, e.g. [{"post_id": 13, "og_title": "..."}].', 'pressark' ) );
 	}
 
 	/**

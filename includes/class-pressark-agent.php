@@ -113,6 +113,14 @@ class PressArk_Agent {
 	private int    $plan_stall_rounds = 0;
 	private string $plan_stall_message = '';
 
+	// v5.8.2 (2026-05-13, iter-38): true when the current round is a wrap
+	// round triggered by a [Continue] envelope. Read by normalize_result_for_mode
+	// to bypass plan_ready coercion: a wrap round's text is a summary of work
+	// that already happened, not a new plan proposal, and re-coercing it back
+	// into plan_ready produces a confusing "fresh checklist" card on top of a
+	// completed action.
+	private bool   $is_post_keep_wrap_round = false;
+
 	// v4.0.0: Automation context for unattended runs.
 	private ?array $automation_context = null;
 	private string $run_id             = '';
@@ -483,6 +491,78 @@ class PressArk_Agent {
 		return __( 'I need a narrower request before I can build a safe execution plan.', 'pressark' );
 	}
 
+	private static function compose_escalation_reply( array $reason_codes ): string {
+		$reason_codes = array_values( array_unique( array_filter( array_map( 'sanitize_key', $reason_codes ) ) ) );
+		if ( empty( $reason_codes ) ) {
+			return '';
+		}
+
+		// v5.8.6 (2026-05-14, iter-42): share policy reason copy for escalation and upfront hard plans.
+		$reason_phrases = array(
+			'destructive_operation'  => __( 'an irreversible operation (delete/remove/reset)', 'pressark' ),
+			'bulk_write_scope'       => __( 'a bulk write across multiple items', 'pressark' ),
+			'ambiguous_targets'      => __( 'targets that were not explicitly named', 'pressark' ),
+			'ambiguous_target'       => __( 'targets that were not explicitly named', 'pressark' ),
+			'commerce_critical_write' => __( 'a commerce-critical change', 'pressark' ),
+			'broad_scope'            => __( 'a broad site or store scope', 'pressark' ),
+			'async_heavy_write'      => __( 'a long-running write', 'pressark' ),
+			'multi_domain'           => __( 'work spanning multiple site areas', 'pressark' ),
+			'multi_entity_write'     => __( 'changes across multiple items', 'pressark' ),
+			'discovery_required'     => __( 'work that needs discovery before execution', 'pressark' ),
+		);
+		$soft_reason_codes = array(
+			'explicit_plan_directive',
+			'legacy_plan_signal',
+			'predicted_write',
+			'low_risk_read',
+			'small_preview_protected_write',
+			'contained_multi_step_work',
+			'direct_execution_ok',
+			'continuation_plan_resume',
+			'continuation_execute_resume',
+			'approved_plan_execution',
+			'plan_policy_hard',
+			'plan_policy_soft',
+		);
+
+		$reason_strings = array();
+		$generic_needed = false;
+		foreach ( $reason_codes as $code ) {
+			if ( isset( $reason_phrases[ $code ] ) ) {
+				$reason_strings[] = $reason_phrases[ $code ];
+				continue;
+			}
+
+			if ( in_array( $code, $soft_reason_codes, true ) || str_starts_with( $code, 'router_preload_' ) ) {
+				continue;
+			}
+
+			$generic_needed = true;
+		}
+
+		if ( $generic_needed ) {
+			$reason_strings[] = __( 'a higher-risk action than usual', 'pressark' );
+		}
+
+		$reason_strings = array_values( array_unique( $reason_strings ) );
+		if ( empty( $reason_strings ) ) {
+			return '';
+		}
+
+		if ( count( $reason_strings ) > 1 ) {
+			$last = array_pop( $reason_strings );
+			$reasons_clause = implode( ', ', $reason_strings ) . ' and ' . $last;
+		} else {
+			$reasons_clause = $reason_strings[0];
+		}
+
+		return sprintf(
+			/* translators: %s: enumerated escalation reasons */
+			__( 'I paused before %s. The updated plan below shows what will run — approve to continue, revise to constrain it, or reject to cancel.', 'pressark' ),
+			$reasons_clause
+		);
+	}
+
 	private function build_plan_fallback_rows(): array {
 		$fallback_steps = $this->build_plan_step_rows( $this->plan_steps );
 		if ( ! empty( $fallback_steps ) ) {
@@ -769,6 +849,102 @@ class PressArk_Agent {
 		);
 	}
 
+	private function should_promote_prose_approval_to_plan_ready( string $text, ?PressArk_Checkpoint $checkpoint = null ): bool {
+		$text = trim( wp_strip_all_tags( $text ) );
+		if ( '' === $text || ! $this->plan_response_requires_user_input( $text ) ) {
+			return false;
+		}
+
+		if ( ! preg_match( '/\b(?:approve|approval|proceed|continue|go\s+ahead|confirm)\b/i', $text ) ) {
+			return false;
+		}
+
+		$request = strtolower( $this->resolve_effective_request_message( $checkpoint ) );
+		if ( '' === trim( $request ) ) {
+			return false;
+		}
+
+		$has_write_intent = (bool) preg_match(
+			'/\b(?:set|change|update|edit|modify|remove|delete|trash|reset|clear|deactivate|disable|uninstall|revoke|replace)\b/i',
+			$request
+		);
+		if ( ! $has_write_intent ) {
+			return false;
+		}
+
+		return (bool) preg_match(
+			'/\b(?:admin\s+email|site\s+title|tagline|setting|settings|option|plugin|theme|users?|roles?|capabilities|permissions?|product|products?|order|orders?|payment|shipping|tax|checkout|delete|remove|trash|reset|deactivate|disable|uninstall|revoke)\b/i',
+			$request
+		);
+	}
+
+	// v5.8.12 (2026-05-14): fail empty approved-plan execution before silent success.
+	private function should_fail_empty_approved_plan_execution_response( string $text, ?PressArk_Checkpoint $checkpoint = null ): bool {
+		if ( '' !== trim( $text ) || $this->is_plan_mode() || 'execute' !== $this->mode || ! $checkpoint ) {
+			return false;
+		}
+
+		if ( ! method_exists( $checkpoint, 'get_plan_phase' ) || 'executing' !== $checkpoint->get_plan_phase() ) {
+			return false;
+		}
+
+		if ( $this->has_proposed_write ) {
+			return false;
+		}
+
+		if ( method_exists( $checkpoint, 'get_approval_outcomes' ) && ! empty( $checkpoint->get_approval_outcomes() ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	// v5.8.1 (2026-05-13, iter-37): Plan Mode terminal-conclusion classifier.
+	// Observed 2026-05-13 Chain G ("Add Phase 4A FAQ page to the main menu"
+	// when FAQ already in menu): after grounding reads, Sonnet 4.6 emitted
+	// "No changes needed" as plain text. The harness then forced 3 retry
+	// rounds via build_plan_synthesis_retry_message ("write the numbered
+	// checklist now"), burning ~165k tokens reloading the same 55kB request
+	// and ending with a stale Plan card still asking the user to Execute a
+	// redundant 4-step plan. Conservative pattern list — only matches when
+	// the model has clearly TERMINATED the request, not when it's narrating
+	// progress. False negatives here are harmless (current loop behavior);
+	// false positives skip a legitimate "you forgot the checklist" nudge.
+	private function plan_response_concludes_no_action( string $text ): bool {
+		$text = trim( wp_strip_all_tags( $text ) );
+		if ( '' === $text ) {
+			return false;
+		}
+
+		// "No changes/action/writes/checklist/edits/work needed" — primary signal.
+		if ( preg_match(
+			'/\bno\s+(?:changes?|action|writes?|edits?|checklist|plan|work|updates?|modifications?|menu\s+updates?)\s+(?:are\s+|is\s+)?(?:needed|required|necessary|to\s+(?:make|do|apply))\b/i',
+			$text
+		) ) {
+			return true;
+		}
+
+		// "Nothing to add/do/change/create" — explicit negative-existential.
+		if ( preg_match(
+			'/\b(?:nothing|none)\s+to\s+(?:add|do|change|update|edit|create|modify|fix|apply|plan|execute)\b/i',
+			$text
+		) ) {
+			return true;
+		}
+
+		// "Already complete/done/in the menu/exists" — state-already-matches signal.
+		// Anchored on common phrases the model uses when grounding reveals the
+		// requested state was already satisfied.
+		if ( preg_match(
+			'/\b(?:task|request|work|goal)\s+is\s+already\s+(?:complete|done|fulfilled|satisfied)\b/i',
+			$text
+		) ) {
+			return true;
+		}
+
+		return false;
+	}
+
 	private function checkpoint_has_grounded_plan_context( PressArk_Checkpoint $checkpoint ): bool {
 		if ( method_exists( $checkpoint, 'get_read_state' ) && ! empty( $checkpoint->get_read_state() ) ) {
 			return true;
@@ -783,6 +959,109 @@ class PressArk_Agent {
 
 	private function planning_requires_grounded_reads(): bool {
 		return $this->is_plan_mode() || $this->is_soft_plan_mode();
+	}
+
+	// v5.8.2 (2026-05-13, iter-38): "Is the latest user turn a synthetic
+	// [Continue] envelope?" — if yes, the chain is already past the planning
+	// phase (the user clicked Execute → preview → Keep, the harness is now
+	// driving the wrap round). Synthesis-retry and plan_ready coercion are
+	// inappropriate here: there's nothing new for the model to plan, the
+	// task is mid- or post-execution. Observed Chain B post-Keep wrap
+	// (2026-05-13): R3 emitted a clean "page has been published" wrap; the
+	// harness then injected the synthesis-retry message and R4 returned a
+	// retrospective numbered list, which normalize_result_for_mode coerced
+	// back to plan_ready — producing a confusing "Plan ready - 4 step
+	// checklist" card next to a page that was already created.
+	//
+	// We look at the messages array directly rather than the checkpoint
+	// state because compaction can summarize away ledger context but the
+	// raw messages still contain the [Continue] envelope.
+	private function messages_indicate_post_keep_wrap( array $messages ): bool {
+		for ( $i = count( $messages ) - 1; $i >= 0; $i-- ) {
+			$msg  = $messages[ $i ];
+			$role = sanitize_key( (string) ( $msg['role'] ?? '' ) );
+			if ( 'user' !== $role ) {
+				continue;
+			}
+			$content = $msg['content'] ?? '';
+			if ( is_array( $content ) ) {
+				$content = implode( ' ', array_map(
+					static function ( $part ): string {
+						if ( is_array( $part ) ) {
+							return (string) ( $part['text'] ?? '' );
+						}
+						return is_string( $part ) ? $part : '';
+					},
+					$content
+				) );
+			}
+			$content = (string) $content;
+			// [Continue] is the harness-injected envelope for post-Keep and
+			// post-apply auto-resume. Match at start (after optional whitespace).
+			return 1 === preg_match( '/^\s*\[Continue\]/', $content );
+		}
+		return false;
+	}
+
+	private static function last_tool_result_was_empty_success( array $messages ): bool {
+		for ( $i = count( $messages ) - 1; $i >= 0; $i-- ) {
+			$message = is_array( $messages[ $i ] ?? null ) ? $messages[ $i ] : array();
+			if ( 'tool' !== sanitize_key( (string) ( $message['role'] ?? '' ) ) ) {
+				continue;
+			}
+
+			$content = $message['content'] ?? '';
+			$payload = null;
+			if ( is_string( $content ) ) {
+				$decoded = json_decode( trim( $content ), true );
+				if ( is_array( $decoded ) ) {
+					$payload = $decoded;
+				}
+			} elseif ( is_array( $content ) ) {
+				if ( array_key_exists( 'success', $content ) ) {
+					$payload = $content;
+				} else {
+					foreach ( $content as $part ) {
+						$text = is_array( $part )
+							? (string) ( $part['text'] ?? $part['content'] ?? '' )
+							: ( is_string( $part ) ? $part : '' );
+						if ( '' === trim( $text ) ) {
+							continue;
+						}
+						$decoded = json_decode( trim( $text ), true );
+						if ( is_array( $decoded ) ) {
+							$payload = $decoded;
+							break;
+						}
+					}
+				}
+			}
+
+			if ( ! is_array( $payload ) || true !== ( $payload['success'] ?? null ) ) {
+				return false;
+			}
+
+			foreach ( array( 'count', 'total', 'total_count', 'found', 'found_posts' ) as $count_key ) {
+				if ( array_key_exists( $count_key, $payload ) && is_numeric( $payload[ $count_key ] ) && 0 === (int) $payload[ $count_key ] ) {
+					return true;
+				}
+			}
+
+			foreach ( array( 'data', 'items', 'products', 'orders', 'results', 'rows', 'customers', 'reviews', 'variations', 'categories', 'posts', 'pages', 'users' ) as $list_key ) {
+				if ( array_key_exists( $list_key, $payload ) && is_array( $payload[ $list_key ] ) && empty( $payload[ $list_key ] ) ) {
+					return true;
+				}
+			}
+
+			$pagination = is_array( $payload['_pagination'] ?? null ) ? $payload['_pagination'] : array();
+			if ( array_key_exists( 'total', $pagination ) && is_numeric( $pagination['total'] ) && 0 === (int) $pagination['total'] ) {
+				return true;
+			}
+
+			return false;
+		}
+
+		return false;
 	}
 
 	private function build_grounding_retry_message( bool $before_writes = false ): string {
@@ -1136,7 +1415,7 @@ class PressArk_Agent {
 		if ( $checkpoint ) {
 			$remaining_steps = array_values( array_filter(
 				$checkpoint->get_plan_steps(),
-				static fn( $step ): bool => is_array( $step ) && 'completed' !== ( $step['status'] ?? '' )
+				static fn( $step ): bool => is_array( $step ) && ! in_array( (string) ( $step['status'] ?? '' ), array( 'completed', 'blocked' ), true )
 			) );
 			if ( ! empty( $remaining_steps ) ) {
 				return true;
@@ -1538,15 +1817,233 @@ class PressArk_Agent {
 		return array_values( $labels );
 	}
 
+	private function update_plan_step_has_content( array $step ): bool {
+		return '' !== sanitize_text_field( (string) (
+			$step['content']
+			?? $step['label']
+			?? $step['title']
+			?? $step['text']
+			?? $step['description']
+			?? ''
+		) );
+	}
+
+	private function normalize_update_plan_args( array $args, ?PressArk_Checkpoint $checkpoint ): array {
+		// Soft outer-name aliasing. The schema only declares `steps` / `updates` /
+		// `changes`, but Claude Sonnet 4.6 occasionally emits `{tasks:[...]}` and
+		// a few common siblings. Rename to canonical `steps` here so the patch
+		// detection and validator downstream see a well-formed payload instead
+		// of synth-erroring the round. Canonical `steps` always wins when both
+		// are present; the alias is then dropped so it cannot resurface.
+		$has_canonical_steps = isset( $args['steps'] ) && is_array( $args['steps'] ) && ! empty( $args['steps'] );
+		// `plan` is intentionally excluded — it is a singular noun and could
+		// collide with future args (e.g. a top-level plan-name string). The
+		// other five names are unambiguously plural list aliases.
+		foreach ( array( 'tasks', 'todos', 'items', 'plan_steps', 'checklist' ) as $alias ) {
+			if ( ! array_key_exists( $alias, $args ) ) {
+				continue;
+			}
+			if ( ! $has_canonical_steps && is_array( $args[ $alias ] ) && ! empty( $args[ $alias ] ) ) {
+				$args['steps']       = $args[ $alias ];
+				$has_canonical_steps = true;
+			}
+			unset( $args[ $alias ] );
+		}
+
+		$existing_steps = $checkpoint ? $checkpoint->get_plan_steps() : array();
+		if ( empty( $existing_steps ) ) {
+			return $args;
+		}
+
+		$patches = array();
+		if ( isset( $args['updates'] ) && is_array( $args['updates'] ) ) {
+			$patches = $this->filter_update_plan_patch_rows( (array) $args['updates'] );
+		} elseif ( isset( $args['changes'] ) && is_array( $args['changes'] ) ) {
+			$patches = $this->filter_update_plan_patch_rows( (array) $args['changes'] );
+		} elseif ( isset( $args['steps'] ) && is_array( $args['steps'] ) && $this->update_plan_rows_are_patch_like( (array) $args['steps'] ) ) {
+			$patches = $this->filter_update_plan_patch_rows( (array) $args['steps'] );
+		}
+
+		if ( empty( $patches ) ) {
+			return $args;
+		}
+
+		// v5.8.16 (2026-05-14): accept patch-style update_plan rows when a
+		// server-side plan already exists. Follow-up turns naturally emit
+		// `{updates:[{step:3,status:"in_progress"}]}`; merging into the full
+		// checkpoint ledger preserves the guard contract without a retry lap.
+		$args['steps'] = $this->apply_update_plan_patches( $existing_steps, $patches );
+		unset( $args['updates'], $args['changes'] );
+
+		return $args;
+	}
+
+	private function filter_update_plan_patch_rows( array $rows ): array {
+		$patches = array();
+		foreach ( array_slice( $rows, 0, 12 ) as $row ) {
+			if ( is_array( $row ) ) {
+				$patches[] = $row;
+			}
+		}
+
+		return $patches;
+	}
+
+	private function update_plan_rows_are_patch_like( array $rows ): bool {
+		$has_patch_without_content = false;
+		foreach ( array_slice( $rows, 0, 12 ) as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+
+			$has_locator = isset( $row['step'] )
+				|| isset( $row['step_number'] )
+				|| isset( $row['number'] )
+				|| isset( $row['index'] )
+				|| isset( $row['id'] );
+			if ( ! $has_locator ) {
+				return false;
+			}
+
+			if ( ! $this->update_plan_step_has_content( $row ) ) {
+				$has_patch_without_content = true;
+			}
+		}
+
+		return $has_patch_without_content;
+	}
+
+	private function apply_update_plan_patches( array $existing_steps, array $patches ): array {
+		$merged = array_values( array_filter( $existing_steps, 'is_array' ) );
+		if ( empty( $merged ) ) {
+			return $existing_steps;
+		}
+
+		$applied = false;
+		foreach ( $patches as $patch ) {
+			if ( ! is_array( $patch ) ) {
+				continue;
+			}
+
+			$index = $this->resolve_update_plan_patch_index( $patch, $merged );
+			if ( $index < 0 || ! isset( $merged[ $index ] ) || ! is_array( $merged[ $index ] ) ) {
+				continue;
+			}
+
+			$row = $merged[ $index ];
+
+			$content = sanitize_text_field( (string) (
+				$patch['content']
+				?? $patch['label']
+				?? $patch['title']
+				?? $patch['text']
+				?? $patch['description']
+				?? ''
+			) );
+			if ( '' !== $content ) {
+				$row['content'] = $content;
+			}
+
+			$active_form = sanitize_text_field( (string) (
+				$patch['activeForm']
+				?? $patch['active_form']
+				?? $patch['active']
+				?? ''
+			) );
+			if ( '' !== $active_form ) {
+				$row['activeForm'] = $active_form;
+				if ( empty( $row['content'] ) ) {
+					$row['content'] = $active_form;
+				}
+			}
+
+			if ( isset( $patch['status'] ) ) {
+				$row['status'] = sanitize_key( (string) $patch['status'] );
+			}
+			if ( isset( $patch['post_id'] ) ) {
+				$row['post_id'] = absint( $patch['post_id'] );
+			}
+			$tool_name = sanitize_key( (string) ( $patch['tool_name'] ?? $patch['toolName'] ?? $patch['tool'] ?? '' ) );
+			if ( '' !== $tool_name ) {
+				$row['tool_name'] = $tool_name;
+			}
+			foreach ( array( 'preview_required', 'apply_succeeded' ) as $bool_key ) {
+				if ( array_key_exists( $bool_key, $patch ) ) {
+					$row[ $bool_key ] = ! empty( $patch[ $bool_key ] );
+				}
+			}
+			foreach ( array( 'applied_tool_name', 'updated_at', 'kind', 'group' ) as $text_key ) {
+				if ( array_key_exists( $text_key, $patch ) ) {
+					$row[ $text_key ] = sanitize_text_field( (string) $patch[ $text_key ] );
+				}
+			}
+			if ( isset( $patch['depends_on'] ) && is_array( $patch['depends_on'] ) ) {
+				$row['depends_on'] = array_values( array_filter( array_map( 'sanitize_key', (array) $patch['depends_on'] ) ) );
+			}
+			if ( isset( $patch['metadata'] ) && is_array( $patch['metadata'] ) ) {
+				$row['metadata'] = (array) $patch['metadata'];
+			}
+
+			$merged[ $index ] = $row;
+			$applied          = true;
+		}
+
+		return $applied ? $merged : array();
+	}
+
+	private function resolve_update_plan_patch_index( array $patch, array $existing_steps ): int {
+		foreach ( array( 'step', 'step_number', 'number' ) as $key ) {
+			if ( isset( $patch[ $key ] ) ) {
+				$index = absint( $patch[ $key ] ) - 1;
+				if ( $index >= 0 && isset( $existing_steps[ $index ] ) ) {
+					return $index;
+				}
+			}
+		}
+
+		if ( isset( $patch['index'] ) ) {
+			$raw_index = absint( $patch['index'] );
+			if ( isset( $existing_steps[ $raw_index ] ) ) {
+				return $raw_index;
+			}
+			$one_based = $raw_index - 1;
+			if ( $one_based >= 0 && isset( $existing_steps[ $one_based ] ) ) {
+				return $one_based;
+			}
+		}
+
+		$id = sanitize_key( (string) ( $patch['id'] ?? '' ) );
+		if ( '' !== $id ) {
+			foreach ( $existing_steps as $index => $step ) {
+				if ( is_array( $step ) && $id === sanitize_key( (string) ( $step['id'] ?? '' ) ) ) {
+					return (int) $index;
+				}
+			}
+		}
+
+		return -1;
+	}
+
 	private function normalize_update_plan_steps( array $steps ): array {
 		$normalized = array();
+		$used_ids   = array();
 
-		foreach ( array_slice( $steps, 0, 12 ) as $step ) {
+		foreach ( array_slice( $steps, 0, 12 ) as $index => $step ) {
 			if ( ! is_array( $step ) ) {
 				continue;
 			}
 
-			$content = sanitize_text_field( (string) ( $step['content'] ?? '' ) );
+			// Models routinely emit `label`/`title`/`text`/`description` instead of `content`
+			// (the schema's required name). Treat the first non-empty alias as
+			// content so a single missing field doesn't waste a whole round.
+			$content = sanitize_text_field( (string) (
+				$step['content']
+				?? $step['label']
+				?? $step['title']
+				?? $step['text']
+				?? $step['description']
+				?? ''
+			) );
 			if ( '' === $content ) {
 				continue;
 			}
@@ -1555,21 +2052,64 @@ class PressArk_Agent {
 			if ( 'done' === $status || 'verified' === $status ) {
 				$status = 'completed';
 			}
-			if ( ! in_array( $status, array( 'pending', 'in_progress', 'completed' ), true ) ) {
+			// v5.8.6 (2026-05-13, post-iter-41): the Plan Stall prompt tells
+			// the model to mark failed diagnostic steps blocked; preserving it
+			// lets the chain advance instead of retrying the failed speed tool.
+			if ( ! in_array( $status, array( 'pending', 'blocked', 'in_progress', 'completed' ), true ) ) {
 				$status = 'pending';
 			}
 
+			$tool_name = sanitize_key( (string) ( $step['tool_name'] ?? '' ) );
+			$step_id   = $this->dedupe_update_plan_step_id(
+				sanitize_key( (string) ( $step['id'] ?? '' ) ),
+				$tool_name,
+				$index,
+				$used_ids
+			);
+			$depends_on = array();
+			foreach ( (array) ( $step['depends_on'] ?? array() ) as $dependency ) {
+				$dependency = sanitize_key( (string) $dependency );
+				if ( '' !== $dependency ) {
+					$depends_on[] = $dependency;
+				}
+			}
+
 			$normalized[] = array(
+				'id'               => $step_id,
 				'content'          => $content,
 				'activeForm'       => sanitize_text_field( (string) ( $step['activeForm'] ?? $content ) ),
 				'status'           => $status,
 				'post_id'          => absint( $step['post_id'] ?? 0 ),
-				'tool_name'        => sanitize_key( (string) ( $step['tool_name'] ?? '' ) ),
+				'tool_name'        => $tool_name,
 				'preview_required' => ! empty( $step['preview_required'] ),
+				'apply_succeeded'  => ! empty( $step['apply_succeeded'] ),
+				'applied_tool_name'=> sanitize_key( (string) ( $step['applied_tool_name'] ?? '' ) ),
+				'updated_at'       => sanitize_text_field( (string) ( $step['updated_at'] ?? '' ) ),
+				'kind'             => sanitize_key( (string) ( $step['kind'] ?? '' ) ),
+				'group'            => sanitize_key( (string) ( $step['group'] ?? '' ) ),
+				'depends_on'       => array_values( array_unique( $depends_on ) ),
+				'metadata'         => is_array( $step['metadata'] ?? null ) ? (array) $step['metadata'] : array(),
 			);
 		}
 
 		return $normalized;
+	}
+
+	private function dedupe_update_plan_step_id( string $id, string $tool_name, int $index, array &$used_ids ): string {
+		$base = sanitize_key( $id );
+		if ( '' === $base ) {
+			$base = '' !== $tool_name ? $tool_name . '_' . ( $index + 1 ) : 'step_' . ( $index + 1 );
+		}
+
+		$step_id = $base;
+		$suffix  = 2;
+		while ( isset( $used_ids[ $step_id ] ) ) {
+			$step_id = $base . '_' . $suffix;
+			$suffix++;
+		}
+
+		$used_ids[ $step_id ] = true;
+		return $step_id;
 	}
 
 	private function find_matching_plan_step( array $candidate, array $existing_steps ): array {
@@ -1603,26 +2143,93 @@ class PressArk_Agent {
 		return array();
 	}
 
+	private function plan_step_requires_apply_success( array $step ): bool {
+		if ( ! empty( $step['preview_required'] ) ) {
+			return true;
+		}
+
+		$kind = sanitize_key( (string) ( $step['kind'] ?? '' ) );
+		if ( in_array( $kind, array( 'preview', 'confirm', 'write' ), true ) ) {
+			return true;
+		}
+
+		$tool_name = sanitize_key( (string) ( $step['tool_name'] ?? '' ) );
+		if ( '' === $tool_name || ! class_exists( 'PressArk_Operation_Registry' ) ) {
+			return false;
+		}
+
+		return in_array( PressArk_Operation_Registry::classify( $tool_name ), array( 'preview', 'confirm' ), true );
+	}
+
+	private function plan_step_allows_parallel_in_progress( array $step ): bool {
+		$kind = sanitize_key( (string) ( $step['kind'] ?? '' ) );
+		if ( in_array( $kind, array( 'read', 'analyze', 'verify' ), true ) ) {
+			return true;
+		}
+
+		$tool_name = sanitize_key( (string) ( $step['tool_name'] ?? '' ) );
+		if ( '' === $tool_name || ! class_exists( 'PressArk_Operation_Registry' ) ) {
+			return false;
+		}
+
+		return 'read' === PressArk_Operation_Registry::classify( $tool_name );
+	}
+
+	/**
+	 * Bump a per-day counter when validate_update_plan_tool_call rejects a
+	 * plan submission. Used to spot LLM drift cheaply — no admin UI, no new
+	 * table, autoload=false so it stays off the hot path. Read via
+	 * `wp option list --search='pressark_plan_validation_failures_*'`.
+	 *
+	 * @param string $reason Short snake_case key describing the failure mode.
+	 */
+	private function record_plan_validation_failure( string $reason ): void {
+		$reason = sanitize_key( $reason );
+		if ( '' === $reason ) {
+			return;
+		}
+
+		$key            = 'pressark_plan_validation_failures_' . gmdate( 'Y-m-d' );
+		$counts         = (array) get_option( $key, array() );
+		$counts[ $reason ] = ( (int) ( $counts[ $reason ] ?? 0 ) ) + 1;
+		$counts['_total'] = ( (int) ( $counts['_total'] ?? 0 ) ) + 1;
+		update_option( $key, $counts, false );
+	}
+
+	// TODO(Fix 9 follow-up): also call record_plan_validation_failure() from
+	// normalize_update_plan_args() with reason='outer_alias_rename' when the
+	// `tasks`/`todos`/`items`/`plan_steps`/`checklist` alias loop fires. Not
+	// a rejection but a drift signal worth knowing about.
+
 	private function validate_update_plan_tool_call( array $args, ?PressArk_Checkpoint $checkpoint ): array {
+		$args      = $this->normalize_update_plan_args( $args, $checkpoint );
 		$raw_steps = (array) ( $args['steps'] ?? array() );
-		foreach ( array_slice( $raw_steps, 0, 12 ) as $step ) {
+		foreach ( array_slice( $raw_steps, 0, 12 ) as $step_index => $step ) {
 			if ( ! is_array( $step ) ) {
 				continue;
 			}
 
-			if (
-				'' === sanitize_text_field( (string) ( $step['content'] ?? '' ) )
-				|| '' === sanitize_text_field( (string) ( $step['activeForm'] ?? '' ) )
-			) {
+			// Only `content` is hard-required: the normalizer fills `activeForm`
+			// from `content` and accepts `label`/`title`/`text`/`description` as aliases for
+			// `content`. Reject only when none of those carry a value.
+			$has_content = $this->update_plan_step_has_content( $step );
+			if ( ! $has_content ) {
+				$received_keys = implode( ', ', array_map( 'sanitize_key', array_keys( $step ) ) );
+				$this->record_plan_validation_failure( 'missing_content' );
 				return array(
 					'valid'   => false,
-					'message' => 'Each plan step must include both content and activeForm.',
+					'message' => sprintf(
+						'Plan step #%d is missing a "content" field (or one of its aliases: label, title, text, description). Received keys: [%s]. Each step also accepts an "activeForm" (present-continuous rendering); if omitted, content is reused.',
+						(int) $step_index + 1,
+						'' !== $received_keys ? $received_keys : 'none'
+					),
 				);
 			}
 		}
 
 		$steps = $this->normalize_update_plan_steps( $raw_steps );
 		if ( empty( $steps ) ) {
+			$this->record_plan_validation_failure( 'empty_steps' );
 			return array(
 				'valid'   => false,
 				'message' => 'update_plan requires a non-empty ordered steps array.',
@@ -1631,34 +2238,43 @@ class PressArk_Agent {
 
 		$remaining_indices = array();
 		$active_indices    = array();
+		$active_read_indices = array();
 		foreach ( $steps as $index => $step ) {
-			if ( 'completed' !== ( $step['status'] ?? '' ) ) {
+			if ( ! in_array( (string) ( $step['status'] ?? '' ), array( 'completed', 'blocked' ), true ) ) {
 				$remaining_indices[] = $index;
 			}
 			if ( 'in_progress' === ( $step['status'] ?? '' ) ) {
 				$active_indices[] = $index;
+				if ( $this->plan_step_allows_parallel_in_progress( $step ) ) {
+					$active_read_indices[] = $index;
+				}
 			}
 		}
 
 		$existing_steps = $checkpoint ? $checkpoint->get_plan_steps() : array();
 
 		if ( $this->requires_plan( $this->resolve_effective_request_message( $checkpoint ), $checkpoint ) && ! empty( $remaining_indices ) ) {
+			$active_count_is_valid = 1 === count( $active_indices )
+				|| ( count( $active_indices ) > 1 && count( $active_indices ) === count( $active_read_indices ) );
 			if ( empty( $existing_steps ) ) {
-				if ( count( $active_indices ) >= 2 ) {
+				if ( ! $active_count_is_valid ) {
+					$this->record_plan_validation_failure( 'multiple_in_progress' );
 					return array(
 						'valid'   => false,
-						'message' => 'For multi-step tasks, update_plan must keep exactly one step in_progress at a time.',
+						'message' => 'For multi-step tasks, update_plan must keep exactly one write/confirm step in_progress at a time. Parallel in_progress steps are only allowed for read-only diagnostic work.',
 					);
 				}
-			} elseif ( 1 !== count( $active_indices ) ) {
+			} elseif ( ! $active_count_is_valid ) {
+				$this->record_plan_validation_failure( 'multiple_in_progress' );
 				return array(
 					'valid'   => false,
-					'message' => 'For multi-step tasks, update_plan must keep exactly one step in_progress at a time.',
+					'message' => 'For multi-step tasks, update_plan must keep exactly one write/confirm step in_progress at a time. Parallel in_progress steps are only allowed for read-only diagnostic work.',
 				);
 			}
 		}
 
 		if ( 1 === count( $active_indices ) && ! empty( $remaining_indices ) && $active_indices[0] !== $remaining_indices[0] ) {
+			$this->record_plan_validation_failure( 'out_of_order_active' );
 			return array(
 				'valid'   => false,
 				'message' => 'Do not start a later step while an earlier unfinished step still exists. Move the earliest unfinished step to in_progress first.',
@@ -1666,15 +2282,16 @@ class PressArk_Agent {
 		}
 
 		foreach ( $steps as $step ) {
-			if ( 'completed' !== ( $step['status'] ?? '' ) || empty( $step['preview_required'] ) ) {
+			if ( 'completed' !== ( $step['status'] ?? '' ) || ! $this->plan_step_requires_apply_success( $step ) ) {
 				continue;
 			}
 
 			$existing = $this->find_matching_plan_step( $step, $existing_steps );
 			if ( empty( $existing['apply_succeeded'] ) ) {
+				$this->record_plan_validation_failure( 'completed_without_apply' );
 				return array(
 					'valid'   => false,
-					'message' => 'Preview-required steps can only be marked completed after the apply step actually succeeded.',
+					'message' => 'Write or confirm steps can only be marked completed after the matching apply step actually succeeded.',
 				);
 			}
 		}
@@ -1694,6 +2311,7 @@ class PressArk_Agent {
 			}
 
 			if ( ! empty( get_post_meta( $post_id, '_elementor_data', true ) ) ) {
+				$this->record_plan_validation_failure( 'elementor_edit' );
 				return array(
 					'valid'   => false,
 					'message' => sprintf(
@@ -1727,6 +2345,7 @@ class PressArk_Agent {
 				}
 				$loaded_names = array_keys( $loaded_names );
 				sort( $loaded_names );
+				$this->record_plan_validation_failure( 'unknown_tool' );
 				return array(
 					'valid'   => false,
 					'message' => sprintf(
@@ -2387,6 +3006,16 @@ class PressArk_Agent {
 			return;
 		}
 
+		// v5.8.15 (2026-05-14): read-only soft plans should not persist an executable artifact.
+		// Follow-up turns such as "fix 3" need the read target, not a stale
+		// "Analyze Seo" approved-plan artifact from the diagnostic round.
+		if ( ! $this->soft_plan_should_materialize_artifact() ) {
+			if ( method_exists( $checkpoint, 'clear_plan_state' ) ) {
+				$checkpoint->clear_plan_state();
+			}
+			return;
+		}
+
 		$artifact = $this->plan_artifact_from_checkpoint( $checkpoint );
 		if ( empty( $artifact ) ) {
 			$plan = $this->plan_with_ai( $message, $conversation );
@@ -2443,6 +3072,24 @@ class PressArk_Agent {
 		}
 	}
 
+	private function soft_plan_should_materialize_artifact(): bool {
+		if ( empty( $this->planning_decision ) ) {
+			return true;
+		}
+
+		$reason_codes = array_values(
+			array_filter(
+				array_map( 'sanitize_key', (array) ( $this->planning_decision['reason_codes'] ?? array() ) )
+			)
+		);
+
+		return in_array( 'predicted_write', $reason_codes, true )
+			|| in_array( 'commerce_critical_write', $reason_codes, true )
+			|| in_array( 'multi_entity_write', $reason_codes, true )
+			|| in_array( 'small_preview_protected_write', $reason_codes, true )
+			|| ! empty( $this->planning_decision['approval_required'] );
+	}
+
 	private function normalize_result_for_mode( array $data, ?PressArk_Checkpoint $checkpoint = null ): array {
 		if ( ! $this->is_plan_mode() ) {
 			return $data;
@@ -2456,13 +3103,136 @@ class PressArk_Agent {
 		self::ensure_plan_mode_loaded();
 
 		$source_text = sanitize_textarea_field( (string) ( $data['reply'] ?? $data['plan_markdown'] ?? $data['message'] ?? '' ) );
-		if ( $this->plan_response_requires_user_input( $source_text ) ) {
+		if ( ! empty( $data['empty_data_final_response'] ) && '' !== trim( $source_text ) ) {
+			// v5.8.10 (2026-05-14, iter-46): accept text-final wraps after empty successful tool reads.
 			$data['type']        = 'final_response';
-			$data['status']      = 'needs_input';
-			$data['exit_reason'] = 'needs_input';
+			$data['exit_reason'] = 'empty_data_final_response';
 			$data['reply']       = $source_text;
 			$data['message']     = $source_text;
-			unset( $data['plan_markdown'], $data['plan_steps'] );
+			$data['can_execute'] = false;
+			$data['plan_card_obsolete'] = true;
+			$data['plan_card_obsolete_reason'] = 'empty_data_final_response';
+			if ( $checkpoint ) {
+				if ( method_exists( $checkpoint, 'set_plan_phase' ) ) {
+					$checkpoint->set_plan_phase( 'completed' );
+				}
+				if ( method_exists( $checkpoint, 'set_plan_status' ) ) {
+					$checkpoint->set_plan_status( 'completed' );
+				}
+			}
+			unset(
+				$data['plan_markdown'],
+				$data['plan_steps'],
+				$data['approve_endpoint'],
+				$data['execute_endpoint'],
+				$data['revise_endpoint'],
+				$data['reject_endpoint']
+			);
+			return $data;
+		}
+		if ( $this->plan_response_requires_user_input( $source_text ) ) {
+			if ( $this->should_promote_prose_approval_to_plan_ready( $source_text, $checkpoint ) ) {
+				// v5.8.11 (2026-05-14): route risky prose approval questions into structured review.
+				$data['prose_approval_promoted_to_plan_ready'] = true;
+				if ( ! $this->result_has_explicit_plan_payload( $data, $source_text ) ) {
+					$fallback_rows = $this->build_plan_fallback_rows();
+					if ( ! empty( $fallback_rows ) ) {
+						$data['plan_steps']    = $fallback_rows;
+						$data['plan_markdown'] = $this->build_plan_markdown( $fallback_rows, $source_text );
+					}
+				}
+				$this->record_activity_event(
+					'plan.prose_approval_promoted',
+					'approval_question_promoted_to_plan_ready',
+					'waiting',
+					'plan',
+					'Promoted a risky prose approval question into the structured plan review surface.',
+					array(
+						'mode' => $this->is_plan_mode() ? 'hard_plan' : ( $this->is_soft_plan_mode() ? 'soft_plan' : 'none' ),
+					)
+				);
+			} else {
+				$data['type']        = 'final_response';
+				$data['status']      = 'needs_input';
+				$data['exit_reason'] = 'needs_input';
+				$data['reply']       = $source_text;
+				$data['message']     = $source_text;
+				unset( $data['plan_markdown'], $data['plan_steps'] );
+				return $data;
+			}
+		}
+
+		// v5.8.2 (2026-05-13, iter-38): Sister branch to the user-input check.
+		// When the model concluded "no action needed" in plain text, do NOT
+		// coerce the result back into a plan_ready card from the round-1
+		// artifact. Without this branch, the no-action exit at agent.php
+		// L4282-L4306 returns final_response but normalize_result_for_mode
+		// promotes it to plan_ready at L2758 because the checkpoint still
+		// carries the speculative R1 plan_artifact, producing the stale
+		// "Execute / Revise / Reject" UI card next to the model's
+		// "no changes needed" text. Observed Chain G FAQ repro (2026-05-13).
+		if (
+			'' !== trim( $source_text )
+			&& $this->plan_response_concludes_no_action( $source_text )
+		) {
+			$data['type']                  = 'final_response';
+			$data['status']                = 'no_action';
+			$data['exit_reason']           = 'plan_no_action';
+			$data['reply']                 = $source_text;
+			$data['message']               = $source_text;
+			$data['can_execute']           = false;
+			$data['plan_card_obsolete']    = true;
+			$data['plan_card_obsolete_reason'] = 'model_concluded_no_action';
+			if ( $checkpoint ) {
+				if ( method_exists( $checkpoint, 'set_plan_phase' ) ) {
+					$checkpoint->set_plan_phase( 'completed' );
+				}
+				if ( method_exists( $checkpoint, 'set_plan_status' ) ) {
+					$checkpoint->set_plan_status( 'no_action' );
+				}
+			}
+			unset(
+				$data['plan_markdown'],
+				$data['plan_steps'],
+				$data['approve_endpoint'],
+				$data['execute_endpoint'],
+				$data['revise_endpoint'],
+				$data['reject_endpoint']
+			);
+			// Preserve $data['plan_artifact'] so JS can still display the
+			// "what we considered" trail if the user expands history, but
+			// the new can_execute=false + plan_card_obsolete=true tells the
+			// renderer to suppress the actionable Plan card.
+			return $data;
+		}
+
+		// v5.8.2 (2026-05-13, iter-38): Wrap-round bypass.
+		// When the current round is a post-Keep wrap (latest user msg was a
+		// [Continue] envelope), the model's text is a summary of work that
+		// already happened — NOT a new plan proposal. Without this bypass,
+		// the legacy path below sees the wrap text's numbered "1. ... 2. ..."
+		// retrospective list, treats it as a plan, and coerces type back to
+		// plan_ready — rendering a fresh "Execute" Plan card on top of a
+		// completed action. Observed Chain B post-Keep (2026-05-13): page
+		// was created successfully, R3 wrap was clean, harness then forced
+		// R4 retrospective, normalize re-coerced to plan_ready.
+		if ( $this->is_post_keep_wrap_round && '' !== trim( $source_text ) ) {
+			$data['type']    = 'final_response';
+			$data['reply']   = $source_text;
+			$data['message'] = $source_text;
+			$data['can_execute'] = false;
+			// Tell the JS to clear any lingering R1 Plan card — the chain has
+			// already executed, the original plan was consumed.
+			$data['plan_card_obsolete'] = true;
+			$data['plan_card_obsolete_reason'] = 'post_keep_wrap';
+			unset(
+				$data['plan_markdown'],
+				$data['plan_steps'],
+				$data['approve_endpoint'],
+				$data['execute_endpoint'],
+				$data['revise_endpoint'],
+				$data['reject_endpoint']
+			);
 			return $data;
 		}
 
@@ -2629,15 +3399,22 @@ class PressArk_Agent {
 			$data['exit_reason'] = 'plan_ready';
 		}
 
+		$policy_reason_codes = array_values( array_filter( array_map( 'sanitize_key', (array) ( $this->planning_decision['reason_codes'] ?? array() ) ) ) );
+		$policy_reason_reply = 'hard_plan' === $this->planning_mode
+			? self::compose_escalation_reply( $policy_reason_codes )
+			: '';
+
+		// v5.8.6 (2026-05-14, iter-42): upfront hard plans now reuse the same policy reason copy as soft escalation.
 		$data['type']          = 'plan_ready';
 		$data['status']        = 'ready';
-		$data['reply']         = $this->build_plan_ready_reply( $plan_steps );
+		$data['reply']         = '' !== $policy_reason_reply ? $policy_reason_reply : $this->build_plan_ready_reply( $plan_steps );
 		$data['plan_markdown'] = $plan_markdown;
 		$data['plan_steps']    = $plan_steps;
 		$data['plan_artifact'] = $artifact;
 		$data['approval_level'] = ! empty( $artifact['approval_level'] ) ? $artifact['approval_level'] : 'hard';
 		$data['plan_phase']    = 'planning';
 		$data['message']       = $plan_markdown;
+		$data['policy_reason_codes'] = $policy_reason_codes;
 
 		return $data;
 	}
@@ -2807,6 +3584,142 @@ class PressArk_Agent {
 		$this->sync_plan_artifact_from_execution( $checkpoint );
 	}
 
+	private function dynamic_tool_target_post_id( array $args ): int {
+		foreach ( array( 'post_id', 'product_id', 'target_post_id', 'target_id', 'object_id' ) as $key ) {
+			$post_id = absint( $args[ $key ] ?? 0 );
+			if ( $post_id > 0 ) {
+				return $post_id;
+			}
+		}
+
+		foreach ( array( 'post', 'page', 'target', 'item' ) as $key ) {
+			if ( ! is_array( $args[ $key ] ?? null ) ) {
+				continue;
+			}
+			$post_id = $this->dynamic_tool_target_post_id( (array) $args[ $key ] );
+			if ( $post_id > 0 ) {
+				return $post_id;
+			}
+		}
+
+		foreach ( array( 'fixes', 'products', 'items' ) as $key ) {
+			if ( ! is_array( $args[ $key ] ?? null ) ) {
+				continue;
+			}
+			foreach ( (array) $args[ $key ] as $row ) {
+				if ( ! is_array( $row ) ) {
+					continue;
+				}
+				$post_id = $this->dynamic_tool_target_post_id( $row );
+				if ( $post_id > 0 ) {
+					return $post_id;
+				}
+			}
+		}
+
+		return 0;
+	}
+
+	private function is_terminal_dynamic_plan_status( string $status ): bool {
+		return in_array( sanitize_key( $status ), array( 'completed', 'verified', 'skipped', 'done' ), true );
+	}
+
+	private function is_model_plan_tracking_task( array $task ): bool {
+		$metadata = is_array( $task['metadata'] ?? null ) ? (array) $task['metadata'] : array();
+		$origin   = sanitize_key( (string) ( $metadata['origin'] ?? '' ) );
+		if ( 'dynamic_execution' === $origin ) {
+			return false;
+		}
+		if ( 'model_plan' === $origin ) {
+			return true;
+		}
+
+		return '' !== sanitize_key( (string) ( $metadata['plan_step_id'] ?? '' ) );
+	}
+
+	private function model_plan_task_covers_read_tool( array $task, string $group ): bool {
+		$metadata = is_array( $task['metadata'] ?? null ) ? (array) $task['metadata'] : array();
+		if ( '' !== sanitize_key( (string) ( $metadata['tool_name'] ?? '' ) ) ) {
+			return false;
+		}
+
+		$task_kind  = sanitize_key( (string) ( $metadata['kind'] ?? '' ) );
+		$task_group = sanitize_key( (string) ( $metadata['group'] ?? '' ) );
+		$label      = strtolower( sanitize_text_field( (string) ( $task['label'] ?? '' ) ) );
+
+		if ( in_array( $task_kind, array( 'read', 'analyze', 'verify' ), true ) ) {
+			return true;
+		}
+		if ( '' !== $group
+			&& $task_group === $group
+			&& ! in_array( $task_kind, array( 'preview', 'confirm', 'write' ), true )
+		) {
+			return true;
+		}
+
+		return 1 === preg_match( '/\b(audit|analy[sz]e|research|check|scan|identify|find|inspect|review|read|list)\b/', $label );
+	}
+
+	private function should_suppress_dynamic_plan_step( array $execution, string $tool_name, array $args, string $kind, string $group ): bool {
+		$tool_name = sanitize_key( $tool_name );
+		if ( '' === $tool_name ) {
+			return false;
+		}
+
+		$tasks          = (array) ( $execution['tasks'] ?? array() );
+		$target_post_id = $this->dynamic_tool_target_post_id( $args );
+		$terminal_same  = false;
+
+		foreach ( $tasks as $task ) {
+			if ( ! is_array( $task ) || ! $this->is_model_plan_tracking_task( $task ) ) {
+				continue;
+			}
+
+			$metadata  = is_array( $task['metadata'] ?? null ) ? (array) $task['metadata'] : array();
+			$task_tool = sanitize_key( (string) ( $metadata['tool_name'] ?? '' ) );
+			if ( $task_tool !== $tool_name ) {
+				continue;
+			}
+
+			$status = sanitize_key( (string) ( $task['status'] ?? 'pending' ) );
+			if ( ! $this->is_terminal_dynamic_plan_status( $status ) ) {
+				return true;
+			}
+
+			$task_post_id = absint( $metadata['post_id'] ?? 0 );
+			if ( $target_post_id > 0 && $task_post_id > 0 && $target_post_id !== $task_post_id ) {
+				continue;
+			}
+			if ( 0 === $target_post_id && in_array( $tool_name, array( 'create_post', 'elementor_create_page' ), true ) ) {
+				continue;
+			}
+
+			$terminal_same = true;
+		}
+
+		if ( $terminal_same ) {
+			return true;
+		}
+
+		if ( 'read' !== sanitize_key( $kind ) ) {
+			return false;
+		}
+
+		foreach ( $tasks as $task ) {
+			if ( ! is_array( $task ) || ! $this->is_model_plan_tracking_task( $task ) ) {
+				continue;
+			}
+			if ( $this->is_terminal_dynamic_plan_status( (string) ( $task['status'] ?? 'pending' ) ) ) {
+				continue;
+			}
+			if ( $this->model_plan_task_covers_read_tool( $task, $group ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private function maybe_insert_dynamic_plan_steps( PressArk_Checkpoint $checkpoint, array $tool_calls ): void {
 		if ( 'executing' !== $checkpoint->get_plan_phase() || empty( $tool_calls ) ) {
 			return;
@@ -2840,6 +3753,27 @@ class PressArk_Agent {
 			reset( $artifact['steps'] );
 		}
 
+		// v5.6.4 (2026-05-12): Tools that don't represent user-visible work
+		// should not generate a dynamic tracking task — they pollute the
+		// Completed/Remaining lists the user sees in [Continue] envelopes
+		// and the model sees in wrap-round STATE blocks. Specifically
+		// update_plan is the planning tool itself: tracking "the model
+		// called update_plan" as a remaining task is meaningless to the
+		// user and self-referential to the harness. iter-11's marking hook
+		// in handle_update_plan only marks dynamic tasks done by matching
+		// a MODEL-emitted step's tool_name, which never references the
+		// planning tool — so the tracker for update_plan would linger as
+		// `in_progress` forever. Observed 2026-05-12: "Update Plan" stuck
+		// in the wrap-round [Continue] Remaining list on the World Cup
+		// t-shirts chain. Skip these tools entirely.
+		// v5.8.0 (2026-05-13): Observation Chain A showed 10-step bloat
+		// from dynamic rows duplicating a 3-step model plan. Suppress rows
+		// covered by model-plan tasks before writing either canonical store.
+		$skip_dynamic_tracker_tools = array(
+			'update_plan'   => true,
+			'read_resource' => true,
+		);
+
 		foreach ( $tool_calls as $index => $tool_call ) {
 			if ( ! is_array( $tool_call ) ) {
 				continue;
@@ -2849,6 +3783,9 @@ class PressArk_Agent {
 			if ( '' === $tool_name ) {
 				continue;
 			}
+			if ( isset( $skip_dynamic_tracker_tools[ $tool_name ] ) ) {
+				continue;
+			}
 
 			$contract = is_array( $tool_call['_tool_contract'] ?? null )
 				? $tool_call['_tool_contract']
@@ -2856,12 +3793,21 @@ class PressArk_Agent {
 			$kind     = ! empty( $contract['readonly'] )
 				? 'read'
 				: ( 'preview' === ( $contract['capability'] ?? 'confirm' ) ? 'preview' : 'write' );
+			$group    = sanitize_key( (string) ( $contract['group'] ?? '' ) );
+			if ( $this->should_suppress_dynamic_plan_step(
+				$checkpoint->get_execution(),
+				$tool_name,
+				is_array( $tool_call['arguments'] ?? null ) ? (array) $tool_call['arguments'] : array(),
+				$kind,
+				$group
+			) ) {
+				continue;
+			}
 			$step_id   = sanitize_key( 'dynamic_' . $tool_name . '_' . ( $index + 1 ) );
 			if ( isset( $existing_ids[ $step_id ] ) ) {
 				continue;
 			}
 
-			$group = sanitize_key( (string) ( $contract['group'] ?? '' ) );
 			if ( '' === $group ) {
 				$group = 'system';
 			}
@@ -3165,6 +4111,11 @@ class PressArk_Agent {
 			return null;
 		}
 
+		$reply = self::compose_escalation_reply( $reason_codes );
+		if ( '' === $reply ) {
+			return null;
+		}
+
 		$artifact = $this->build_plan_artifact(
 			$checkpoint,
 			array(
@@ -3214,7 +4165,7 @@ class PressArk_Agent {
 			array(
 				'type'           => 'plan_ready',
 				'status'         => 'ready',
-				'reply'          => __( 'The work expanded beyond the original soft plan. Review the updated hard plan before any write previews or mutations continue.', 'pressark' ),
+				'reply'          => $reply,
 				'message'        => PressArk_Plan_Artifact::to_markdown( $artifact ),
 				'plan_markdown'  => PressArk_Plan_Artifact::to_markdown( $artifact ),
 				'plan_steps'     => PressArk_Plan_Artifact::to_plan_steps( $artifact ),
@@ -3617,10 +4568,25 @@ class PressArk_Agent {
 			'message'   => '',
 			'cancelled' => true,
 		), $tool_set, $initial_groups, $checkpoint );
-		$leaked_retry           = false;
+		$leaked_retry              = false;
+		// v5.8.1 (2026-05-13, iter-37): defense-in-depth retry cap for the
+		// Plan Mode synthesis nudge. Without this, a misbehaving model that
+		// keeps emitting prose instead of a checklist burns the full
+		// round_limit (4 in Plan Mode) reloading the same 55kB request.
+		$plan_synthesis_retries    = 0;
+		// v5.8.2 (2026-05-13, iter-38): parallel cap for the earlier
+		// grounding-retry nudge ("Use relevant read-only tools first..."),
+		// which can loop the wrap round when checkpoint_has_grounded_plan_context
+		// returns false despite reads having been done. Without this cap,
+		// Chain B iter38b Shipping Notes (2026-05-13) burned 4 round_limit
+		// slots on post-Keep grounding-retries.
+		$plan_grounding_retries    = 0;
+		// v5.8.11 (2026-05-14): per-loop guard for iter-45 @-syntax recovery.
+		$at_syntax_recovery_signatures = array();
 
 		while ( $round < $round_limit && $this->output_tokens_used < $token_budget ) {
 			$round++;
+			$this->is_post_keep_wrap_round = $this->messages_indicate_post_keep_wrap( $messages );
 
 			// v5.0.1: Wall-clock timeout check.
 			if ( microtime( true ) >= $deadline ) {
@@ -3637,14 +4603,8 @@ class PressArk_Agent {
 
 			$messages = $this->apply_lightweight_compaction( $messages, $round, $checkpoint );
 
-			// v4.3.0: Tier-based mid-loop compaction thresholds.
-			// Free tier compacts sooner to keep rounds cheaper.
-			$compaction_threshold = match ( true ) {
-				PressArk_Entitlements::is_paid_tier( $this->tier )
-					&& in_array( $this->tier, array( 'team', 'agency', 'enterprise' ), true ) => 12000,
-				PressArk_Entitlements::is_paid_tier( $this->tier ) => 8000,
-				default => 5000,
-			};
+			// v4.3.0: Credit-aware mid-loop compaction thresholds.
+			$compaction_threshold = $deep_mode ? 12000 : 8000;
 			$this->refresh_plan_stall_state( $checkpoint );
 			$estimated_tokens = $this->estimate_messages_tokens( $messages );
 			$system_prompt    = $this->build_round_system_prompt(
@@ -3656,6 +4616,11 @@ class PressArk_Agent {
 				$checkpoint,
 				$messages
 			);
+			// v5.6.2: build_round_system_prompt may mutate $tool_set['schemas']
+			// in wrap-round mode (clears tools when the chain is just summarizing).
+			// Refresh $tool_defs so the wrap round actually ships an empty tools
+			// array instead of the one captured at execute_loop entry.
+			$tool_defs        = (array) ( $tool_set['schemas'] ?? array() );
 			$request_budget   = (array) ( $tool_set['budget'] ?? array() );
 
 			if ( $estimated_tokens > $compaction_threshold || $this->should_compact_live_context( $messages, $token_budget, $estimated_tokens, $request_budget ) ) {
@@ -3671,6 +4636,7 @@ class PressArk_Agent {
 					$checkpoint,
 					$messages
 				);
+				$tool_defs         = (array) ( $tool_set['schemas'] ?? array() );
 				$request_budget    = (array) ( $tool_set['budget'] ?? array() );
 			} elseif ( $this->should_prime_context_capsule( $messages, $checkpoint, $token_budget, $request_budget ) ) {
 				$this->prime_context_capsule( $checkpoint, $messages, $round );
@@ -3709,6 +4675,7 @@ class PressArk_Agent {
 				$checkpoint,
 				$messages
 			);
+			$tool_defs        = (array) ( $tool_set['schemas'] ?? array() );
 
 			// Debug logging (enable via PRESSARK_DEBUG constant).
 			if ( defined( 'PRESSARK_DEBUG' ) && PRESSARK_DEBUG ) {
@@ -3899,47 +4866,99 @@ class PressArk_Agent {
 				} elseif ( ! empty( $recovery ) ) {
 					return $this->build_result( $recovery, $tool_set, $initial_groups, $checkpoint );
 				} else {
-				if (
-					$this->planning_requires_grounded_reads()
-					&& ! $this->plan_response_requires_user_input( $text )
-					&& ! $this->checkpoint_has_grounded_plan_context( $checkpoint )
-				) {
-						$messages[] = array(
-							'role'    => 'user',
-							'content' => $this->build_grounding_retry_message( $this->is_soft_plan_mode() && ! $this->is_plan_mode() ),
-						);
-						$this->sync_replay_snapshot( $checkpoint, $messages );
-						$this->record_activity_event(
-							'plan.grounding_required',
-							'grounding_before_plan_response',
-							'retrying',
-							'plan',
-							'The model tried to finalize planning before any grounding reads completed.',
-							array(
-								'round' => $round,
-								'mode'  => $this->is_plan_mode() ? 'hard_plan' : ( $this->is_soft_plan_mode() ? 'soft_plan' : 'none' ),
-							)
-						);
+					// v5.8.9 (2026-05-14, iter-45): @-syntax detector for text-only writes.
+					$at_recovery = $this->maybe_recover_at_syntax_tool_call( $text, $messages, $round, $emit_fn, $at_syntax_recovery_signatures );
+					if ( ! empty( $at_recovery['retry'] ) ) {
 						continue;
 					}
+					if ( ! empty( $at_recovery['reconstructed_tool_call'] ) ) {
+						$tool_calls = array( $at_recovery['reconstructed_tool_call'] );
+					} elseif ( ! empty( $at_recovery ) ) {
+						return $this->build_result( $at_recovery, $tool_set, $initial_groups, $checkpoint );
+					} else {
+						$empty_data_final_response = '' !== trim( $text ) && self::last_tool_result_was_empty_success( $messages );
+						if (
+							$this->planning_requires_grounded_reads()
+							&& ! $this->plan_response_requires_user_input( $text )
+							&& ! $this->checkpoint_has_grounded_plan_context( $checkpoint )
+							&& ! $empty_data_final_response
+							// v5.8.2 (2026-05-13, iter-38): same wrap-round bypass as the
+							// downstream synthesis-retry. Post-Keep rounds are summarizing
+							// work that's already done; injecting "Use relevant read-only
+							// tools first..." here makes the model loop emitting wrap
+							// variants for the rest of round_limit. Observed Chain B
+							// iter38b Shipping Notes (2026-05-13): R5/R6/R7 each fired
+							// this retry after the Keep had landed and the wrap text had
+							// already shipped at R4.
+							&& ! $this->messages_indicate_post_keep_wrap( $messages )
+							// Defense-in-depth retry cap. Same rationale as the
+							// synthesis-retry cap from iter-37.
+							&& $plan_grounding_retries < 1
+						) {
+							$messages[] = array(
+								'role'    => 'user',
+								'content' => $this->build_grounding_retry_message( $this->is_soft_plan_mode() && ! $this->is_plan_mode() ),
+							);
+							$this->sync_replay_snapshot( $checkpoint, $messages );
+							$plan_grounding_retries++;
+							$this->record_activity_event(
+								'plan.grounding_required',
+								'grounding_before_plan_response',
+								'retrying',
+								'plan',
+								'The model tried to finalize planning before any grounding reads completed.',
+								array(
+									'round' => $round,
+									'mode'  => $this->is_plan_mode() ? 'hard_plan' : ( $this->is_soft_plan_mode() ? 'soft_plan' : 'none' ),
+									'retry' => $plan_grounding_retries,
+								)
+							);
+							continue;
+						}
 
-					if (
-						$this->is_plan_mode()
-						&& $this->checkpoint_has_grounded_plan_context( $checkpoint )
-						&& ! $this->result_has_explicit_plan_payload(
-							array(
-								'type'    => 'final_response',
-								'reply'   => $text,
-								'message' => $text,
-							),
-							$text
-						)
+						if (
+							$this->is_plan_mode()
+							&& $this->checkpoint_has_grounded_plan_context( $checkpoint )
+							&& ! $this->result_has_explicit_plan_payload(
+								array(
+									'type'    => 'final_response',
+									'reply'   => $text,
+									'message' => $text,
+								),
+								$text
+							)
+						&& ! $empty_data_final_response
+						// v5.8.1 (2026-05-13, iter-37): two escape hatches.
+						// (1) The model concluded research and reported the
+						//     requested state is ALREADY SATISFIED — no plan
+						//     is needed. Forcing a "write the checklist now"
+						//     retry produces a redundant Plan card and burns
+						//     a full round's request. Observed Chain G FAQ
+						//     repro (2026-05-13): 3 wasted rounds, ~165k tok.
+						// (2) Hard cap on how many times this nudge fires. A
+						//     misbehaving model that ignores the nudge twice
+						//     will keep ignoring it; better to surface the
+						//     prose reply than burn the rest of round_limit.
+						&& ! $this->plan_response_concludes_no_action( $text )
+						&& $plan_synthesis_retries < 1
+						// v5.8.2 (2026-05-13, iter-38): third escape hatch.
+						// (3) Post-Keep wrap rounds (latest user message is a
+						//     [Continue] envelope) have already done the
+						//     planning + execution work. Forcing the model to
+						//     emit "a numbered checklist" produces a
+						//     retrospective list that downstream
+						//     normalize_result_for_mode re-coerces to
+						//     plan_ready, dropping the user's wrap message
+						//     and rendering a confusing fresh Plan card.
+						//     Observed Chain B post-Keep wrap (2026-05-13).
+						&& ! $this->messages_indicate_post_keep_wrap( $messages )
 					) {
 						$messages[] = array(
 							'role'    => 'user',
 							'content' => $this->build_plan_synthesis_retry_message(),
 						);
 						$this->sync_replay_snapshot( $checkpoint, $messages );
+						$plan_synthesis_retries++;
 						$this->record_activity_event(
 							'plan.checklist_required',
 							'grounded_checklist_missing',
@@ -3949,18 +4968,85 @@ class PressArk_Agent {
 							array(
 								'round' => $round,
 								'mode'  => 'hard_plan',
+								'retry' => $plan_synthesis_retries,
 							)
 						);
 						continue;
 					}
 
+					if ( $this->should_fail_empty_approved_plan_execution_response( $text, $checkpoint ) ) {
+						$message = 'The assistant response was interrupted before a preview or change could be prepared. No changes were made. Please retry the execution.';
+						$this->record_activity_event(
+							'agent.empty_execute_response_failed',
+							'empty_approved_plan_execution_response',
+							'failed',
+							'agent',
+							'Stopped an approved plan execution after the assistant returned an empty response before preparing a preview or change.',
+							array(
+								'round' => $round,
+							)
+						);
+						return $this->build_result(
+							array(
+								'type'          => 'final_response',
+								'message'       => $message,
+								'reply'         => $message,
+								'is_error'      => true,
+								'error'         => 'empty_approved_plan_execution_response',
+								'exit_reason'   => 'empty_approved_plan_execution_response',
+								'failure_class' => class_exists( 'PressArk_AI_Connector' )
+									? PressArk_AI_Connector::FAILURE_PROVIDER_ERROR
+									: 'provider_error',
+							),
+							$tool_set,
+							$initial_groups,
+							$checkpoint
+						);
+					}
+
 					if ( empty( $text ) && $round > 1 ) {
 						$text = 'I reviewed the data but wasn\'t able to produce a useful response. Try rephrasing or providing more detail about what you need.';
 					}
-					return $this->build_result( array(
+					// v5.8.2 (2026-05-13, iter-38): tell the frontend that any
+					// Plan Mode card from round 1 is now stale. iter-37 stopped
+					// the wasted retry rounds; this stops the stale Plan card
+					// from sitting in the chat asking the user to Execute the
+					// very plan the model just concluded was unnecessary.
+					// Observed Chain G FAQ repro (2026-05-13): post-iter-37
+					// the 3-round chain completed cleanly but the R1 Plan card
+					// still rendered Execute/Revise/Reject buttons next to a
+					// "no changes needed" reply.
+					$result_payload = array(
 						'type'    => 'final_response',
 						'message' => $text,
-					), $tool_set, $initial_groups, $checkpoint );
+					);
+					if ( $empty_data_final_response ) {
+						$result_payload['empty_data_final_response'] = true;
+						$result_payload['exit_reason'] = 'empty_data_final_response';
+						$result_payload['plan_card_obsolete'] = true;
+						$result_payload['plan_card_obsolete_reason'] = 'empty_data_final_response';
+						$this->record_activity_event(
+							'agent.empty_data_final_response',
+							'accepted_empty_success_text_wrap',
+							'accepted',
+							'agent',
+							'Accepted a text final response after the latest successful tool result returned empty data.',
+							array(
+								'round' => $round,
+								'mode'  => $this->is_plan_mode() ? 'hard_plan' : ( $this->is_soft_plan_mode() ? 'soft_plan' : 'none' ),
+							)
+						);
+					}
+					if (
+						$this->is_plan_mode()
+						&& '' !== trim( $text )
+						&& $this->plan_response_concludes_no_action( $text )
+					) {
+						$result_payload['plan_card_obsolete'] = true;
+						$result_payload['plan_card_obsolete_reason'] = 'model_concluded_no_action';
+					}
+					return $this->build_result( $result_payload, $tool_set, $initial_groups, $checkpoint );
+				}
 				}
 			}
 
@@ -3980,11 +5066,22 @@ class PressArk_Agent {
 					} elseif ( ! empty( $recovery ) ) {
 						return $this->build_result( $recovery, $tool_set, $initial_groups, $checkpoint );
 					} else {
+						// v5.8.9 (2026-05-14, iter-45): recover text-only @tool args before falling into parse failure.
+						$at_recovery = $this->maybe_recover_at_syntax_tool_call( $text, $messages, $round, $emit_fn, $at_syntax_recovery_signatures );
+						if ( ! empty( $at_recovery['retry'] ) ) {
+							continue;
+						}
+						if ( ! empty( $at_recovery['reconstructed_tool_call'] ) ) {
+							$tool_calls = array( $at_recovery['reconstructed_tool_call'] );
+						} elseif ( ! empty( $at_recovery ) ) {
+							return $this->build_result( $at_recovery, $tool_set, $initial_groups, $checkpoint );
+						} else {
 						return $this->build_result( array(
 							'type'    => 'final_response',
 							'message' => $text ?: 'The AI returned an unexpected response format. No changes were made. Please try again.',
 							'error'   => 'tool_call_parse_failure',
 						), $tool_set, $initial_groups, $checkpoint );
+						}
 					}
 				}
 			}
@@ -4280,6 +5377,45 @@ class PressArk_Agent {
 						$this->append_tool_results( $messages, $preview_failures, $provider );
 						$this->sync_replay_snapshot( $checkpoint, $messages );
 					}
+
+					// v5.7.0 (2026-05-12): When the preview's structured error
+					// is recoverable (model emitted unsupported field names —
+					// see iter-19b's tool-aware unsupported_fix_keys path),
+					// continue the loop so the model gets a fresh round with
+					// the structured tool_result in context and can self-correct.
+					// Old behavior: returned `final_response` with the technical
+					// error string rendered straight into the chat panel, which
+					// (a) exposed harness-internal feedback to the end user and
+					// (b) terminated the chain — the model never got a chance
+					// to retry. The fix is below: tool_results are still
+					// populated (model SEES the error), but we skip the
+					// premature return and let the loop run another LLM round.
+					// Recoverable errors are those carrying a structured `error`
+					// code we know the model can act on. Non-structured / fatal
+					// errors still terminate via the existing final_response
+					// path so we don't loop forever on a hopeless case.
+					// v5.7.12 (2026-05-13): Expand recoverable list to include
+					// preview_staging_empty. That error carries a clear, model-
+					// actionable message ("Re-read the target with read_content
+					// and retry using the canonical field names") — exactly the
+					// kind of self-correctable shape error iter-20 routes back
+					// to the LLM as tool_result. Pre-iter-32, an empty-diff
+					// preview terminated the chain even though the model could
+					// have retried with correct args on the next round.
+					$recoverable_preview_errors = array(
+						'unsupported_fix_keys',
+						'preview_staging_empty',
+					);
+					$preview_error_code = sanitize_key( (string) ( $session['error'] ?? '' ) );
+					if ( in_array( $preview_error_code, $recoverable_preview_errors, true ) ) {
+						$emit_fn( 'step', array(
+							'status' => 'preview_retry',
+							'label'  => 'Retrying with corrected arguments',
+							'tool'   => $preview_payloads[0]['name'] ?? '',
+						) );
+						continue;
+					}
+
 					return $this->build_result( array(
 						'type'     => 'final_response',
 						'message'  => sanitize_text_field( (string) $session['message'] ),
@@ -4335,14 +5471,12 @@ class PressArk_Agent {
 		}
 
 		// v3.2.0: Explicit exit reason for observability.
-		// v3.7.4: Differentiate free-tier (upgrade nudge) from paid-tier (safety ceiling).
+		// v3.7.4: Differentiate token-budget exits from safety step ceilings.
 		$exit_reason = $this->output_tokens_used >= $token_budget ? 'token_budget' : 'round_limit';
 		if ( 'token_budget' === $exit_reason ) {
 			$exit_msg = 'I reached the token budget for this session. Here\'s what I found so far — you can continue in a follow-up message.';
-		} elseif ( PressArk_Entitlements::is_paid_tier( $this->tier ) ) {
-			$exit_msg = 'I reached the safety step limit for this session. This usually means the task needs to be broken into smaller pieces — try a more focused request to finish up.';
 		} else {
-			$exit_msg = 'I reached the maximum number of steps for this request. Here\'s what I found so far — upgrade to a paid plan for longer multi-step tasks.';
+			$exit_msg = 'I reached the safety step limit for this session. This usually means the task needs to be broken into smaller pieces — try a more focused request to finish up.';
 		}
 		$this->prime_context_capsule( $checkpoint, $messages, $round );
 		return $this->build_result( array(
@@ -5021,6 +6155,32 @@ class PressArk_Agent {
 			$checkpoint->set_plan_steps( (array) ( $tc['arguments']['steps'] ?? array() ) );
 			$steps = $checkpoint->get_plan_steps();
 
+			// v5.6.3: When the model marks a plan step `completed` with a known
+			// tool_name, also mark the matching dynamic execution.tasks entry
+			// done. Closes the O-2 stale-Remaining gap for non-write tools
+			// (read_content, search_knowledge, update_plan itself) where
+			// record_write doesn't fire.
+			if ( class_exists( 'PressArk_Execution_Ledger' ) ) {
+				$execution = PressArk_Execution_Ledger::adopt_plan_steps( $checkpoint->get_execution(), $steps );
+				$mutated   = false;
+				foreach ( $steps as $step ) {
+					if ( ! is_array( $step ) ) {
+						continue;
+					}
+					$status    = sanitize_key( (string) ( $step['status'] ?? '' ) );
+					$tool_name = sanitize_key( (string) ( $step['tool_name'] ?? '' ) );
+					if ( 'completed' !== $status || '' === $tool_name ) {
+						continue;
+					}
+					$evidence  = sanitize_text_field( (string) ( $step['activeForm'] ?? $step['content'] ?? "{$tool_name} completed via plan" ) );
+					$execution = PressArk_Execution_Ledger::mark_dynamic_task_done_by_tool( $execution, $tool_name, $evidence );
+					$mutated   = true;
+				}
+				if ( $mutated || ! empty( $steps ) ) {
+					$checkpoint->set_execution( $execution );
+				}
+			}
+
 			if ( $this->is_plan_mode() ) {
 				$checkpoint->set_plan_phase( 'planning' );
 				if ( method_exists( $checkpoint, 'set_plan_status' ) ) {
@@ -5110,9 +6270,18 @@ class PressArk_Agent {
 			'model'              => $this->actual_model,
 			'agent_rounds'       => $this->model_rounds,
 			'task_type'          => $this->task_type,
-			'suggestions'        => $this->is_plan_mode()
+			// v5.8.3 (2026-05-13, iter-39): emit suggestions for cleanly
+			// terminated Plan Mode chains (no_action, plan_no_action exit,
+			// or post-Keep wrap rounds). Without this, Chain G ("Add FAQ to
+			// menu" when FAQ already in menu) ended with NO chips — a
+			// dead-end UX. iter-37/38 fixed the runtime token waste but the
+			// observer was still stuck with no obvious next action.
+			'suggestions'        => $this->should_suppress_suggestions( $data )
 				? array()
-				: $this->generate_suggestions( $data['message'] ?? '' ),
+				: $this->generate_suggestions(
+					$data['message'] ?? $data['reply'] ?? '',
+					$data
+				),
 			'mode'               => $this->mode,
 			'planning_mode'      => $this->planning_mode,
 			'planning_decision'  => $this->planning_decision,
@@ -5193,23 +6362,254 @@ class PressArk_Agent {
 	 * @param string $response_text The AI response text.
 	 * @return string[] Up to 3 suggestion strings.
 	 */
-	private function generate_suggestions( string $response_text ): array {
+	// v5.8.3 (2026-05-13, iter-39): suppress suggestions only when the chain
+	// is still in an interactive Plan Mode state (user is about to see the
+	// plan_ready card or a preview/confirm card). When the chain has cleanly
+	// terminated — via my iter-38 no_action or post_keep_wrap paths, or via
+	// any error/cancellation — suggestions help the user pick the next move.
+	private function should_suppress_suggestions( array $data ): bool {
+		$type   = sanitize_key( (string) ( $data['type'] ?? 'final_response' ) );
+		$status = sanitize_key( (string) ( $data['status'] ?? '' ) );
+		$reason = sanitize_key( (string) ( $data['exit_reason'] ?? '' ) );
+
+		// Plan-mode in mid-flight: classify or planning has emitted a
+		// plan_ready card. Chips here would compete with Execute/Revise/Reject
+		// and confuse the operator. Also covers soft_plan upgrade-to-hard_plan
+		// cards where mode flips during the run.
+		if ( 'plan_ready' === $type ) {
+			return true;
+		}
+		// Preview/confirm cards have their own actions; chips would steal focus.
+		if ( in_array( $type, array( 'preview', 'confirm_card' ), true ) ) {
+			return true;
+		}
+		// Permission gates / queued runs / explicit cancellations.
+		if ( in_array( $type, array( 'permission_required', 'queued' ), true ) ) {
+			return true;
+		}
+		if ( ! empty( $data['cancelled'] ) || ! empty( $data['is_error'] ) ) {
+			return true;
+		}
+		// Status==='exploring' means a Plan Mode chain that's still seeking
+		// grounding; emit suggestions only once it has terminated.
+		if ( 'exploring' === $status ) {
+			return true;
+		}
+		// v5.8.8 (2026-05-14, iter-44): suppress chips on needs_input clarification terminals.
+		// Day-2 S4/S7 ended with model questions; chips would distract from the user's answer.
+		if ( 'needs_input' === $status && 'needs_input' === $reason ) {
+			return true;
+		}
+		// All other Plan Mode exits — including no_action, plan_no_action,
+		// post_keep_wrap, progress_complete — should get suggestions.
+		unset( $reason );
+		return false;
+	}
+
+	// v5.8.7 (2026-05-14, iter-43): commerce and user reads need chips from the same shared tool-trail dispatch as diagnostics.
+	private static function build_tool_context_suggestions( array $tools_used ): array {
+		$tools_used = array_values( array_unique( array_filter( array_map(
+			'sanitize_key',
+			array_map( 'strval', $tools_used )
+		) ) ) );
+
+		if ( empty( $tools_used ) ) {
+			return array();
+		}
+
+		$dispatch = array(
+			array(
+				'tools' => array( 'measure_page_speed' ),
+				'chips' => array(
+					'Run another speed test with caching off',
+					'Show me the longest scripts',
+					'Suggest a cache plugin',
+				),
+			),
+			array(
+				'tools' => array( 'inspect_hooks' ),
+				'chips' => array(
+					'Show me the slowest hooks',
+					'Disable a hook',
+				),
+			),
+			array(
+				'tools' => array( 'diagnose_cache' ),
+				'chips' => array(
+					'Install Redis object cache',
+					'Show me caching plugin options',
+				),
+			),
+			array(
+				'tools' => array( 'analyze_seo' ),
+				'chips' => array(
+					'Fix the highest-impact issue',
+					'Re-scan after changes',
+				),
+			),
+			array(
+				'tools' => array( 'scan_security' ),
+				'chips' => array(
+					'Auto-fix what you can',
+					'Show the highest-risk finding first',
+				),
+			),
+			array(
+				'tools' => array( 'inventory_report', 'stock_report' ),
+				'chips' => array(
+					'Show products that are out of stock',
+					'Update stock quantities',
+					'Show me top-selling products',
+				),
+			),
+			array(
+				'tools' => array( 'get_product', 'analyze_store', 'get_products_on_sale', 'list_variations', 'list_product_attributes' ),
+				'chips' => array(
+					'Check product inventory',
+					'Show products on sale',
+					'Find products missing details',
+				),
+			),
+			array(
+				'tools' => array( 'list_orders', 'get_order', 'get_order_statuses' ),
+				'chips' => array(
+					'Show recent orders',
+					'Check failed orders',
+					'Show this month\'s revenue',
+				),
+			),
+			array(
+				'tools' => array( 'sales_summary', 'revenue_report', 'get_top_sellers', 'category_report' ),
+				'chips' => array(
+					'Show top-selling products',
+					'Break down sales by category',
+					'Show recent orders',
+				),
+			),
+			array(
+				'tools' => array( 'list_users', 'get_user' ),
+				'chips' => array(
+					'List users by role',
+					'Show administrator details',
+					'Change someone\'s role',
+				),
+			),
+		);
+
+		$suggestions = array();
+		foreach ( $dispatch as $row ) {
+			if ( empty( array_intersect( (array) $row['tools'], $tools_used ) ) ) {
+				continue;
+			}
+			foreach ( (array) $row['chips'] as $chip ) {
+				$suggestions[] = $chip;
+			}
+		}
+
+		return array_values( array_unique( array_filter( $suggestions ) ) );
+	}
+
+	private function generate_suggestions( string $response_text, array $data = array() ): array {
 		if ( '' === $response_text ) {
 			return array();
+		}
+
+		// v5.8.5 (2026-05-14, iter-41): task_type is fixed at classify time,
+		// so filter canned chips through the actual tool trail before showing
+		// follow-ups like SEO fixes or undo actions.
+		$tools_used = array_values( array_unique( array_filter( array_map(
+			static fn( $s ) => sanitize_key( (string) ( is_array( $s ) ? ( $s['tool'] ?? '' ) : '' ) ),
+			(array) $this->steps
+		), static fn( $tool ) => '' !== $tool && '_' !== $tool[0] ) ) );
+
+		$default_suggestions = array( 'Check my SEO', 'Any issues on my site?', 'What\'s new in my store?' );
+		$finalize_suggestions = static function ( array $suggestions ) use ( $default_suggestions ): array {
+			$suggestions = array_values( array_unique( array_filter( array_map( 'strval', $suggestions ) ) ) );
+			if ( count( $suggestions ) < 1 ) {
+				$suggestions = $default_suggestions;
+			}
+			return array_slice( $suggestions, 0, 3 );
+		};
+
+		$has_tool_matching = static function ( array $needles ) use ( $tools_used ): bool {
+			foreach ( $tools_used as $tool ) {
+				foreach ( $needles as $needle ) {
+					if ( $tool === $needle || false !== strpos( $tool, $needle ) ) {
+						return true;
+					}
+				}
+			}
+			return false;
+		};
+
+		$tool_is_write_like = static function ( string $tool ): bool {
+			if ( '' === $tool ) {
+				return false;
+			}
+			if ( class_exists( 'PressArk_Operation_Registry' ) ) {
+				$kind = sanitize_key( (string) PressArk_Operation_Registry::classify( $tool ) );
+				return in_array( $kind, array( 'preview', 'write', 'confirm' ), true );
+			}
+			return (bool) preg_match( '/^(create_|update_|edit_|rewrite_|delete_|trash_|fix_|apply_|bulk_)/', $tool );
+		};
+
+		$applied_writes = false;
+		$preview_or_write_tool_ran = false;
+		$write_ignore_tools = array( 'update_plan', 'load_tools', 'discover_tools', 'read_resource' );
+		foreach ( (array) $this->steps as $step ) {
+			if ( ! is_array( $step ) ) {
+				continue;
+			}
+			$tool = sanitize_key( (string) ( $step['tool'] ?? '' ) );
+			if ( '' === $tool || in_array( $tool, $write_ignore_tools, true ) || ! $tool_is_write_like( $tool ) ) {
+				continue;
+			}
+			$preview_or_write_tool_ran = true;
+			if ( 'done' === sanitize_key( (string) ( $step['status'] ?? '' ) ) ) {
+				$applied_writes = true;
+				break;
+			}
+		}
+
+		$response_plain = wp_strip_all_tags( $response_text );
+		$seo_tool_used = $has_tool_matching( array( 'fix_seo', 'analyze_seo', 'seo_audit', 'generate_meta', 'seo', 'meta' ) );
+		$security_tool_used = $has_tool_matching( array( 'scan_security', 'fix_security', 'security', 'vulnerab', 'malware' ) );
+		$seo_surface = $seo_tool_used || (bool) preg_match( '/\b(?:seo|meta)\b/i', $response_plain );
+		$security_surface = $security_tool_used || (bool) preg_match( '/\b(?:vulnerab|security)\b/i', $response_plain );
+
+		// v5.8.3 (2026-05-13, iter-39): no-action / wrap exits — suggest
+		// next-explore moves that match the observed surface. Generic chips
+		// like "Undo the changes" are misleading when no change was made;
+		// pick context-aware reads instead.
+		$exit_reason = sanitize_key( (string) ( $data['exit_reason'] ?? '' ) );
+		$status      = sanitize_key( (string) ( $data['status'] ?? '' ) );
+		if (
+			in_array( $exit_reason, array( 'plan_no_action', 'progress_complete' ), true )
+			|| 'no_action' === $status
+			|| ! empty( $data['plan_card_obsolete'] )
+		) {
+			return $this->build_no_action_suggestions( $response_text );
+		}
+
+		$tool_context_suggestions = self::build_tool_context_suggestions( $tools_used );
+		if ( ! empty( $tool_context_suggestions ) ) {
+			return $finalize_suggestions( $tool_context_suggestions );
 		}
 
 		$type = $this->task_type;
 
 		if ( in_array( $type, array( 'analyze', 'diagnose' ), true ) ) {
 			$suggestions = array();
-			if ( false !== stripos( $response_text, 'seo' ) || false !== stripos( $response_text, 'meta' ) ) {
+			if ( $seo_surface ) {
 				$suggestions[] = 'Fix the SEO issues';
 			}
-			if ( false !== stripos( $response_text, 'security' ) || false !== stripos( $response_text, 'vulnerab' ) ) {
+			if ( $security_surface ) {
 				$suggestions[] = 'Fix the security issues';
 			}
-			$suggestions[] = 'Auto-fix what you can';
-			return array_slice( $suggestions, 0, 3 );
+			if ( $seo_surface || $security_surface ) {
+				$suggestions[] = 'Auto-fix what you can';
+			}
+			return $finalize_suggestions( $suggestions );
 		}
 
 		if ( 'generate' === $type ) {
@@ -5220,19 +6620,107 @@ class PressArk_Agent {
 				$suggestions[] = 'Make it longer';
 			}
 			$suggestions[] = 'Change the tone';
-			return array_slice( $suggestions, 0, 3 );
+			return $finalize_suggestions( $suggestions );
 		}
 
 		if ( 'edit' === $type ) {
-			return array( 'How does it look now?', 'Check the SEO too', 'Undo the changes' );
+			$suggestions = array();
+			if ( $preview_or_write_tool_ran && $applied_writes ) {
+				$suggestions[] = 'How does it look now?';
+			}
+			if ( ! $seo_tool_used ) {
+				$suggestions[] = 'Check the SEO too';
+			}
+			if ( $applied_writes ) {
+				$suggestions[] = 'Undo the changes';
+			}
+			return $finalize_suggestions( $suggestions );
 		}
 
 		if ( 'code' === $type ) {
-			return array( 'Run it again', 'Explain what changed', 'Check for issues' );
+			return $finalize_suggestions( array( 'Run it again', 'Explain what changed', 'Check for issues' ) );
 		}
 
 		// Fallback for chat and other task types.
-		return array( 'Check my SEO', 'Any issues on my site?', 'What\'s new in my store?' );
+		return $finalize_suggestions( $default_suggestions );
+	}
+
+	// v5.8.3 (2026-05-13, iter-39): build chips for no-action / wrap exits.
+	// Pick categories of next-action by sniffing the response text and the
+	// most-recent loaded groups. The chips are deliberately conservative —
+	// safe explorations or natural follow-ups, never a write that the user
+	// didn't ask for.
+	private function build_no_action_suggestions( string $response_text ): array {
+		$text   = strtolower( wp_strip_all_tags( $response_text ) );
+		$groups = array_map( 'strval', (array) $this->loaded_groups );
+		$has_group = static function ( string $needle ) use ( $groups ): bool {
+			foreach ( $groups as $g ) {
+				if ( false !== stripos( $g, $needle ) ) {
+					return true;
+				}
+			}
+			return false;
+		};
+
+		$suggestions = array();
+
+		// Menu / navigation surface — "already in the menu", "menu", "nav".
+		if (
+			false !== strpos( $text, 'menu' )
+			|| false !== strpos( $text, 'navigation' )
+			|| $has_group( 'menu' )
+		) {
+			$suggestions[] = 'Show me all menu items';
+			$suggestions[] = 'Reorder the menu';
+		}
+
+		// Page / post surface — "page exists", "already published", "is live at".
+		if (
+			false !== strpos( $text, 'page' )
+			|| false !== strpos( $text, 'post' )
+			|| false !== strpos( $text, 'published' )
+			|| $has_group( 'content' )
+		) {
+			$suggestions[] = 'Edit this page';
+			$suggestions[] = 'Check its SEO';
+		}
+
+		// SEO / security / performance scan results — "no issues found".
+		if ( false !== strpos( $text, 'seo' ) || false !== strpos( $text, 'meta' ) ) {
+			$suggestions[] = 'Run a full SEO audit';
+		}
+		if ( false !== strpos( $text, 'security' ) || false !== strpos( $text, 'vulnerab' ) ) {
+			$suggestions[] = 'Run a deeper security scan';
+		}
+
+		if ( empty( $suggestions ) ) {
+			// v5.8.5 (2026-05-14, iter-41): no-action text can be terse;
+			// use the completed tool trail before falling back to generic chat.
+			$tools_used = array_values( array_unique( array_filter( array_map(
+				static fn( $s ) => sanitize_key( (string) ( is_array( $s ) ? ( $s['tool'] ?? '' ) : '' ) ),
+				(array) $this->steps
+			), static fn( $tool ) => '' !== $tool && '_' !== $tool[0] ) ) );
+
+			$tool_suggestions = self::build_tool_context_suggestions( $tools_used );
+			if ( ! empty( $tool_suggestions ) ) {
+				return array_slice( array_values( array_unique( $tool_suggestions ) ), 0, 3 );
+			}
+		}
+
+		// Always-useful continuation prompts when we don't have a specific cue.
+		if ( empty( $suggestions ) ) {
+			$suggestions = array(
+				'What else needs attention?',
+				'Any issues on my site?',
+				'Show me my site overview',
+			);
+		} else {
+			// Cap the cue-derived list and add one safe explore fallback.
+			$suggestions = array_slice( array_values( array_unique( $suggestions ) ), 0, 2 );
+			$suggestions[] = 'What else needs attention?';
+		}
+
+		return array_slice( $suggestions, 0, 3 );
 	}
 
 	/**
@@ -5307,6 +6795,221 @@ class PressArk_Agent {
 			'message' => 'I attempted to perform the requested action but encountered a formatting issue. Please try again or switch to a different AI model in PressArk settings for more reliable tool execution.',
 			'error'   => 'leaked_tool_call_retry_exhausted',
 		);
+	}
+
+	/**
+	 * Recover old @tool_name key="value" action syntax emitted as assistant text.
+	 *
+	 * This is intentionally separate from leaked confirm-card recovery: @-syntax
+	 * already names the intended tool and args, so retrying the model wastes the
+	 * exact rounds this detector is meant to save.
+	 *
+	 * @param string   $text      Extracted assistant text.
+	 * @param array    &$messages Conversation messages array, kept for parity with recovery hooks.
+	 * @param int      $round     Current execution round.
+	 * @param callable $emit_fn   SSE emit callback, kept for parity with recovery hooks.
+	 * @param array    &$recovered_signatures Per-loop recovered action signatures.
+	 * @return array|null Reconstructed tool call payload, final-response payload, or null when no @-syntax was detected.
+	 */
+	private function maybe_recover_at_syntax_tool_call(
+		string $text,
+		array &$messages,
+		int $round,
+		callable $emit_fn,
+		array &$recovered_signatures
+	): ?array {
+		$tool_call = $this->reconstruct_at_syntax_tool_call( $text );
+		if ( empty( $tool_call ) ) {
+			return null;
+		}
+
+		$signature = md5(
+			sanitize_key( (string) ( $tool_call['name'] ?? '' ) )
+			. ':'
+			. wp_json_encode( is_array( $tool_call['arguments'] ?? null ) ? $tool_call['arguments'] : array() )
+		);
+		if ( isset( $recovered_signatures[ $signature ] ) ) {
+			$this->record_activity_event(
+				'tool.recovery_skipped',
+				'at_syntax_repeat_guard',
+				'blocked',
+				'agent',
+				'Blocked a repeated text-only @-syntax tool call recovery in the same loop.',
+				array(
+					'round' => $round,
+					'tool'  => sanitize_key( (string) ( $tool_call['name'] ?? '' ) ),
+				)
+			);
+
+			return array(
+				'type'    => 'final_response',
+				'message' => 'I stopped before repeating the same recovered action again. Please retry the request if you still want me to continue.',
+				'error'   => 'at_syntax_recovery_repeat_guard',
+			);
+		}
+		$recovered_signatures[ $signature ] = true;
+
+		$this->record_activity_event(
+			'tool.recovered',
+			'at_syntax_tool_call',
+			'recovered',
+			'agent',
+			'Recovered a text-only @-syntax tool call without a retry round.',
+			array(
+				'round' => $round,
+				'tool'  => sanitize_key( (string) ( $tool_call['name'] ?? '' ) ),
+			)
+		);
+
+		PressArk_Error_Tracker::debug(
+			'Agent',
+			sprintf( 'Recovered @-syntax tool call in round %d as %s', $round, $tool_call['name'] ?? 'unknown' )
+		);
+
+		return array(
+			'reconstructed_tool_call' => $tool_call,
+		);
+	}
+
+	/**
+	 * Parse one strict @tool_name args line outside markdown code blocks.
+	 *
+	 * @param string $text Assistant text content.
+	 * @return array|null
+	 */
+	private function reconstruct_at_syntax_tool_call( string $text ): ?array {
+		$text = trim( $this->strip_markdown_code_blocks( $text ) );
+		if ( '' === $text ) {
+			return null;
+		}
+
+		if ( ! preg_match_all( '/^[ \t]*@([a-z][a-z0-9_]{0,39})(?:[ \t]+([^\r\n]*))?[ \t]*$/m', $text, $matches, PREG_SET_ORDER ) ) {
+			return null;
+		}
+
+		foreach ( $matches as $match ) {
+			$raw_name = sanitize_key( (string) ( $match[1] ?? '' ) );
+			if ( '' === $raw_name || false === strpos( $raw_name, '_' ) ) {
+				continue;
+			}
+
+			if ( ! class_exists( 'PressArk_Operation_Registry' ) || ! method_exists( 'PressArk_Operation_Registry', 'exists' ) ) {
+				continue;
+			}
+
+			$tool_name = PressArk_Operation_Registry::resolve_alias( $raw_name );
+			if ( ! PressArk_Operation_Registry::exists( $tool_name ) ) {
+				continue;
+			}
+
+			$argument_text = trim( (string) ( $match[2] ?? '' ) );
+			$arguments     = $this->parse_at_syntax_tool_arguments( $argument_text );
+			if ( '' !== $argument_text && empty( $arguments ) ) {
+				continue;
+			}
+
+			$arguments = $this->normalize_at_syntax_tool_arguments( $tool_name, $arguments );
+
+			return array(
+				'id'        => 'recovered_at_' . substr( md5( $tool_name . ':' . wp_json_encode( $arguments ) . ':' . $text ), 0, 12 ),
+				'name'      => $tool_name,
+				'arguments' => $arguments,
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Remove fenced markdown blocks before scanning for executable @-syntax.
+	 */
+	private function strip_markdown_code_blocks( string $text ): string {
+		$stripped = preg_replace( '/```[\s\S]*?```/', '', $text );
+		return is_string( $stripped ) ? $stripped : $text;
+	}
+
+	/**
+	 * Parse strict key=value pairs or a single JSON object after an @tool_name.
+	 *
+	 * @param string $argument_text Raw argument text after the tool name.
+	 * @return array<string,mixed>
+	 */
+	private function parse_at_syntax_tool_arguments( string $argument_text ): array {
+		$argument_text = trim( $argument_text );
+		if ( '' === $argument_text ) {
+			return array();
+		}
+
+		if ( str_starts_with( $argument_text, '{' ) && str_ends_with( $argument_text, '}' ) ) {
+			$decoded = json_decode( $argument_text, true );
+			return is_array( $decoded ) ? $decoded : array();
+		}
+
+		$arguments = array();
+		$offset    = 0;
+		$length    = strlen( $argument_text );
+		$pattern   = '/\G\s*,?\s*([a-z_][a-z0-9_]*)\s*=\s*("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|[^,\s]+)/i';
+
+		while ( $offset < $length ) {
+			if ( ! preg_match( $pattern, $argument_text, $match, PREG_OFFSET_CAPTURE, $offset ) ) {
+				return '' === trim( substr( $argument_text, $offset ), " \t\r\n," ) ? $arguments : array();
+			}
+
+			$full = (string) ( $match[0][0] ?? '' );
+			if ( '' === $full ) {
+				return array();
+			}
+
+			$key   = sanitize_key( (string) ( $match[1][0] ?? '' ) );
+			$value = trim( (string) ( $match[2][0] ?? '' ) );
+			if ( '' === $key || '' === $value ) {
+				return array();
+			}
+
+			$arguments[ $key ] = $this->normalize_leaked_argument_value( $value );
+			$offset            = (int) ( $match[0][1] ?? $offset ) + strlen( $full );
+		}
+
+		return $arguments;
+	}
+
+	/**
+	 * Map old flat @action args onto canonical nested contracts where obvious.
+	 *
+	 * @param string $tool_name Tool name after alias resolution.
+	 * @param array  $arguments Parsed scalar arguments.
+	 * @return array
+	 */
+	private function normalize_at_syntax_tool_arguments( string $tool_name, array $arguments ): array {
+		if ( empty( $arguments ) || isset( $arguments['changes'] ) || ! class_exists( 'PressArk_Operation_Registry' ) ) {
+			return $arguments;
+		}
+
+		$contract = PressArk_Operation_Registry::get_parameter_contract( $tool_name );
+		if ( ! is_array( $contract ) ) {
+			return $arguments;
+		}
+
+		$properties     = is_array( $contract['properties'] ?? null ) ? $contract['properties'] : array();
+		$changes_schema = is_array( $properties['changes'] ?? null ) ? $properties['changes'] : array();
+		$change_props   = is_array( $changes_schema['properties'] ?? null ) ? array_keys( $changes_schema['properties'] ) : array();
+		if ( empty( $change_props ) ) {
+			return $arguments;
+		}
+
+		$changes = array();
+		foreach ( $arguments as $key => $value ) {
+			if ( in_array( $key, $change_props, true ) ) {
+				$changes[ $key ] = $value;
+				unset( $arguments[ $key ] );
+			}
+		}
+
+		if ( ! empty( $changes ) ) {
+			$arguments['changes'] = $changes;
+		}
+
+		return $arguments;
 	}
 
 	private function uses_prompted_tool_transport(): bool {
@@ -6626,8 +8329,24 @@ class PressArk_Agent {
 			$message,
 			$task_type,
 			$tool_set,
-			$checkpoint
+			$checkpoint,
+			$messages
 		);
+		// v5.6.2: On wrap rounds, also strip the tool array — there's no write
+		// to make. With tool_choice unset and tools=[], the model can only emit
+		// text. Saves ~70-96k chars per wrap on top of the sys[1] trim.
+		// Detection mirrors the wrap-trim in build_round_prompt_sections; the
+		// flag is set there and propagated via $prompt_sections['is_wrap_round'].
+		if ( ! empty( $prompt_sections['is_wrap_round'] )
+			&& isset( $tool_set['schemas'] )
+			&& is_array( $tool_set['schemas'] )
+			&& ! empty( $tool_set['schemas'] )
+		) {
+			$tool_set['_wrap_stripped_tool_count'] = count( $tool_set['schemas'] );
+			$tool_set['schemas']                   = array();
+			$tool_set['descriptors']               = '';
+			$tool_set['capability_map']            = '';
+		}
 		$descriptors = trim( (string) ( $tool_set['descriptors'] ?? '' ) );
 		if ( '' !== $descriptors ) {
 			$this->append_round_prompt_section(
@@ -6660,7 +8379,8 @@ class PressArk_Agent {
 		string $message,
 		string $task_type,
 		array $tool_set,
-		PressArk_Checkpoint $checkpoint
+		PressArk_Checkpoint $checkpoint,
+		array $messages = array()
 	): array {
 		$context  = new PressArk_Context();
 		$sections = array(
@@ -6676,11 +8396,85 @@ class PressArk_Agent {
 			$log_path = defined( 'PRESSARK_DEBUG_ROUTE_LOG' ) ? (string) PRESSARK_DEBUG_ROUTE_LOG : '/tmp/pressark-route.log';
 			@file_put_contents(
 				$log_path,
-				sprintf( "[%s] AGENT planning_mode=%s mode=%s\n", date( 'H:i:s' ), $this->planning_mode, $this->mode ),
+				sprintf( "[%s] AGENT planning_mode=%s mode=%s\n", gmdate( 'H:i:s' ), $this->planning_mode, $this->mode ),
 				FILE_APPEND
 			);
 		}
-		if ( 'hard_plan' === $this->planning_mode ) {
+
+		// v5.6.1: Wrap-round detection. When the chain just kept a preview write
+		// and PressArk is dispatching a [Continue] re-pump, the next round is
+		// typically a text summary — the model doesn't need Plan Mode rules,
+		// Plan Execution Contract, Block Editor / Content Generation knowledge,
+		// task-scoped skills, the site playbook, or the "continue executing"
+		// nudge. Strip them so the wrap round stays cheap.
+		//
+		// Observed 2026-05-12 on iter-7 chain B W8: the wrap round shipped
+		// 151k chars (96k of tools + 16k of sys[1]) for a 277-byte text reply.
+		// Volatile state (Trusted System Facts, Verified Evidence, Harness
+		// State, Recent Approved Writes, etc.) stays — the model needs it to
+		// produce an accurate summary.
+		//
+		// Detection — what we tried and why it didn't work:
+		//   v1 attempt: progress.is_complete AND is_continuation_message($message).
+		//     Failed on iter-8 X8: $message is the original user request, not
+		//     the latest [Continue] envelope, so is_continuation_message returned
+		//     false.
+		//   v2 attempt: progress.is_complete alone.
+		//     Failed on iter-8 Y6: the [Continue] envelope's "Remaining" field
+		//     still listed every just-done step (the stale-snapshot bug O-2),
+		//     so the execution-ledger's progress_snapshot reported is_complete
+		//     as false even though the chain was clearly in wrap.
+		//
+		// Working signal: the LATEST user-role message in $messages is a
+		// [Continue]/[Confirmed] re-pump (NB: $message is the ORIGINAL user
+		// request — it doesn't update per round — so we have to look at the
+		// full $messages array to find the synthetic re-pump), AND the most
+		// recent approval outcome on the checkpoint is 'approved'. Together
+		// these mean the chain just kept a preview write and the harness is
+		// re-pumping; the natural next round is a summary, regardless of
+		// whether the ledger snapshot caught up to it.
+		$is_wrap_round = false;
+		$latest_user_msg = '';
+		for ( $i = count( $messages ) - 1; $i >= 0; $i-- ) {
+			if ( ( $messages[ $i ]['role'] ?? '' ) === 'user' ) {
+				$content = $messages[ $i ]['content'] ?? '';
+				if ( is_string( $content ) ) {
+					$latest_user_msg = $content;
+				}
+				break;
+			}
+		}
+		if ( self::is_continuation_message( $latest_user_msg )
+			&& method_exists( $checkpoint, 'get_approval_outcomes' )
+		) {
+			$approvals_for_wrap = (array) $checkpoint->get_approval_outcomes();
+			if ( ! empty( $approvals_for_wrap ) ) {
+				$latest_outcome = end( $approvals_for_wrap );
+				$latest_status  = is_array( $latest_outcome )
+					? sanitize_key( (string) ( $latest_outcome['status'] ?? '' ) )
+					: '';
+				$is_wrap_round  = ( 'approved' === $latest_status );
+				if ( $is_wrap_round && class_exists( 'PressArk_Continuation_Service' ) ) {
+					$wrap_decision = PressArk_Continuation_Service::evaluate(
+						$checkpoint,
+						method_exists( $checkpoint, 'get_execution' ) ? (array) $checkpoint->get_execution() : array(),
+						array( 'latest_user_message' => $latest_user_msg )
+					);
+					$is_wrap_round = ! empty( $wrap_decision['should_emit_wrap_round'] );
+				}
+			}
+		}
+		// Surface the flag for build_round_system_prompt to also strip tools.
+		$sections['is_wrap_round'] = $is_wrap_round;
+
+		if ( $is_wrap_round ) {
+			$this->append_round_prompt_section(
+				$sections['stable'],
+				$sections['labels']['stable'],
+				'wrap_mode',
+				"## Wrap Mode\nThe approved plan is complete and all writes were applied. Emit a brief text summary (1-3 sentences) of what was done, naming the post id(s) and the field(s) that changed. Do not call tools. Do not propose new write tools or new tasks the user did not ask for — if you noticed adjacent improvements worth doing later, mention them in passing as suggestions only."
+			);
+		} elseif ( 'hard_plan' === $this->planning_mode ) {
 			self::ensure_plan_mode_loaded();
 			$this->append_round_prompt_section(
 				$sections['stable'],
@@ -6699,13 +8493,19 @@ class PressArk_Agent {
 		$plan_phase_for_contract = method_exists( $checkpoint, 'get_plan_phase' )
 			? (string) $checkpoint->get_plan_phase()
 			: '';
-		if ( 'none' !== $this->planning_mode || 'executing' === $plan_phase_for_contract ) {
+		$should_append_plan_execution_contract = ! $is_wrap_round && (
+			$this->is_soft_plan_mode()
+			|| 'executing' === $plan_phase_for_contract
+			|| ( 'hard_plan' === $this->planning_mode && ! $this->is_plan_mode() )
+		);
+		if ( $should_append_plan_execution_contract ) {
+			// v5.8.13 (2026-05-14): keep read-only hard Plan Mode free of write-execution contract text.
 			$this->append_round_prompt_section(
 				$sections['stable'],
 				$sections['labels']['stable'],
 				'plan_execution_contract',
 				'## Plan Execution Contract' . "\n"
-				. 'MANDATORY parallel emission: ANY write tool call (create_post, edit_content, update_meta, delete_content, bulk writes, Elementor writes, etc.) MUST be emitted in the SAME response as an `update_plan` call that sets exactly one step to in_progress whose tool_name matches that write. Solo writes are rejected by plan_step_guard — that costs a wasted round AND leaves the harness with no plan step to mark completed after preview/keep, which risks the write being re-triggered on the next round as a duplicate. This rule applies even for single-write tasks (a 1-step plan is still required). For multi-step tasks: initialize the plan with update_plan as soon as you know tracked steps are needed, and whenever possible emit update_plan in the SAME response as the first grounding read(s) so the plan is in place from round 1. STEP ADVANCEMENT — when the prior step just finished (e.g., step N was a read that returned its tool_result, and you are about to emit step N+1): emit `update_plan(mark step N completed, step N+1 in_progress) + tool_for_step_N+1` ATOMICALLY in one response. Never emit step N+1 solo just because it feels natural after the read — the plan still shows step N as in_progress and the guard will reject. The update_plan that advances the ledger and the tool that executes the new step belong in the same tool_calls array, always. Once a plan exists, every subsequent tool call must match the in_progress step (or you must call update_plan again to change steps). Keep exactly one step in_progress at a time. Use activeForm to describe the live step you are working on. Mark non-preview steps completed immediately after real success. For preview-required steps, do not mark them completed until the change was actually applied through the preview/confirm flow. Include tool_name when known so the harness can keep you on the correct step.'
+				. 'MANDATORY parallel emission: ANY write tool call (create_post, edit_content, update_meta, delete_content, bulk writes, Elementor writes, etc.) MUST be emitted in the SAME response as an `update_plan` call that sets exactly one step to in_progress whose tool_name matches that write. Solo writes are rejected by plan_step_guard — that costs a wasted round AND leaves the harness with no plan step to mark completed after preview/keep, which risks the write being re-triggered on the next round as a duplicate. This rule applies even for single-write tasks (a 1-step plan is still required). For multi-step tasks: initialize the plan with update_plan as soon as you know tracked steps are needed, and whenever possible emit update_plan in the SAME response as the first grounding read(s) so the plan is in place from round 1. STEP ADVANCEMENT — when the prior step just finished (e.g., step N was a read that returned its tool_result, and you are about to emit step N+1): emit `update_plan(mark step N completed, step N+1 in_progress) + tool_for_step_N+1` ATOMICALLY in one response. Never emit step N+1 solo just because it feels natural after the read — the plan still shows step N as in_progress and the guard will reject. The update_plan that advances the ledger and the tool that executes the new step belong in the same tool_calls array, always. Once a plan exists, every subsequent tool call must match the in_progress step (or you must call update_plan again to change steps). Keep exactly one step in_progress at a time. Use activeForm to describe the live step you are working on. Mark non-preview steps completed immediately after real success. For preview-required steps (create_post, edit_content, update_meta, delete_content, bulk writes, etc.) the harness auto-completes the matching plan step server-side once the user keeps the preview — do NOT emit a follow-up update_plan call just to mark such a step completed; that costs an entire wasted round. After a preview-keep, your next response should either (a) emit `update_plan(advance to step N+1 in_progress) + next_tool` atomically if more steps remain, or (b) emit a short text reply summarizing the result if the plan is fully done. Include tool_name when known so the harness can keep you on the correct step.'
 			);
 		}
 		$site_notes      = $this->resolve_site_notes( $message );
@@ -6716,13 +8516,23 @@ class PressArk_Agent {
 			? PressArk_Read_Metadata::build_prompt_strata( $checkpoint->get_read_state(), $verification, $site_notes )
 			: array();
 		$trusted_reads = trim( (string) preg_replace( '/^##\s+Trusted System Facts\s*/i', '', (string) ( $read_strata['trusted_system'] ?? '' ) ) );
-		$trusted_parts = array_filter( array(
-			trim( $context->build( $screen, $post_id ) ),
-			$trusted_reads,
-		) );
-		$trusted_system_block = empty( $trusted_parts )
-			? ''
-			: "## Trusted System Facts\n" . PressArk_AI_Connector::join_prompt_sections( $trusted_parts );
+		$context_block = trim( $context->build( $screen, $post_id ) );
+		// v5.6.8 (2026-05-12): When there are no trusted-read entries, just emit
+		// the context block directly. The context block already starts with its
+		// own `## Current Context` header, so wrapping it in an outer
+		// `## Trusted System Facts` produces a header-within-a-header pattern
+		// with the outer header sitting on an empty body line. Observed in the
+		// SEO audit capture: sys[1] section dump showed `## Trusted System
+		// Facts (0 chars)` immediately followed by `## Current Context (488
+		// chars)`. The header wraps nothing useful — drop it when empty.
+		if ( '' === $trusted_reads ) {
+			$trusted_system_block = $context_block;
+		} else {
+			$trusted_parts = array_filter( array( $context_block, $trusted_reads ) );
+			$trusted_system_block = empty( $trusted_parts )
+				? ''
+				: "## Trusted System Facts\n" . PressArk_AI_Connector::join_prompt_sections( $trusted_parts );
+		}
 
 		$this->append_round_prompt_section(
 			$sections['volatile'],
@@ -6760,11 +8570,15 @@ class PressArk_Agent {
 			);
 		}
 
-		$conditional_blocks = PressArk_AI_Connector::get_conditional_blocks(
-			$task_type,
-			$screen,
-			(array) ( $this->loaded_groups ?: ( $tool_set['groups'] ?? array() ) )
-		);
+		// v5.6.1: Skip the Block Editor / Content Generation / Conditional knowledge
+		// blocks on wrap rounds — they're guidance for writing, not summarizing.
+		$conditional_blocks = $is_wrap_round
+			? ''
+			: PressArk_AI_Connector::get_conditional_blocks(
+				$task_type,
+				$screen,
+				(array) ( $this->loaded_groups ?: ( $tool_set['groups'] ?? array() ) )
+			);
 		$this->append_round_prompt_section(
 			$sections['stable'],
 			$sections['labels']['stable'],
@@ -6772,10 +8586,13 @@ class PressArk_Agent {
 			$conditional_blocks
 		);
 
-		$task_skills = PressArk_Skills::get_dynamic_task_scoped( $task_type, array(
-			'has_woo'       => class_exists( 'WooCommerce' ),
-			'has_elementor' => defined( 'ELEMENTOR_VERSION' ),
-		) );
+		// v5.6.1: Task-scoped skills are write-time guidance; skip on wrap.
+		$task_skills = $is_wrap_round
+			? ''
+			: PressArk_Skills::get_dynamic_task_scoped( $task_type, array(
+				'has_woo'       => class_exists( 'WooCommerce' ),
+				'has_elementor' => defined( 'ELEMENTOR_VERSION' ),
+			) );
 		$this->append_round_prompt_section(
 			$sections['stable'],
 			$sections['labels']['stable'],
@@ -6787,12 +8604,15 @@ class PressArk_Agent {
 			$sections['stable'],
 			$sections['labels']['stable'],
 			'site_playbook',
-			(string) ( $playbook['text'] ?? '' )
+			$is_wrap_round ? '' : (string) ( $playbook['text'] ?? '' )
 		);
 
 		$execution_guard = PressArk_Execution_Ledger::build_runtime_guard( $checkpoint->get_execution() );
 		$approved_artifact = $this->plan_artifact_from_checkpoint( $checkpoint );
-		if ( ! $this->is_plan_mode()
+		// v5.6.1: Don't tell the model "continue executing the plan" when the
+		// plan is already complete — that nudges scope creep.
+		if ( ! $is_wrap_round
+			&& ! $this->is_plan_mode()
 			&& ! empty( $approved_artifact )
 			&& 'executing' === $checkpoint->get_plan_phase()
 		) {
@@ -6861,6 +8681,16 @@ class PressArk_Agent {
 			);
 		}
 
+		// v5.6.8 (2026-05-12): When the structured `## Approved Plan Artifact`
+		// block is emitted, the per-step `[STATUS]` markers it now carries
+		// (see PressArk_Plan_Artifact::to_prompt_block) supersede the prose
+		// "Current plan: 1) X [IN PROGRESS], 2) Y [PENDING]…" block. Skip the
+		// prose duplicate to avoid two representations of the same data in
+		// the same system message (sub-agent observation 2026-05-12 SEO audit
+		// capture: same plan emitted twice with risk of divergence after a
+		// ledger-sync race). Track which path we took so the prose form
+		// remains the fallback for the non-executing case.
+		$emitted_structured_plan = false;
 		if ( ! empty( $approved_artifact ) && 'executing' === $checkpoint->get_plan_phase() && class_exists( 'PressArk_Plan_Artifact' ) ) {
 			$plan_block = PressArk_Plan_Artifact::to_prompt_block( $approved_artifact );
 			$this->append_round_prompt_section(
@@ -6869,6 +8699,7 @@ class PressArk_Agent {
 				'execution_plan',
 				$plan_block
 			);
+			$emitted_structured_plan = true;
 		} elseif ( count( $this->plan_steps ) > 1 ) {
 			$plan_lines = array();
 			foreach ( $this->plan_steps as $i => $step ) {
@@ -6885,7 +8716,7 @@ class PressArk_Agent {
 				$plan_block
 			);
 		}
-		if ( $this->should_inject_plan_summary_prompt( $checkpoint ) ) {
+		if ( ! $emitted_structured_plan && $this->should_inject_plan_summary_prompt( $checkpoint ) ) {
 			$this->append_round_prompt_section(
 				$sections['volatile'],
 				$sections['labels']['volatile'],
@@ -9061,16 +10892,53 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 		// message in this compaction's input, so cascading compactions can't
 		// truncate or paraphrase the original ask. If no user message is
 		// found, leave preserved_details unchanged.
+		//
+		// v5.4.0: The harness injects role=user messages that aren't from the
+		// user — [Continue]/[Confirmed] post-approval re-pumps, prose-tool-call
+		// correctives ("Your previous response printed a tool call as plain
+		// text..."), and plan-mode grounding directives ("Use relevant read-only
+		// tools first..."). Without filtering, cascading compactions promote
+		// one of these synthetic messages to active_request_verbatim, and the
+		// next compaction loses the user's real ask. Observed in claude-bridge
+		// captures 2026-05-12 — the summary's "USER REQUEST" section ended up
+		// describing the harness corrective as the user's intent.
 		$earliest_user_content = '';
 		foreach ( $messages as $msg ) {
 			if ( ( $msg['role'] ?? '' ) === 'user' ) {
 				$candidate = is_string( $msg['content'] ?? null ) ? trim( (string) $msg['content'] ) : '';
-				// Skip if this message is itself a prior compaction summary
-				// (those start with a context-boundary marker our code emits).
-				if ( '' !== $candidate && strpos( $candidate, '[Context compaction boundary' ) === false ) {
-					$earliest_user_content = $candidate;
-					break;
+				if ( '' === $candidate ) {
+					continue;
 				}
+				// Skip prior compaction summaries (our own marker).
+				if ( strpos( $candidate, '[Context compaction boundary' ) !== false ) {
+					continue;
+				}
+				// Skip post-approval/continuation re-pumps.
+				if ( str_starts_with( $candidate, '[Continue]' )
+					|| str_starts_with( $candidate, '[Confirmed]' ) ) {
+					continue;
+				}
+				// Skip known harness-injected correctives (match by stable
+				// prefix; if you rename one of these strings in agent.php,
+				// update the prefix list here in lockstep).
+				$synthetic_prefixes = array(
+					'Your previous response printed a tool call as plain text',
+					'Your previous response printed an invalid tool call',
+					'Use relevant read-only tools first to inspect',
+					'Inspect the current state with relevant read tools first',
+				);
+				$is_synthetic = false;
+				foreach ( $synthetic_prefixes as $prefix ) {
+					if ( str_starts_with( $candidate, $prefix ) ) {
+						$is_synthetic = true;
+						break;
+					}
+				}
+				if ( $is_synthetic ) {
+					continue;
+				}
+				$earliest_user_content = $candidate;
+				break;
 			}
 		}
 		if ( '' !== $earliest_user_content ) {
@@ -9482,6 +11350,22 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 	}
 
 	private function build_context_capsule( array $messages, ?PressArk_Checkpoint $checkpoint = null, bool $force_ai = false ): array {
+		// Drop messages that are themselves prior compaction summaries before
+		// any downstream summarization runs. Otherwise the AI summarizer
+		// re-summarizes its own previous output and the next [Context
+		// compaction boundary] block ends up nested inside the new one
+		// (cmp_r2 contains cmp_r1 verbatim). The structured fields that
+		// matter — created_post_ids, ai_decisions, completed/remaining,
+		// preserved_details — are already persisted on the checkpoint via
+		// the existing capsule, so dropping the summary text loses nothing.
+		$messages = array_values( array_filter( $messages, static function ( $msg ): bool {
+			if ( ! is_array( $msg ) ) {
+				return true;
+			}
+			$content = is_string( $msg['content'] ?? '' ) ? (string) $msg['content'] : '';
+			return false === strpos( $content, '[Context compaction boundary' );
+		} ) );
+
 		$task              = $this->resolve_capsule_task( $checkpoint, $messages );
 		$historical_tasks  = $this->extract_historical_requests( $messages, $task );
 		$target_snapshot   = $this->format_capsule_target( $checkpoint );
@@ -9552,6 +11436,26 @@ private function compact_loop_messages_legacy( array $messages, int $round = 0, 
 			$completed = array_slice( (array) ( $progress['completed_labels'] ?? array() ), 0, 6 );
 			$remaining = array_slice( (array) ( $progress['remaining_labels'] ?? array() ), 0, 6 );
 			$receipts  = $this->collect_recent_receipts( $checkpoint );
+
+			// When receipts already prove a post was created (preview-confirm
+			// flow doesn't always feed back into the ledger's task graph),
+			// drop create-post-shaped labels from the remaining list. Without
+			// this, the compaction summary contradicts itself —
+			// "Posts created (DO NOT recreate): 6" alongside
+			// "Remaining: Create Post" — and a less robust model will
+			// emit a duplicate create_post next round.
+			if ( ! empty( $created_post_ids ) ) {
+				$remaining = array_values( array_filter( $remaining, static function ( $label ): bool {
+					$label = (string) $label;
+					if ( '' === $label ) {
+						return false;
+					}
+					if ( preg_match( '/\bcreate_post\b/i', $label ) ) {
+						return false;
+					}
+					return ! preg_match( '/\b(create|publish|add|write|draft)\b.*\b(post|page|blog|content|landing)\b/i', $label );
+				} ) );
+			}
 
 			$target = $checkpoint->get_selected_target();
 			if ( ! empty( $target['title'] ) ) {

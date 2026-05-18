@@ -96,18 +96,14 @@ class PressArk_Admin_Automations {
 	// ── Action Handlers ──────────────────────────────────────────────────
 
 	private function handle_create( PressArk_Automation_Store $store, int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- $_POST nonce verified upstream in self::handle_actions() before this private handler is dispatched.
 		$tier = ( new PressArk_License() )->get_tier();
-
-		if ( ! PressArk_Entitlements::can_use_feature( $tier, 'automations' ) ) {
-			set_transient( 'pressark_auto_notice', array( 'error', __( 'Automations require a Pro or higher plan.', 'pressark' ) ), 30 );
-			return;
-		}
 
 		$max     = PressArk_Entitlements::tier_value( $tier, 'max_automations' ) ?? 3;
 		$current = $store->count_active( $user_id );
 		if ( $max >= 0 && $current >= $max ) {
 			set_transient( 'pressark_auto_notice', array( 'error', sprintf(
-				/* translators: 1: current active automation count, 2: plan limit. */
+				/* translators: 1: current active automation count, 2: local limit. */
 				__( 'You have %1$d active automations (limit: %2$d). Pause or delete one first.', 'pressark' ),
 				$current,
 				$max
@@ -139,16 +135,9 @@ class PressArk_Admin_Automations {
 		$event_trigger_cooldown = max( 300, absint( wp_unslash( $_POST['event_trigger_cooldown'] ?? 60 ) ) * 60 );
 
 		if ( 'action' === $trigger_mode ) {
-			if ( ! PressArk_Entitlements::can_use_feature( $tier, 'watchdog_triggers' ) ) {
-				set_transient( 'pressark_auto_notice', array( 'error', __( 'Action-triggered automations require a Team or higher plan.', 'pressark' ) ), 30 );
-				return;
-			}
-
-			$event_trigger = sanitize_key( wp_unslash( $_POST['event_trigger'] ?? '' ) );
-			if ( ! in_array( $event_trigger, PressArk_Watchdog_Alerter::VALID_EVENT_TRIGGERS, true ) ) {
-				set_transient( 'pressark_auto_notice', array( 'error', __( 'Choose a valid action trigger.', 'pressark' ) ), 30 );
-				return;
-			}
+			// Action-triggered automations are temporarily unavailable (Watchdog feature removed).
+			set_transient( 'pressark_auto_notice', array( 'error', __( 'Action-triggered automations are temporarily unavailable. Choose a time schedule.', 'pressark' ) ), 30 );
+			return;
 		} else {
 			$cadence_type  = sanitize_key( wp_unslash( $_POST['cadence_type'] ?? 'daily' ) );
 			$cadence_value = absint( wp_unslash( $_POST['cadence_value'] ?? 0 ) );
@@ -163,7 +152,7 @@ class PressArk_Admin_Automations {
 			if ( $min_interval > 0 && $cadence_seconds < $min_interval ) {
 				set_transient( 'pressark_auto_notice', array( 'error', sprintf(
 					/* translators: %s: minimum allowed time between automation runs. */
-					__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
+					__( 'This site requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 					human_time_diff( 0, $min_interval )
 				) ), 30 );
 				return;
@@ -201,9 +190,11 @@ class PressArk_Admin_Automations {
 		}
 
 		set_transient( 'pressark_auto_notice', array( 'success', __( 'Automation created successfully.', 'pressark' ) ), 30 );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 	}
 
 	private function handle_edit( PressArk_Automation_Store $store, int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- $_POST nonce verified upstream in self::handle_actions() before this private handler is dispatched.
 		$automation_id = sanitize_text_field( wp_unslash( $_POST['automation_id'] ?? '' ) );
 		$automation    = $store->get( $automation_id );
 
@@ -230,25 +221,9 @@ class PressArk_Admin_Automations {
 		}
 
 		if ( 'action' === $trigger_mode ) {
-			$tier = ( new PressArk_License() )->get_tier();
-			if ( ! PressArk_Entitlements::can_use_feature( $tier, 'watchdog_triggers' ) ) {
-				set_transient( 'pressark_auto_notice', array( 'error', __( 'Action-triggered automations require a Team or higher plan.', 'pressark' ) ), 30 );
-				return;
-			}
-
-			$event_trigger = sanitize_key( wp_unslash( $_POST['event_trigger'] ?? '' ) );
-			if ( ! in_array( $event_trigger, PressArk_Watchdog_Alerter::VALID_EVENT_TRIGGERS, true ) ) {
-				set_transient( 'pressark_auto_notice', array( 'error', __( 'Choose a valid action trigger.', 'pressark' ) ), 30 );
-				return;
-			}
-
-			$update['cadence_type']           = 'once';
-			$update['cadence_value']          = 0;
-			$update['event_trigger']          = $event_trigger;
-			$update['event_trigger_cooldown'] = max( 300, absint( wp_unslash( $_POST['event_trigger_cooldown'] ?? 60 ) ) * 60 );
-			$update['next_run_at']            = null;
-
-			PressArk_Automation_Dispatcher::cancel_wake( $automation_id );
+			// Action-triggered automations are temporarily unavailable (Watchdog feature removed).
+			set_transient( 'pressark_auto_notice', array( 'error', __( 'Action-triggered automations are temporarily unavailable. Choose a time schedule.', 'pressark' ) ), 30 );
+			return;
 		} else {
 			$timezone = sanitize_text_field( wp_unslash( $_POST['timezone'] ?? ( $automation['timezone'] ?? wp_timezone_string() ) ) );
 			$timezone = '' !== $timezone ? $timezone : 'UTC';
@@ -266,7 +241,7 @@ class PressArk_Admin_Automations {
 			if ( $min_interval > 0 && $cadence_seconds < $min_interval ) {
 				set_transient( 'pressark_auto_notice', array( 'error', sprintf(
 					/* translators: %s: minimum allowed time between automation runs. */
-					__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
+					__( 'This site requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 					human_time_diff( 0, $min_interval )
 				) ), 30 );
 				return;
@@ -299,9 +274,11 @@ class PressArk_Admin_Automations {
 		}
 
 		set_transient( 'pressark_auto_notice', array( 'success', __( 'Automation updated.', 'pressark' ) ), 30 );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 	}
 
 	private function handle_delete( PressArk_Automation_Store $store, int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- $_POST nonce verified upstream in self::handle_actions() before this private handler is dispatched.
 		$automation_id = sanitize_text_field( wp_unslash( $_POST['automation_id'] ?? '' ) );
 		$automation    = $store->get( $automation_id );
 
@@ -312,9 +289,11 @@ class PressArk_Admin_Automations {
 
 		$store->delete( $automation_id );
 		set_transient( 'pressark_auto_notice', array( 'success', __( 'Automation deleted.', 'pressark' ) ), 30 );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 	}
 
 	private function handle_toggle( PressArk_Automation_Store $store, int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- $_POST nonce verified upstream in self::handle_actions() before this private handler is dispatched.
 		$automation_id = sanitize_text_field( wp_unslash( $_POST['automation_id'] ?? '' ) );
 		$automation    = $store->get( $automation_id );
 
@@ -348,9 +327,11 @@ class PressArk_Admin_Automations {
 			? __( 'Automation resumed.', 'pressark' )
 			: __( 'Automation paused.', 'pressark' );
 		set_transient( 'pressark_auto_notice', array( 'success', $msg ), 30 );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 	}
 
 	private function handle_run_now( int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- $_POST nonce verified upstream in self::handle_actions() before this private handler is dispatched.
 		$automation_id = sanitize_text_field( wp_unslash( $_POST['automation_id'] ?? '' ) );
 		$result = PressArk_Automation_Dispatcher::run_now( $automation_id, $user_id );
 
@@ -359,9 +340,11 @@ class PressArk_Admin_Automations {
 		} else {
 			set_transient( 'pressark_auto_notice', array( 'error', $result['error'] ?? __( 'Failed to dispatch automation.', 'pressark' ) ), 30 );
 		}
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 	}
 
 	private function handle_save_settings( int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- $_POST nonce verified upstream in self::handle_actions() before this private handler is dispatched.
 		// Telegram bot token (site-wide, encrypted).
 		$token = sanitize_text_field( wp_unslash( $_POST['telegram_bot_token'] ?? '' ) );
 		if ( ! empty( $token ) ) {
@@ -378,6 +361,7 @@ class PressArk_Admin_Automations {
 		}
 
 		set_transient( 'pressark_auto_notice', array( 'success', __( 'Notification settings saved.', 'pressark' ) ), 30 );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 	}
 
 	private function get_trigger_mode_for_automation( array $automation ): string {
@@ -779,6 +763,7 @@ class PressArk_Admin_Automations {
 
 		$tier    = ( new PressArk_License() )->get_tier();
 		$can_use = PressArk_Entitlements::can_use_feature( $tier, 'automations' );
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only tab toggle on the automations admin page; capability gated above.
 		$tab     = sanitize_key( wp_unslash( $_GET['tab'] ?? 'list' ) );
 
 		// Show transient notices.
@@ -798,9 +783,9 @@ class PressArk_Admin_Automations {
 			<?php if ( ! $can_use ) : ?>
 				<div class="notice notice-warning">
 					<p>
-						<?php esc_html_e( 'Scheduled automations require a Pro or higher plan.', 'pressark' ); ?>
+						<?php esc_html_e( 'Scheduled automations are temporarily unavailable.', 'pressark' ); ?>
 						<?php $url = pressark_get_upgrade_url(); ?>
-						<a href="<?php echo esc_url( $url ); ?>" class="button button-primary" style="margin-left:8px;"><?php esc_html_e( 'Upgrade', 'pressark' ); ?></a>
+						<a href="<?php echo esc_url( $url ); ?>" class="button button-primary" style="margin-left:8px;"><?php esc_html_e( 'Manage billing', 'pressark' ); ?></a>
 					</p>
 				</div>
 			<?php else : ?>
@@ -869,11 +854,11 @@ class PressArk_Admin_Automations {
 		?>
 		<p class="description">
 			<?php printf(
-				/* translators: 1: current automation count, 2: plan limit label, 3: plan name. */
-				esc_html__( '%1$d automation(s) (limit: %2$s for your %3$s plan)', 'pressark' ),
+				/* translators: 1: current automation count, 2: local automation limit label, 3: credit-metering note. */
+				esc_html__( '%1$d automation(s). Local limit: %2$s. %3$s', 'pressark' ),
 				count( $automations ),
 				esc_html( $max_label ),
-				esc_html( PressArk_Entitlements::tier_label( $tier ) )
+				esc_html__( 'AI runs use service credits.', 'pressark' )
 			); ?>
 		</p>
 
@@ -1003,7 +988,7 @@ class PressArk_Admin_Automations {
 		$default_policy = PressArk_Automation_Policy::default_for_tier( $tier );
 		$tz             = wp_timezone_string();
 		$tz             = '' !== $tz ? $tz : 'UTC';
-		$can_trigger    = PressArk_Entitlements::can_use_feature( $tier, 'watchdog_triggers' );
+		$can_trigger    = false; // Action triggers disabled — Watchdog feature removed.
 		$trigger_modes  = $this->get_event_trigger_options();
 
 		$this->render_automation_form_assets();
@@ -1076,15 +1061,15 @@ class PressArk_Admin_Automations {
 								<?php if ( $can_trigger ) : ?>
 									<span class="pressark-trigger-card-cta"><?php esc_html_e( 'Configure action trigger', 'pressark' ); ?></span>
 								<?php else : ?>
-									<span class="pressark-trigger-card-lock"><?php esc_html_e( 'Team+', 'pressark' ); ?></span>
+									<span class="pressark-trigger-card-lock"><?php esc_html_e( 'Paused', 'pressark' ); ?></span>
 								<?php endif; ?>
 							</label>
 						</div>
 
 						<?php if ( ! $can_trigger ) : ?>
 							<div class="pressark-trigger-note">
-								<strong><?php esc_html_e( 'Action triggers are available on Team and above.', 'pressark' ); ?></strong>
-								<div><?php esc_html_e( 'You can still create time-based automations here, and unlock event-driven runs whenever you upgrade.', 'pressark' ); ?></div>
+								<strong><?php esc_html_e( 'Action triggers are temporarily unavailable.', 'pressark' ); ?></strong>
+								<div><?php esc_html_e( 'Time-based automations remain available while event-driven runs are rebuilt.', 'pressark' ); ?></div>
 							</div>
 						<?php endif; ?>
 					</div>
@@ -1150,7 +1135,7 @@ class PressArk_Admin_Automations {
 						<div class="pressark-trigger-panel">
 							<?php if ( ! $can_trigger ) : ?>
 								<div class="pressark-trigger-note">
-									<strong><?php esc_html_e( 'Upgrade to Team to use action triggers.', 'pressark' ); ?></strong>
+									<strong><?php esc_html_e( 'Action triggers are temporarily unavailable.', 'pressark' ); ?></strong>
 								</div>
 							<?php else : ?>
 								<table class="form-table" style="margin-top:0;">
@@ -1193,6 +1178,7 @@ class PressArk_Admin_Automations {
 	// ── Edit Tab ─────────────────────────────────────────────────────────
 
 	private function render_edit_form( string $tier ): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only display: $_GET['id'] selects which automation to render in the edit form; ownership is verified below before any mutation, and the actual save handler enforces a nonce.
 		$automation_id = sanitize_text_field( wp_unslash( $_GET['id'] ?? '' ) );
 		$store         = new PressArk_Automation_Store();
 		$a             = $store->get( $automation_id );
@@ -1203,7 +1189,7 @@ class PressArk_Admin_Automations {
 		}
 
 		$policies             = PressArk_Automation_Policy::valid_policies();
-		$can_trigger          = PressArk_Entitlements::can_use_feature( $tier, 'watchdog_triggers' );
+		$can_trigger          = false; // Action triggers disabled — Watchdog feature removed.
 		$trigger_modes        = $this->get_event_trigger_options();
 		$current_mode         = $this->get_trigger_mode_for_automation( $a );
 		$selected_mode        = 'hybrid' === $current_mode ? 'time' : $current_mode;
@@ -1280,7 +1266,7 @@ class PressArk_Admin_Automations {
 								<?php if ( $show_action_fields ) : ?>
 									<span class="pressark-trigger-card-cta"><?php esc_html_e( 'Edit action trigger', 'pressark' ); ?></span>
 								<?php else : ?>
-									<span class="pressark-trigger-card-lock"><?php esc_html_e( 'Team+', 'pressark' ); ?></span>
+									<span class="pressark-trigger-card-lock"><?php esc_html_e( 'Paused', 'pressark' ); ?></span>
 								<?php endif; ?>
 							</label>
 						</div>
@@ -1292,7 +1278,7 @@ class PressArk_Admin_Automations {
 							</div>
 						<?php elseif ( ! $can_trigger && ! $show_action_fields ) : ?>
 							<div class="pressark-trigger-note">
-								<strong><?php esc_html_e( 'Action triggers are available on Team and above.', 'pressark' ); ?></strong>
+								<strong><?php esc_html_e( 'Action triggers are temporarily unavailable.', 'pressark' ); ?></strong>
 							</div>
 						<?php endif; ?>
 					</div>
@@ -1360,7 +1346,7 @@ class PressArk_Admin_Automations {
 						<div class="pressark-trigger-panel">
 							<?php if ( ! $show_action_fields ) : ?>
 								<div class="pressark-trigger-note">
-									<strong><?php esc_html_e( 'Upgrade to Team to use action triggers.', 'pressark' ); ?></strong>
+									<strong><?php esc_html_e( 'Action triggers are temporarily unavailable.', 'pressark' ); ?></strong>
 								</div>
 							<?php else : ?>
 								<table class="form-table" style="margin-top:0;">
@@ -1388,8 +1374,8 @@ class PressArk_Admin_Automations {
 
 								<?php if ( ! $can_trigger ) : ?>
 									<div class="pressark-trigger-note">
-										<strong><?php esc_html_e( 'This trigger type is above your current plan.', 'pressark' ); ?></strong>
-										<div><?php esc_html_e( 'You can switch this automation back to a time schedule, or upgrade before saving it as action-triggered again.', 'pressark' ); ?></div>
+										<strong><?php esc_html_e( 'This trigger type is temporarily unavailable.', 'pressark' ); ?></strong>
+										<div><?php esc_html_e( 'Switch this automation back to a time schedule before saving it again.', 'pressark' ); ?></div>
 									</div>
 								<?php endif; ?>
 							<?php endif; ?>
@@ -1455,7 +1441,7 @@ class PressArk_Admin_Automations {
 
 			<?php if ( $has_token && $chat_id ) : ?>
 				<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:12px;margin-top:8px;">
-					<strong style="color:#16a34a;"><?php echo pressark_icon( 'check' ); ?> <?php esc_html_e( 'Telegram configured', 'pressark' ); ?></strong>
+					<strong style="color:#16a34a;"><?php echo wp_kses( pressark_icon( 'check' ), pressark_icon_allowed_html() ); ?> <?php esc_html_e( 'Telegram configured', 'pressark' ); ?></strong>
 					<span style="color:#64748b;margin-left:8px;"><?php printf(
 						/* translators: %s: Telegram chat ID. */
 						esc_html__( 'Chat ID: %s', 'pressark' ),

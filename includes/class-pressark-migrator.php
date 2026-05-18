@@ -35,7 +35,7 @@ class PressArk_Migrator {
 		'pressark_tasks'         => 2,
 		'pressark_runs'          => 3,
 		'pressark_automations'   => 5,
-		'pressark_alert_batches' => 12,
+		// pressark_alert_batches (v12) tombstoned — Watchdog feature removed.
 		'pressark_activity_events' => 14,
 	);
 
@@ -561,9 +561,11 @@ class PressArk_Migrator {
 
 	/**
 	 * v12: Alert batches table for Watchdog atomic batching.
+	 *
+	 * Tombstoned — Watchdog feature removed. Version step kept so the migration
+	 * chain (1→14) stays linear; pressark_alert_batches table is no longer created.
 	 */
 	private static function migrate_to_12(): bool {
-		dbDelta( PressArk_Watchdog_Alerter::get_schema() );
 		return true;
 	}
 
@@ -826,9 +828,7 @@ class PressArk_Migrator {
 				return '';
 
 			case 12:
-				if ( ! self::table_exists( $wpdb->prefix . 'pressark_alert_batches' ) ) {
-					return 'Alert batches table is missing.';
-				}
+				// pressark_alert_batches tombstoned — Watchdog feature removed; no postcondition.
 				return '';
 
 			case 13:
@@ -925,22 +925,36 @@ class PressArk_Migrator {
 	}
 
 	/**
+	 * Detect whether the active database is SQLite (via the SQLite Database
+	 * Integration drop-in used by Studio / wp-now / Playground). MySQL/MariaDB
+	 * installs return false here, which is the production path.
+	 */
+	private static function is_sqlite_db(): bool {
+		return ( defined( 'DB_ENGINE' ) && 'sqlite' === DB_ENGINE )
+			|| ( defined( 'DATABASE_TYPE' ) && 'sqlite' === DATABASE_TYPE );
+	}
+
+	/**
 	 * Check whether a column exists on a table.
+	 *
+	 * Uses DESCRIBE rather than INFORMATION_SCHEMA because the SQLite Database
+	 * Integration drop-in (used by wp-now / Studio / Playground) translates
+	 * DESCRIBE correctly but mis-translates INFORMATION_SCHEMA.COLUMNS.
 	 */
 	private static function table_has_column( string $table, string $column ): bool {
 		global $wpdb;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Migration metadata check against INFORMATION_SCHEMA.
-		return $wpdb->get_var( $wpdb->prepare(
-			"SELECT COLUMN_NAME
-			 FROM INFORMATION_SCHEMA.COLUMNS
-			 WHERE TABLE_SCHEMA = DATABASE()
-			 AND TABLE_NAME = %s
-			 AND COLUMN_NAME = %s
-			 LIMIT 1",
-			$table,
-			$column
-		) ) === $column;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $table is a wpdb-prefixed plugin-owned name validated by caller; DESCRIBE does not accept placeholders.
+		$rows = $wpdb->get_results( "DESCRIBE {$table}", ARRAY_A );
+		if ( ! is_array( $rows ) || empty( $rows ) ) {
+			return false;
+		}
+		foreach ( $rows as $row ) {
+			if ( isset( $row['Field'] ) && $row['Field'] === $column ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -948,6 +962,19 @@ class PressArk_Migrator {
 	 */
 	private static function table_has_index( string $table, string $index_name ): bool {
 		global $wpdb;
+
+		if ( self::is_sqlite_db() ) {
+			// SQLite Database Integration name-mangles indexes as "{table}__{index_name}"
+			// in sqlite_master; INFORMATION_SCHEMA is not available.
+			$mangled = $table . '__' . $index_name;
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Migration metadata check against sqlite_master.
+			$found = $wpdb->get_var( $wpdb->prepare(
+				"SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = %s AND name = %s LIMIT 1",
+				$table,
+				$mangled
+			) );
+			return $found === $mangled;
+		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Migration metadata check against INFORMATION_SCHEMA.
 		return $wpdb->get_var( $wpdb->prepare(
@@ -967,6 +994,22 @@ class PressArk_Migrator {
 	 */
 	private static function table_index_is_unique( string $table, string $index_name ): bool {
 		global $wpdb;
+
+		if ( self::is_sqlite_db() ) {
+			// SQLite Database Integration mangles indexes as "{table}__{index_name}".
+			// PRAGMA isn't passed through by the translator, so we read the index DDL
+			// from sqlite_master and check for the UNIQUE keyword.
+			$mangled = $table . '__' . $index_name;
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Migration metadata check against sqlite_master.
+			$ddl = $wpdb->get_var( $wpdb->prepare(
+				"SELECT sql FROM sqlite_master WHERE type = 'index' AND name = %s LIMIT 1",
+				$mangled
+			) );
+			if ( ! is_string( $ddl ) || '' === $ddl ) {
+				return false;
+			}
+			return false !== stripos( $ddl, 'CREATE UNIQUE INDEX' );
+		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Migration metadata check against INFORMATION_SCHEMA.
 		return '0' === (string) $wpdb->get_var( $wpdb->prepare(

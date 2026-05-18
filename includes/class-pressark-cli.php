@@ -121,10 +121,10 @@ class PressArk_CLI extends WP_CLI_Command {
 			}
 		}
 
-		// -- Action quotas (free tier) --
-		if ( ! PressArk_Entitlements::is_paid_tier( $tier ) ) {
+		// -- Local action access --
+		if ( false ) {
 			WP_CLI::log( '' );
-			WP_CLI::log( '── Free Tier Action Quotas ──' );
+			WP_CLI::log( '── Legacy Action Telemetry ──' );
 
 			$plan_info = PressArk_Entitlements::get_plan_info( $tier );
 			if ( ! empty( $plan_info['group_usage']['per_group'] ) ) {
@@ -141,8 +141,8 @@ class PressArk_CLI extends WP_CLI_Command {
 			}
 		} else {
 			WP_CLI::log( '' );
-			WP_CLI::log( '── Action Quotas ──' );
-			WP_CLI::log( '  Paid tier — unlimited actions.' );
+			WP_CLI::log( '── Local Action Access ──' );
+			WP_CLI::log( '  Local plugin actions are not plan-gated; remote AI usage is metered by credits.' );
 		}
 
 		// -- Tier limits summary --

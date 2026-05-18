@@ -185,6 +185,21 @@ class PressArk_Stream_Connector {
 			return array( 'error' => sprintf( 'API error (%d): Streaming request failed.', $http_code ) );
 		}
 
+		if ( ! $has_content ) {
+			PressArk_Error_Tracker::warning(
+				'StreamConnector',
+				'OpenAI-compatible stream returned no assistant content',
+				array(
+					'http_code'     => $http_code,
+					'finish_reason' => (string) ( $accumulated['finish_reason'] ?? '' ),
+				)
+			);
+
+			return array(
+				'error' => __( 'The AI response ended before producing text or tool calls. No changes were made. Please retry.', 'pressark' ),
+			);
+		}
+
 		$message = array(
 			'role'    => 'assistant',
 			'content' => $accumulated['content'] ?: null,
@@ -478,6 +493,53 @@ class PressArk_Stream_Connector {
 			return array( 'error' => sprintf( 'Bank proxy error (HTTP %d): Streaming request failed.', $http_code ) );
 		}
 
+		if ( ! $has_content ) {
+			$error_body = trim( $error_buffer );
+			if ( '' === $error_body ) {
+				$error_body = is_wp_error( $response ) ? trim( $line_buffer ) : trim( (string) wp_remote_retrieve_body( $response ) );
+			}
+
+			$decoded_error = json_decode( $error_body, true );
+			if ( is_array( $decoded_error )
+				&& ( ! empty( $decoded_error['error'] ) || ! empty( $decoded_error['message'] ) || ! empty( $decoded_error['code'] ) )
+			) {
+				$error_type = sanitize_key( (string) ( $decoded_error['error']['type'] ?? $decoded_error['type'] ?? '' ) );
+				$normalized = 'invalid_json_reply' === $error_type
+					? array(
+						'error' => __( 'The AI response was interrupted before it produced valid JSON. No changes were made. Please retry.', 'pressark' ),
+					)
+					: PressArk_AI_Connector::normalize_bank_proxy_error( $decoded_error, $http_code );
+
+				// v5.8.14 (2026-05-14): plain JSON proxy errors in streaming mode must fail, not settle as blank success.
+				PressArk_Error_Tracker::warning(
+					'StreamConnector',
+					'Bank proxy stream returned an error payload without SSE content',
+					array(
+						'http_code'  => $http_code,
+						'error_code' => $decoded_error['code'] ?? $decoded_error['error']['code'] ?? '',
+						'error_type' => $error_type,
+						'error'      => $normalized['error'] ?? '',
+					)
+				);
+
+				return $normalized;
+			}
+
+			PressArk_Error_Tracker::warning(
+				'StreamConnector',
+				'Bank proxy stream returned no assistant content',
+				array(
+					'http_code'     => $http_code,
+					'finish_reason' => (string) ( $accumulated['finish_reason'] ?? '' ),
+					'raw_body'      => mb_substr( $error_body, 0, 500 ),
+				)
+			);
+
+			return array(
+				'error' => __( 'The AI response ended before producing text or tool calls. No changes were made. Please retry.', 'pressark' ),
+			);
+		}
+
 		$message = array(
 			'role'    => 'assistant',
 			'content' => $accumulated['content'] ?: null,
@@ -553,7 +615,9 @@ class PressArk_Stream_Connector {
 		// latency, not API latency. Bump the HTTP read timeout to match the
 		// agent-loop wall-clock budget in that mode; otherwise keep the normal
 		// 120s cap that matches OpenRouter's streaming window.
-		$stream_timeout = PressArk_AI_Connector::simulator_active() ? 1800 : 120;
+		$stream_timeout = PressArk_AI_Connector::simulator_active()
+			? PressArk_AI_Connector::SIMULATOR_TIMEOUT_SECONDS
+			: 120;
 
 		try {
 			$response = wp_remote_post(

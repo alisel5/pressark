@@ -149,7 +149,6 @@ class PressArk_Tools {
 		'list_resources',
 		'read_resource',
 		'list_plugins',
-		'toggle_plugin',
 		'list_themes',
 		'get_theme_settings',
 		'get_customizer_schema',
@@ -284,7 +283,6 @@ class PressArk_Tools {
 		'list_resources',
 		'read_resource',
 		'list_plugins',
-		'toggle_plugin',
 		'list_themes',
 		'get_theme_settings',
 		'get_customizer_schema',
@@ -762,7 +760,7 @@ class PressArk_Tools {
 			'search_knowledge', 'index_status', 'rebuild_index',
 		),
 		'plugins' => array(
-			'list_plugins', 'toggle_plugin',
+			'list_plugins',
 		),
 		'themes' => array(
 			'list_themes', 'get_theme_settings', 'get_customizer_schema', 'update_theme_setting', 'switch_theme',

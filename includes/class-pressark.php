@@ -14,7 +14,6 @@ class PressArk {
 	private PressArk_Admin $admin;
 	private PressArk_Admin_Automations $admin_automations;
 	private PressArk_Admin_Activity $admin_activity;
-	private PressArk_Admin_Watchdog $admin_watchdog;
 	private PressArk_Chat $chat;
 	private PressArk_Dashboard $dashboard;
 	private PressArk_Harness_Readiness $harness_readiness;
@@ -32,12 +31,8 @@ class PressArk {
 		$this->admin              = new PressArk_Admin();
 		$this->admin_automations  = new PressArk_Admin_Automations();
 		$this->admin_activity     = new PressArk_Admin_Activity();
-		$this->admin_watchdog     = new PressArk_Admin_Watchdog();
 		$this->chat               = new PressArk_Chat();
 		$this->policy_diagnostics = new PressArk_Policy_Diagnostics();
-
-		// Watchdog onboarding nudge for WooCommerce sites.
-		PressArk_Watchdog_Templates::register_nudge_hooks();
 		$this->dashboard          = new PressArk_Dashboard();
 		$this->harness_readiness  = new PressArk_Harness_Readiness();
 		$this->onboarding         = new PressArk_Onboarding();
@@ -204,10 +199,11 @@ class PressArk {
 		wp_enqueue_script(
 			'pressark-chat',
 			PRESSARK_URL . $chat_script,
-			array( 'jquery' ),
+			array( 'jquery', 'wp-i18n' ),
 			$this->asset_version( $chat_script ),
 			true
 		);
+		wp_set_script_translations( 'pressark-chat', 'pressark' );
 
 		$screen  = get_current_screen();
 		$post_id = 0;
@@ -324,10 +320,11 @@ class PressArk {
 		wp_enqueue_script(
 			'pressark-chat',
 			PRESSARK_URL . $chat_script,
-			array( 'jquery' ),
+			array( 'jquery', 'wp-i18n' ),
 			$this->asset_version( $chat_script ),
 			true
 		);
+		wp_set_script_translations( 'pressark-chat', 'pressark' );
 
 		$tracker   = new PressArk_Usage_Tracker();
 		$onboarded = get_user_meta( get_current_user_id(), 'pressark_onboarded', true );
@@ -358,7 +355,7 @@ class PressArk {
 			'screenBase'     => 'frontend',
 			'postId'         => is_singular() ? get_the_ID() : 0,
 			'pageTitle'      => is_singular() ? get_the_title() : wp_get_document_title(),
-			'hasApiKey'      => PressArk_AI_Connector::is_proxy_mode() || $is_byok || ! empty( get_option( 'pressark_api_key', '' ) ),
+            'hasApiKey'      => PressArk_AI_Connector::simulator_active() || PressArk_AI_Connector::is_proxy_mode() || $is_byok || ! empty( get_option( 'pressark_api_key', '' ) ),
 			'hasWooCommerce' => class_exists( 'WooCommerce' ),
 			'isOnboarded'    => ! empty( $onboarded ),
 			'usage'          => $usage,

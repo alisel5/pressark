@@ -35,7 +35,6 @@ class PressArk_WC_Events {
 			'threshold' => (int) ( $product->get_low_stock_amount() ?: get_option( 'woocommerce_notify_low_stock_amount', 2 ) ),
 		);
 		self::log_event( 'low_stock', $product->get_id(), $data );
-		PressArk_Watchdog_Alerter::fire( 'low_stock', $product->get_id(), $data );
 	}
 
 	public static function handle_no_stock( $product ): void {
@@ -43,7 +42,6 @@ class PressArk_WC_Events {
 			'name' => sanitize_text_field( $product->get_name() ),
 		);
 		self::log_event( 'out_of_stock', $product->get_id(), $data );
-		PressArk_Watchdog_Alerter::fire( 'out_of_stock', $product->get_id(), $data );
 	}
 
 	public static function handle_order_status_changed( int $order_id, string $old_status, string $new_status ): void {
@@ -70,7 +68,6 @@ class PressArk_WC_Events {
 		}
 
 		self::log_event( $type, $order_id, $data );
-		PressArk_Watchdog_Alerter::fire( $type, $order_id, $data );
 	}
 
 	/**
@@ -119,7 +116,6 @@ class PressArk_WC_Events {
 			'customer' => sanitize_email( $order->get_billing_email() ),
 		);
 		self::log_event( 'refund_issued', $order_id, $data );
-		PressArk_Watchdog_Alerter::fire( 'refund_issued', $order_id, $data );
 	}
 
 	/**
@@ -160,7 +156,6 @@ class PressArk_WC_Events {
 			'review_id'    => $comment_id,
 		);
 		self::log_event( 'negative_review', $comment_id, $data );
-		PressArk_Watchdog_Alerter::fire( 'negative_review', $comment_id, $data );
 	}
 
 	/**
@@ -202,7 +197,6 @@ class PressArk_WC_Events {
 			'review_id'    => $comment_id,
 		);
 		self::log_event( 'negative_review', $comment_id, $data );
-		PressArk_Watchdog_Alerter::fire( 'negative_review', $comment_id, $data );
 	}
 
 	/**
@@ -243,7 +237,6 @@ class PressArk_WC_Events {
 			'items_count' => $order->get_item_count(),
 		);
 		self::log_event( 'high_value_order', $order_id, $data );
-		PressArk_Watchdog_Alerter::fire( 'high_value_order', $order_id, $data );
 	}
 
 	/**

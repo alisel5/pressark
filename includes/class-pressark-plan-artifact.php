@@ -237,17 +237,157 @@ class PressArk_Plan_Artifact {
 			if ( '' === $text ) {
 				continue;
 			}
+			$metadata = is_array( $step['metadata'] ?? null ) ? (array) $step['metadata'] : array();
 			$rows[] = array(
-				'index'  => $index + 1,
-				'text'   => $text,
-				'status' => self::step_row_status( (string) ( $step['status'] ?? 'pending' ) ),
-				'id'     => sanitize_key( (string) ( $step['id'] ?? '' ) ),
-				'kind'   => sanitize_key( (string) ( $step['kind'] ?? '' ) ),
-				'group'  => sanitize_key( (string) ( $step['group'] ?? '' ) ),
+				'index'             => $index + 1,
+				'text'              => $text,
+				'content'           => $text,
+				'activeForm'        => sanitize_text_field( (string) ( $metadata['active_form'] ?? $metadata['activeForm'] ?? $text ) ),
+				'status'            => self::step_row_status( (string) ( $step['status'] ?? 'pending' ) ),
+				'id'                => sanitize_key( (string) ( $step['id'] ?? '' ) ),
+				'kind'              => sanitize_key( (string) ( $step['kind'] ?? '' ) ),
+				'group'             => sanitize_key( (string) ( $step['group'] ?? '' ) ),
+				'post_id'           => absint( $metadata['post_id'] ?? 0 ),
+				'tool_name'         => sanitize_key( (string) ( $metadata['tool_name'] ?? '' ) ),
+				'preview_required'  => ! empty( $metadata['preview_required'] ),
+				'apply_succeeded'   => ! empty( $metadata['apply_succeeded'] ),
+				'applied_tool_name' => sanitize_key( (string) ( $metadata['applied_tool_name'] ?? '' ) ),
+				'updated_at'        => sanitize_text_field( (string) ( $metadata['updated_at'] ?? '' ) ),
 			);
 		}
 
 		return $rows;
+	}
+
+	/**
+	 * Build or refresh a structured artifact from model-emitted update_plan rows.
+	 *
+	 * @param array $steps   Flat update_plan rows.
+	 * @param array $context Build context.
+	 * @return array<string,mixed>
+	 */
+	public static function from_plan_steps( array $steps, array $context = array() ): array {
+		$prior          = self::sanitize( $context['prior_artifact'] ?? array() );
+		$approval_level = in_array( (string) ( $context['approval_level'] ?? '' ), array( 'soft', 'hard' ), true )
+			? (string) $context['approval_level']
+			: ( ! empty( $prior['approval_level'] ) ? (string) $prior['approval_level'] : 'hard' );
+		$execute_message = sanitize_textarea_field(
+			mb_substr(
+				(string) (
+					$context['execute_message']
+					?? $prior['execute_message']
+					?? $context['request_message']
+					?? ''
+				),
+				0,
+				4000
+			)
+		);
+		$request_summary = sanitize_text_field(
+			(string) (
+				$context['request_summary']
+				?? $prior['request_summary']
+				?? self::compact_text( $execute_message, 180 )
+			)
+		);
+
+		$artifact_steps = array();
+		$used_ids       = array();
+		foreach ( array_slice( $steps, 0, self::MAX_STEPS ) as $index => $step ) {
+			if ( ! is_array( $step ) ) {
+				continue;
+			}
+
+			$title = sanitize_text_field( (string) ( $step['content'] ?? $step['text'] ?? $step['title'] ?? $step['label'] ?? '' ) );
+			if ( '' === $title ) {
+				continue;
+			}
+
+			$tool_name = sanitize_key( (string) ( $step['tool_name'] ?? '' ) );
+			$base_id   = sanitize_key( (string) ( $step['id'] ?? '' ) );
+			if ( '' === $base_id ) {
+				$base_id = '' !== $tool_name ? $tool_name . '_' . ( $index + 1 ) : 'step_' . ( $index + 1 );
+			}
+			$step_id = self::dedupe_step_id( $base_id, $used_ids );
+
+			$metadata = self::sanitize_metadata( $step['metadata'] ?? array() );
+			$metadata = array_filter(
+				array_merge(
+					$metadata,
+					array(
+						'tool_name'         => $tool_name,
+						'post_id'           => absint( $step['post_id'] ?? 0 ),
+						'preview_required'  => ! empty( $step['preview_required'] ),
+						'apply_succeeded'   => ! empty( $step['apply_succeeded'] ),
+						'applied_tool_name' => sanitize_key( (string) ( $step['applied_tool_name'] ?? '' ) ),
+						'updated_at'        => sanitize_text_field( (string) ( $step['updated_at'] ?? '' ) ),
+						'active_form'       => sanitize_text_field( (string) ( $step['activeForm'] ?? $title ) ),
+					)
+				),
+				static function ( $value ): bool {
+					return is_bool( $value ) || is_int( $value ) || ( is_string( $value ) && '' !== $value );
+				}
+			);
+
+			$depends_on = array();
+			foreach ( (array) ( $step['depends_on'] ?? array() ) as $dependency ) {
+				$dependency = sanitize_key( (string) $dependency );
+				if ( '' !== $dependency ) {
+					$depends_on[] = $dependency;
+				}
+			}
+			if ( empty( $depends_on ) && $index > 0 && ! empty( $artifact_steps[ $index - 1 ]['id'] ) ) {
+				$depends_on[] = sanitize_key( (string) $artifact_steps[ $index - 1 ]['id'] );
+			}
+
+			$group = sanitize_key( (string) ( $step['group'] ?? '' ) );
+			if ( '' === $group && '' !== $tool_name && class_exists( 'PressArk_Operation_Registry' ) ) {
+				$group = sanitize_key( (string) PressArk_Operation_Registry::get_group( $tool_name ) );
+			}
+
+			$kind = sanitize_key( (string) ( $step['kind'] ?? '' ) );
+			if ( '' === $kind && ! empty( $metadata['preview_required'] ) ) {
+				$kind = 'preview';
+			}
+
+			$artifact_steps[] = array(
+				'id'            => $step_id,
+				'title'         => $title,
+				'description'   => sanitize_textarea_field( mb_substr( (string) ( $step['description'] ?? $title ), 0, 400 ) ),
+				'kind'          => self::sanitize_kind( $kind, $title ),
+				'group'         => self::sanitize_group( $group, $metadata ),
+				'depends_on'    => array_values( array_unique( array_filter( $depends_on ) ) ),
+				'status'        => self::sanitize_status( (string) ( $step['status'] ?? 'pending' ) ),
+				'metadata'      => $metadata,
+				'verification'  => sanitize_text_field( (string) ( $step['verification'] ?? '' ) ),
+				'rollback_hint' => sanitize_text_field( (string) ( $step['rollback_hint'] ?? self::default_rollback_hint( self::sanitize_kind( $kind, $title ), $approval_level ) ) ),
+			);
+		}
+
+		if ( empty( $artifact_steps ) ) {
+			return array();
+		}
+
+		$artifact = array(
+			'plan_id'            => sanitize_text_field( (string) ( $context['plan_id'] ?? $prior['plan_id'] ?? self::generate_plan_id() ) ),
+			'version'            => max( 1, absint( $context['version'] ?? $prior['version'] ?? 1 ) ),
+			'run_id'             => sanitize_text_field( (string) ( $context['run_id'] ?? $prior['run_id'] ?? '' ) ),
+			'request_summary'    => $request_summary,
+			'execute_message'    => $execute_message,
+			'approval_level'     => $approval_level,
+			'assumptions'        => self::sanitize_text_list( $prior['assumptions'] ?? array() ),
+			'constraints'        => self::sanitize_text_list( $prior['constraints'] ?? array() ),
+			'affected_entities'  => self::sanitize_entity_list( $prior['affected_entities'] ?? array() ),
+			'risks'              => self::sanitize_text_list( $prior['risks'] ?? array() ),
+			'verification_steps' => self::sanitize_text_list( $prior['verification_steps'] ?? array() ),
+			'steps'              => $artifact_steps,
+		);
+
+		if ( empty( $artifact['verification_steps'] ) ) {
+			$artifact['verification_steps'] = self::derive_verification_steps( $artifact_steps );
+		}
+
+		return self::sanitize( $artifact );
 	}
 
 	/**
@@ -317,13 +457,23 @@ class PressArk_Plan_Artifact {
 		if ( ! empty( $artifact['request_summary'] ) ) {
 			$lines[] = 'Request summary: ' . sanitize_text_field( (string) $artifact['request_summary'] );
 		}
+		// v5.6.8 (2026-05-12): Include the live step status in each artifact
+		// line. `to_plan_steps()` already collects status from the step row;
+		// emitting it lets us drop the duplicate "Current plan: …" prose
+		// block that build_plan_prompt_summary_block produced (these were two
+		// representations of the same data in the same system message, with
+		// real risk of divergence after a sync_step_statuses race). One source
+		// of truth, model still sees [IN PROGRESS] / [COMPLETED] markers.
 		foreach ( self::to_plan_steps( $artifact ) as $row ) {
+			$status = sanitize_key( (string) ( $row['status'] ?? 'pending' ) );
+			$status_label = 'in_progress' === $status ? 'IN PROGRESS' : strtoupper( str_replace( '_', ' ', $status ) );
 			$lines[] = sprintf(
-				'%d. [%s/%s] %s',
+				'%d. [%s/%s] %s [%s]',
 				(int) ( $row['index'] ?? 0 ),
 				sanitize_key( (string) ( $row['kind'] ?? 'analyze' ) ),
 				sanitize_key( (string) ( $row['group'] ?? 'general' ) ),
-				sanitize_text_field( (string) ( $row['text'] ?? '' ) )
+				sanitize_text_field( (string) ( $row['text'] ?? '' ) ),
+				$status_label
 			);
 		}
 
@@ -599,6 +749,23 @@ class PressArk_Plan_Artifact {
 		}
 
 		return $clean;
+	}
+
+	private static function dedupe_step_id( string $base_id, array &$used_ids ): string {
+		$base_id = sanitize_key( $base_id );
+		if ( '' === $base_id ) {
+			$base_id = 'step';
+		}
+
+		$step_id = $base_id;
+		$suffix  = 2;
+		while ( isset( $used_ids[ $step_id ] ) ) {
+			$step_id = $base_id . '_' . $suffix;
+			$suffix++;
+		}
+
+		$used_ids[ $step_id ] = true;
+		return $step_id;
 	}
 
 	/**

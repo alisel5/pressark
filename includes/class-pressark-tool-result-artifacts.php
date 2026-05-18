@@ -398,7 +398,7 @@ class PressArk_Tool_Result_Artifacts {
 						'completeness'      => $preview_meta['completeness'] ?? '',
 						'query_fingerprint' => $preview_meta['query_fingerprint'] ?? '',
 					) ),
-					'browse_hint'             => 'Use read_resource with this URI to inspect the full payload. Use list_resources with group \"tool-results\" to browse stored artifacts.',
+					'browse_hint'             => 'Use read_resource with this URI and mode="detail" (or mode="raw") to retrieve the stored payload. Default summary mode returns the data shape only. Use list_resources with group "tool-results" to browse stored artifacts.',
 				),
 			),
 			'read_meta' => $preview_meta,
@@ -496,9 +496,26 @@ class PressArk_Tool_Result_Artifacts {
 		}
 
 		if ( in_array( $tool_name, array( 'inventory_report', 'sales_summary', 'revenue_report', 'customer_insights', 'stock_report', 'store_health', 'site_health', 'analyze_seo', 'scan_security', 'page_audit', 'inspect_hooks', 'profile_queries' ), true ) ) {
+			// v5.7.3 (2026-05-12): Audit tools (analyze_seo, scan_security, page_audit, site_health, ...)
+			// emit their findings under `data['checks']`, not `issues`. Without surfacing `checks` in
+			// the preview, the model had to call `read_resource(mode=detail)` to unwrap the artifact
+			// and reach `fix_tool` / `fix_target_keys` (the iter-22 routing contract). One forced
+			// round per audit-then-fix chain (~30k input tokens). This emits only the actionable
+			// subset (fail/warning) with the fields the model needs to route the fix; pass/info
+			// entries stay in the stored artifact for full-detail browsing.
+			$actionable_checks = array();
+			if ( is_array( $data['checks'] ?? null ) ) {
+				foreach ( $data['checks'] as $check ) {
+					if ( is_array( $check ) && in_array( $check['status'] ?? '', array( 'fail', 'warning' ), true ) ) {
+						$actionable_checks[] = $check;
+					}
+				}
+			}
+
 			return array(
 				'fields'      => $this->summarize_assoc_scalars( $data, 10 ),
 				'collections' => array(
+					'checks'       => $this->summarize_preview_list( $actionable_checks, array( 'name', 'status', 'category', 'fix', 'fix_tool', 'fix_target_keys' ), 10 ),
 					'issues'       => is_array( $data['issues'] ?? null ) ? $this->summarize_preview_list( $data['issues'], array( 'title', 'label', 'severity', 'message' ), 5 ) : array(),
 					'flags'        => is_array( $data['flags'] ?? null ) ? array_slice( array_values( array_filter( $data['flags'], 'is_scalar' ) ), 0, 6 ) : array(),
 					'callbacks'    => is_array( $data['callbacks'] ?? null ) ? $this->summarize_preview_list( $data['callbacks'], array( 'priority', 'function', 'source', 'file', 'line' ), 5 ) : array(),

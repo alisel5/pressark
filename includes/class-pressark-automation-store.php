@@ -5,6 +5,11 @@
  * Dedicated custom table for first-class automation records.
  * NOT stored as JSON blobs in wp_options.
  *
+ * SQL safety note: every prepare() call uses literal SQL with %s/%d placeholders;
+ * the only interpolated token is {$table} from self::table_name() (a wpdb-prefixed
+ * literal). User data is bound exclusively through prepare() args. The lint rules
+ * disabled below cannot statically follow this pattern.
+ *
  * @package PressArk
  * @since   4.0.0
  */
@@ -13,6 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 class PressArk_Automation_Store {
 
 	/**
@@ -464,3 +470,4 @@ class PressArk_Automation_Store {
 		return $row;
 	}
 }
+// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching

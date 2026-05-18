@@ -1223,6 +1223,7 @@ class PressArk_Resource_Registry {
 				'title'           => __( 'Theme Mods Snapshot', 'pressark' ),
 				'controls'        => $controls,
 				'fallback'        => true,
+				/* translators: %s: error message returned by the customizer registration. */
 				'fallback_reason' => sprintf( __( 'Customizer controls could not be fully registered: %s', 'pressark' ), $error->getMessage() ),
 				'fallback_hint'   => __( 'Using saved theme_mod values instead. For a richer view, try get_theme_settings in the active admin site context.', 'pressark' ),
 			),

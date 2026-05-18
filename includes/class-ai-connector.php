@@ -9,6 +9,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class PressArk_AI_Connector {
 
+	/**
+	 * Dev Simulator requests can sit behind human-turn latency and observer
+	 * reasoning, so they need a much larger wall-clock budget than real APIs.
+	 */
+	public const SIMULATOR_TIMEOUT_SECONDS = 1800;
+
 	private string $provider;
 	private string $api_key;
 	private string $model;
@@ -54,7 +60,7 @@ class PressArk_AI_Connector {
 		// Observer sub-agents in the dev simulator are slow — bump the
 		// request timeout so wp_safe_remote_post doesn't abort mid-round.
 		if ( self::simulator_active() ) {
-			return max( $base, 600 );
+			return max( $base, self::SIMULATOR_TIMEOUT_SECONDS );
 		}
 
 		return $base;
@@ -243,12 +249,10 @@ For actionable SEO work on a known post/page, prefer fix_seo or update_meta dire
 
 ## Tool Hints
 - analyze_seo: post_id (number) for one page, "all" (string) for site-wide.
-- scan_security: no params needed.
 - Scheduling: status "future" with scheduled_date in "Y-m-d H:i:s" format.
 - Undo: call get_revision_history first — show available versions before restoring.
 - Trash vs Delete: "delete posts" = move to trash (bulk_delete). "Empty trash" = permanently delete already-trashed posts (empty_trash). Never use bulk_delete on posts already in trash.
 - Bulk: for uniform changes (same status, same price delta, same category) across many items, prefer one bulk call: bulk_delete (trash), empty_trash (permanent), bulk_delete_media (media), bulk_edit (status/category/tag changes), bulk_edit_products (same field change). When each item needs DIFFERENT content (unique descriptions, unique titles), use individual tool calls (edit_product, edit_content) — one per item — so each argument stays compact.
-- WooCommerce reviews: for one review reply, prefer reply_review (or moderate_review with action="reply"). For multiple review replies, prefer bulk_reply_reviews in one action.
 - Reply workflows: if the user asks you to reply to comments or reviews, read the targets, then emit the reply tool call(s). Do not stop at drafted text and do not ask for permission in prose.
 - site_note: Record important discoveries about this site for future conversations. Categories: content (editorial patterns), products (store setup, pricing), technical (config, caching, PHP), preferences (user style/tone/workflow), issues (bugs, errors, warnings). Keep notes concise and specific. Duplicates in the same category are auto-merged.
 
@@ -565,9 +569,10 @@ PROMPT;
 				$truncated                   = true;
 			}
 			$metrics = $this->measure_context_tokens( $user_context, $system_context );
-			error_log(
+			PressArk_Error_Tracker::warning(
+				'AI_Connector',
 				sprintf(
-					'PressArk: Context token budget exceeded (%d tokens). Truncated memoized context to 500 chars.',
+					'Context token budget exceeded (%d tokens). Truncated memoized context to 500 chars.',
 					(int) $metrics['total_tokens']
 				)
 			);
@@ -684,6 +689,21 @@ PROMPT;
 		bool $deep_mode = false,
 		array $options = array()
 	): array {
+		// v5.4.0: Force tool_choice=required on round 1 of Plan Mode. Sonnet 4.6
+		// (and other models with restricted_auto) repeatedly emits text narration
+		// ("Let me pull the site overview...") instead of tool_calls on the first
+		// planning round, which costs a corrective re-prompt round (~60k tokens
+		// reloaded). Observed in claude-bridge captures 2026-05-12 across multiple
+		// chains. Detection: system_prompt mentions PLAN MODE, tools are present,
+		// and no prior assistant turn has emitted tool_calls. Caller-supplied
+		// $options['tool_choice'] always wins — this is a default override only.
+		if ( ! isset( $options['tool_choice'] )
+			&& ! empty( $tools )
+			&& stripos( $system_prompt, 'PLAN MODE' ) !== false
+			&& ! self::messages_have_assistant_tool_calls( $messages ) ) {
+			$options['tool_choice'] = 'required';
+		}
+
 		$model_pinned    = 'auto' !== get_option( 'pressark_model', 'auto' );
 		$is_byok         = $this->get_tracker()->is_byok();
 		$options         = $this->normalize_request_options( $tools, $options, $deep_mode, $model_pinned, $is_byok );
@@ -1514,9 +1534,8 @@ For security scans, inspect the latest scan output before considering fix_securi
 
 If a tool response is too large (exceeds the 10,000-token limit), do NOT repeat the same call. Instead: use "limit" to reduce result count, use "search"/"filter" to narrow scope, use "mode":"light" for compact output, use "offset" to paginate, or request specific "fields". Always start with the smallest request and expand only if needed.
 If a tool call fails, or a verification read contradicts your last step, do NOT repeat the same write blindly. Re-read the current state, identify what was wrong, and choose a materially different next action or stop and explain the constraint.
-For WooCommerce pricing writes, if two price-affecting attempts on the same product stay uncertain, stop retrying price writes and explain/escalate from the latest observed pricing state.
 
-Site mode (from context): menus="wp_navigation" → FSE nav tools; menus="wp_nav_menus" → classic menu tools. theme_type="fse" → theme.json styles; theme_type="classic" → Customizer. builder="elementor" → elementor_* tools; builder="site_editor" → blocks + templates.
+Site mode (from context): menus="wp_navigation" → FSE nav tools; menus="wp_nav_menus" → classic menu tools. theme_type="fse" → theme.json styles; theme_type="classic" → Customizer. builder="site_editor" → blocks + templates.
 
 ## Post-Write Verification
 After a write action is approved and applied:
@@ -1534,6 +1553,8 @@ AGENTPROMPT;
 	private const SYSTEM_PROMPT_ELEMENTOR = <<<'ELEMENTOR'
 
 ## Elementor Rules
+
+Site mode (when applicable): builder="elementor" → elementor_* tools.
 
 Classic WordPress tools are the default for ALL content work. Elementor's edit/create tools are fragile — they can drop settings, corrupt `_elementor_data`, and produce layouts that differ from the intent. Only reach for them when a page's structure is already Elementor-owned and there is no classic alternative.
 
@@ -1577,6 +1598,8 @@ ELEMENTOR;
 	private const SYSTEM_PROMPT_WC = <<<'WCPROMPT'
 
 ## WooCommerce Rules
+
+Reviews: for one review reply, prefer reply_review (or moderate_review with action="reply"). For multiple review replies, prefer bulk_reply_reviews in one action.
 
 Products: ALWAYS use edit_product — never edit_content or update_meta on products. WC's object model keeps price lookups, stock caches, and hooks in sync. Use create_product for new products (simple, variable, grouped, external).
 When the admin is editing a product, "this product", "that product", or a product request with no other clear target refers to the current editor product ID from context. Do NOT use plain "price" for WooCommerce writes. For products, variations, and bulk WooCommerce writes, choose the explicit field that matches intent: regular_price for the base price, sale_price for a sale amount, or clear_sale=true to remove a sale.
@@ -2166,6 +2189,28 @@ AUTOMATION;
 		return $tracker->is_byok()
 			? PressArk_Model_Policy::supports_tools_byok( $provider, $model )
 			: PressArk_Model_Policy::supports_tools_bundled( $model, $provider );
+	}
+
+	/**
+	 * Does any prior assistant turn in $messages carry tool_calls?
+	 *
+	 * Used to detect "round 1 of a planning chain" — if no assistant has emitted
+	 * tool_calls yet, the model hasn't started acting on the user's request, and
+	 * Plan Mode's tool_choice should be forced to required (see
+	 * prepare_streaming_request). Static so it stays cheap and side-effect-free.
+	 *
+	 * @param array $messages OpenAI-shape messages array.
+	 */
+	private static function messages_have_assistant_tool_calls( array $messages ): bool {
+		foreach ( $messages as $msg ) {
+			if ( ! is_array( $msg ) ) {
+				continue;
+			}
+			if ( 'assistant' === ( $msg['role'] ?? '' ) && ! empty( $msg['tool_calls'] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private function current_tool_transport_mode(): string {
@@ -3574,8 +3619,8 @@ AUTOMATION;
 
 		// Conservative reservation — just a hold, actual usage is settled after
 		// the call completes. Keep this low so requests aren't blocked when
-		// the remaining budget is small (e.g. free-tier users near the end of
-		// their monthly allowance). The settle step deducts the real cost.
+		// the remaining budget is small near the end of a monthly allowance.
+		// The settle step deducts the real cost.
 		return 5000;
 	}
 
@@ -3843,10 +3888,42 @@ AUTOMATION;
 		$system_prompt   = (string) ( $prepared['system_prompt'] ?? $system_prompt );
 		$prompted_tools = 'prompted' === ( $runtime_options['provider_tool_choice'] ?? 'omitted' );
 		$api_messages   = array();
-		$api_messages[] = array(
-			'role'    => 'system',
-			'content' => $this->build_cached_system_prompt(),
-		);
+
+		// v5.6.7 (2026-05-12): Prompt-caching marker on sys[0] for providers
+		// that respect cache_control in the OpenAI-compatible chat-completions
+		// format (Anthropic via OpenRouter). The cached system prompt is the
+		// constant ~14.5k-token identity/scope block — stable across every
+		// round of a chain. Marking it `cache_control: ephemeral` (5-min TTL)
+		// gives ~90% discount on every cached hit, which is every round after
+		// the first within a typical multi-round chain.
+		//
+		// Encoding: must use content-blocks array, not plain string. OpenAI
+		// chat-completions accepts both shapes and ignores unknown fields on
+		// blocks — so this is safe for non-cache-aware providers too. Native
+		// Anthropic endpoint uses build_anthropic_request() which already had
+		// cache_control on its system blocks (line 4107).
+		//
+		// Why only sys[0] and not sys[1]: sys[1] is the "Stable Run Prefix"
+		// which carries volatile state (Trusted Facts, Current Context, Date,
+		// Harness State). Caching it would miss every round; not worth it.
+		$cached_prompt = $this->build_cached_system_prompt();
+		if ( in_array( $this->provider, self::PROVIDERS_WITH_EXPLICIT_CACHE, true ) ) {
+			$api_messages[] = array(
+				'role'    => 'system',
+				'content' => array(
+					array(
+						'type'          => 'text',
+						'text'          => $cached_prompt,
+						'cache_control' => array( 'type' => self::CACHE_TYPE ),
+					),
+				),
+			);
+		} else {
+			$api_messages[] = array(
+				'role'    => 'system',
+				'content' => $cached_prompt,
+			);
+		}
 
 		if ( ! empty( $system_prompt ) ) {
 			$api_messages[] = array(

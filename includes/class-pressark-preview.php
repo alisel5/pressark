@@ -374,7 +374,128 @@ class PressArk_Preview {
 			}
 		}
 
+		// v5.4.0: Fail-loud when staging produced no actionable changes. Previously,
+		// if every stage_X call dropped silently OR produced a diff entry with no
+		// items (e.g. model used an unsupported field name like `append_content`
+		// that stage_post_edit ignores), this returned with an empty/no-op diff
+		// and no error flag. The agent loop's failure check at class-pressark-
+		// agent.php:4295 requires BOTH empty(success) AND isset(message) — neither
+		// was set, so the chain treated it as a success, emitted a "preview" SSE
+		// event with no actionable diff, JS rendered no Keep Changes button,
+		// auto-resume fired (based on stale remaining_count), and the model
+		// re-emitted the same write forever. Observed 2026-05-12: model emitted
+		// `changes.append_content` (a field name not in the schema) after a
+		// content-compacted read_content; preview silently dropped the change.
+		// Detection: $diff empty, OR every diff entry has an empty items[] (and
+		// no meta/option entries were staged either).
+		$has_actionable_changes = false;
+		if ( ! empty( $diff ) ) {
+			foreach ( $diff as $entry ) {
+				if ( is_array( $entry ) && ! empty( $entry['items'] ) ) {
+					$has_actionable_changes = true;
+					break;
+				}
+			}
+		}
+		if ( ! $has_actionable_changes && empty( $layer['meta'] ) && empty( $layer['options'] ) ) {
+			// v5.6.1: was ::warn() — that method does not exist on the
+			// Error_Tracker class, which crashed the chain whenever this
+			// loud-fail branch fired (observed 2026-05-12 on a fix_seo
+			// round with no diff). Use the canonical ::warning().
+			PressArk_Error_Tracker::warning(
+				'Preview',
+				'Preview session produced no actionable changes; failing loudly instead of silent empty preview.',
+				array(
+					'tool_calls' => array_map(
+						static fn( $c ) => is_array( $c ) ? sanitize_key( (string) ( $c['name'] ?? $c['type'] ?? '' ) ) : '',
+						$tool_calls
+					),
+					'diff_entry_count' => count( $diff ),
+				)
+			);
+
+			// v5.6.9 (2026-05-12): Tool-aware unsupported-keys diagnostic.
+			// The old generic message mentioned only edit_content's canonical
+			// fields, which misled the model when the offending tool was
+			// fix_seo (observed 2026-05-12 SEO audit chain — model emitted
+			// `{h1, og_tags, canonical}` for fix_seo, got an error citing
+			// edit_content's allowlist, then re-emitted `{field, value}`
+			// shape — equally wrong, same generic error). Inspect each
+			// tool_call against its canonical fix-key allowlist and surface
+			// the actual unsupported keys + the supported set for THAT tool.
+			$tool_key_allowlists = array(
+				'fix_seo'       => array( 'post_id', 'meta_title', 'meta_description', 'og_title', 'og_description', 'og_image', 'focus_keyword' ),
+				'update_meta'   => array( 'post_id', 'meta_title', 'meta_description', 'og_title', 'og_description', 'og_image', 'focus_keyword', 'changes', 'meta', 'key', 'value' ),
+				'edit_content'  => array( 'post_id', 'content', 'title', 'excerpt', 'slug', 'status', 'changes' ),
+			);
+			$unsupported_report = array();
+			foreach ( $tool_calls as $call ) {
+				if ( ! is_array( $call ) ) {
+					continue;
+				}
+				$tool_name = sanitize_key( (string) ( $call['name'] ?? $call['type'] ?? '' ) );
+				$allowed   = $tool_key_allowlists[ $tool_name ] ?? null;
+				if ( null === $allowed ) {
+					continue;
+				}
+				$call_args = is_array( $call['arguments'] ?? null ) ? $call['arguments'] : array();
+				$fixes     = is_array( $call_args['fixes'] ?? null ) ? $call_args['fixes'] : array();
+				if ( empty( $fixes ) ) {
+					continue;
+				}
+				$first_value = reset( $fixes );
+				$flat_map    = ( false !== $first_value && ! is_array( $first_value ) );
+				$entries     = $flat_map ? array( $fixes ) : $fixes;
+				$bad_keys    = array();
+				foreach ( $entries as $entry ) {
+					if ( ! is_array( $entry ) ) {
+						continue;
+					}
+					foreach ( array_keys( $entry ) as $entry_key ) {
+						$entry_key = sanitize_key( (string) $entry_key );
+						if ( '' === $entry_key || in_array( $entry_key, $allowed, true ) ) {
+							continue;
+						}
+						$bad_keys[ $entry_key ] = true;
+					}
+				}
+				if ( ! empty( $bad_keys ) ) {
+					$unsupported_report[ $tool_name ] = array(
+						'unsupported_keys' => array_keys( $bad_keys ),
+						'supported_keys'   => array_values( array_diff( $allowed, array( 'post_id' ) ) ),
+					);
+				}
+			}
+
+			if ( ! empty( $unsupported_report ) ) {
+				$lines = array();
+				foreach ( $unsupported_report as $tool_name => $report ) {
+					$lines[] = sprintf(
+						/* translators: 1: tool name, 2: comma list of unsupported keys, 3: comma list of supported keys */
+						__( '%1$s does not support these keys: %2$s. Supported: %3$s.', 'pressark' ),
+						$tool_name,
+						implode( ', ', $report['unsupported_keys'] ),
+						implode( ', ', $report['supported_keys'] )
+					);
+				}
+				return array(
+					'success'             => false,
+					'error'               => 'unsupported_fix_keys',
+					'unsupported_report'  => $unsupported_report,
+					'message'             => implode( "\n", $lines )
+						. "\nFor content-level issues (h1, headings, body structure), use edit_content. For technical SEO (canonical, schema, og rendering), the active SEO plugin handles those automatically once the canonical fields above are set.",
+				);
+			}
+
+			return array(
+				'success' => false,
+				'error'   => 'preview_staging_empty',
+				'message' => __( 'Preview staging produced no changes. Likely causes: (a) the proposed args use a field name not supported by this tool (e.g. `append_content` or `add_paragraph` — only `content`, `title`, `excerpt`, `slug`, `status` are recognized by edit_content), (b) the target post does not exist, or (c) the proposed values match the existing content. Re-read the target with read_content and retry using the canonical field names.', 'pressark' ),
+			);
+		}
+
 		return array(
+			'success'    => true,
 			'session_id' => $session_id,
 			'signed_url' => $this->generate_signed_url( $session_id, $user_id, $preview_base_url ),
 			'diff'       => $diff,
@@ -507,6 +628,12 @@ class PressArk_Preview {
 		}
 
 		$fields    = $args['fields'] ?? $args['changes'] ?? $args;
+		// v5.6.1: Resolve append_content/prepend_content into a canonical
+		// $fields['content'] before the rest of the pipeline runs. Observed
+		// 2026-05-12 — two consecutive sub-agents reached for an "append"
+		// verb that didn't exist (changes.append_content and
+		// changes.content_append), looped, and ate the chain.
+		$fields    = self::normalize_append_prepend_changes( $fields, (string) $original->post_content );
 		$blueprint = $this->build_post_edit_blueprint( $fields, $original );
 
 		$new_data = array(
@@ -577,6 +704,68 @@ class PressArk_Preview {
 	}
 
 	/**
+	 * Resolve append_content / prepend_content (and common aliases) into a
+	 * single canonical $fields['content'] string. Idempotent: if 'content' is
+	 * already set, the delta verbs are silently dropped (the explicit full
+	 * replacement always wins). Strips the now-merged keys so downstream
+	 * stages see one shape only.
+	 *
+	 * @since 5.6.1
+	 * @param array  $fields           Edit fields (post-alias resolution).
+	 * @param string $original_content Existing post_content for the target.
+	 * @return array
+	 */
+	public static function normalize_append_prepend_changes( array $fields, string $original_content ): array {
+		$append_keys  = array( 'append_content', 'content_append', 'append' );
+		$prepend_keys = array( 'prepend_content', 'content_prepend', 'prepend' );
+
+		$append = null;
+		foreach ( $append_keys as $key ) {
+			if ( isset( $fields[ $key ] ) && is_string( $fields[ $key ] ) ) {
+				$append = $fields[ $key ];
+				break;
+			}
+		}
+		$prepend = null;
+		foreach ( $prepend_keys as $key ) {
+			if ( isset( $fields[ $key ] ) && is_string( $fields[ $key ] ) ) {
+				$prepend = $fields[ $key ];
+				break;
+			}
+		}
+
+		if ( null === $append && null === $prepend ) {
+			return $fields;
+		}
+
+		$drop = array_merge( $append_keys, $prepend_keys );
+
+		// Explicit full-content replacement wins. Strip the delta verbs to
+		// avoid double-application; the model can re-emit append next round
+		// if they actually wanted that.
+		if ( isset( $fields['content'] ) || isset( $fields['post_content'] ) ) {
+			foreach ( $drop as $k ) {
+				unset( $fields[ $k ] );
+			}
+			return $fields;
+		}
+
+		$base = $original_content;
+		if ( null !== $prepend && '' !== trim( $prepend ) ) {
+			$base = rtrim( $prepend ) . "\n\n" . ltrim( $base );
+		}
+		if ( null !== $append && '' !== trim( $append ) ) {
+			$base = rtrim( $base ) . "\n\n" . ltrim( $append );
+		}
+
+		$fields['content'] = $base;
+		foreach ( $drop as $k ) {
+			unset( $fields[ $k ] );
+		}
+		return $fields;
+	}
+
+	/**
 	 * Capture edit-time status metadata that must survive preview keep/apply.
 	 *
 	 * @since 5.6.0
@@ -610,9 +799,13 @@ class PressArk_Preview {
 		$entries = array();
 		$post_id = isset( $args['post_id'] ) ? (int) $args['post_id'] : 0;
 
-		// fix_seo uses [{ post_id, meta_title, meta_description, ... }] rather than
-		// a flat changes/meta payload. Expand that shape into staged meta updates so
-		// preview keep can actually persist the approved SEO fixes.
+		// fix_seo accepts two shapes for `fixes`:
+		//   (canonical) list of objects: [{post_id, meta_title, ...}, {post_id, ...}, ...]
+		//   (per-post shorthand)         flat map for the top-level post_id: {meta_title: "X", ...}
+		// The shorthand is what models actually emit when called once per post
+		// (e.g. 3 parallel fix_seo calls, one per page). Without this normalization,
+		// `$fix` becomes a scalar string and the inner array_key_exists() crashes
+		// the preview build — observed 2026-05-12 on a parallel-fix_seo chain.
 		if ( ! empty( $args['fixes'] ) && is_array( $args['fixes'] ) ) {
 			$seo_fields = array(
 				'meta_title',
@@ -624,7 +817,23 @@ class PressArk_Preview {
 				'focus_keyword',
 			);
 
-			foreach ( $args['fixes'] as $fix ) {
+			$fixes = $args['fixes'];
+			$first = reset( $fixes );
+			if ( false !== $first && ! is_array( $first ) ) {
+				// Flat map detected. Wrap into one fix entry inheriting the
+				// top-level post_id (set above as $post_id).
+				$fixes = array(
+					array_merge(
+						array( 'post_id' => $post_id ),
+						$args['fixes']
+					),
+				);
+			}
+
+			foreach ( $fixes as $fix ) {
+				if ( ! is_array( $fix ) ) {
+					continue;
+				}
 				$fix_post_id = isset( $fix['post_id'] ) ? (int) $fix['post_id'] : $post_id;
 				if ( $fix_post_id <= 0 ) {
 					continue;
@@ -1155,6 +1364,14 @@ class PressArk_Preview {
 	 * Promote temp layer to live. Called when user clicks "Keep".
 	 */
 	public function keep( string $session_id ): array {
+		// v5.6.4 (2026-05-12): Raise memory_limit before content-heavy apply.
+		// Observed: PressArk OOMed at 268MB applying a 9KB Gutenberg landing
+		// page on wp-playground. wp_update_post fires save_post hooks (SEO,
+		// caching, Elementor CSS regen) + KSES + block parsing — easily
+		// 200MB+ even before our own ledger bookkeeping runs. Many shared
+		// hosts default to 128-256MB. ini_set is a no-op if php.ini locks it.
+		self::raise_memory_limit_for_apply();
+
 		// v3.7.0: Acquire a short-lived lock to prevent concurrent keep + discard.
 		if ( ! $this->acquire_session_lock( $session_id ) ) {
 			return array( 'success' => false, 'message' => 'Another operation is already processing this preview session.' );
@@ -1706,6 +1923,38 @@ class PressArk_Preview {
 	}
 
 	// ─── v3.7.0 Hardening Helpers ───────────────────────────────────────
+
+	/**
+	 * Defensively raise PHP memory_limit before content-heavy apply paths.
+	 *
+	 * @since 5.6.4
+	 *
+	 * Why: applying a Gutenberg preview runs wp_update_post which fires every
+	 * registered save_post hook (SEO plugins, caching, Elementor CSS regen),
+	 * KSES on the rich content, block parsing, and our own ledger bookkeeping.
+	 * Even modest content (9KB Gutenberg landing page) can push 200MB+.
+	 * Default WP host memory limits are often 128M–256M, which OOMs on first
+	 * apply. Raise to 512M before the heavy lifting starts. ini_set is a
+	 * no-op when php.ini locks the directive — that's fine, no error, the
+	 * apply will then surface a clearer error than a silent fatal.
+	 *
+	 * Observed 2026-05-12: OOM at 268MB on wp-playground with 256M limit,
+	 * tripped by record_preview_result → mark_dynamic_task_done_by_tool
+	 * (iter-11) finally tipping over an already-near-full heap.
+	 *
+	 * Public so PressArk_Run_Approval_Service::apply_preview_keep can call it
+	 * before the policy-eval phase (which runs BEFORE $preview->keep()).
+	 */
+	public static function raise_memory_limit_for_apply(): void {
+		$current = function_exists( 'wp_convert_hr_to_bytes' )
+			? wp_convert_hr_to_bytes( (string) @ini_get( 'memory_limit' ) )
+			: 0;
+		// 0 means "unlimited" (some hosts); -1 from ini_get returns 0 here too.
+		// Only raise when we can prove the current limit is below 512M.
+		if ( $current > 0 && $current < 512 * 1024 * 1024 && function_exists( 'wp_raise_memory_limit' ) ) {
+			wp_raise_memory_limit( 'admin' );
+		}
+	}
 
 	/**
 	 * Acquire a short-lived advisory lock for a preview session.

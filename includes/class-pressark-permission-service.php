@@ -534,12 +534,12 @@ class PressArk_Permission_Service {
 			case 'quota':
 				$label   = 'Quota reached';
 				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
-				$hint    = 'Retry after the quota resets or upgrade the plan, then rerun.';
+				$hint    = 'Retry after credits or runtime capacity are available, then rerun.';
 				break;
 			case 'entitlement':
-				$label   = 'Plan does not include it';
+				$label   = 'Capability unavailable';
 				$summary = self::build_hidden_reason_summary( $kind, '' !== $group ? array( $group ) : array(), 1 );
-				$hint    = 'Upgrade the plan or use a tool group that is included.';
+				$hint    = 'Use a currently available tool group or adjust the runtime context.';
 				break;
 			case 'approval':
 				$label   = 'Needs human approval';
@@ -733,7 +733,7 @@ class PressArk_Permission_Service {
 				'entitlement' => array(
 					'checked'    => true,
 					'allowed'    => false,
-					'basis'      => (string) ( $check['basis'] ?? 'group_limit_exhausted' ),
+					'basis'      => (string) ( $check['basis'] ?? 'local_runtime_unavailable' ),
 					'tier'       => $tier,
 					'group'      => $group,
 					'capability' => $capability,
@@ -779,14 +779,14 @@ class PressArk_Permission_Service {
 
 		if ( 'read' === $capability ) {
 			$basis = 'read';
-		} elseif ( method_exists( 'PressArk_Entitlements', 'is_paid_tier' ) && PressArk_Entitlements::is_paid_tier( $tier ) ) {
-			$basis = 'paid_tier';
+		} elseif ( ! empty( $check['allowed'] ) ) {
+			$basis = 'credits_only';
 		} elseif ( defined( 'PressArk_Entitlements::UNLIMITED_GROUPS' ) && in_array( $group, PressArk_Entitlements::UNLIMITED_GROUPS, true ) ) {
 			$basis = 'unlimited_group';
 		} elseif ( ! empty( $check['allowed'] ) && isset( $check['remaining'] ) ) {
 			$basis = 'weekly_remaining';
 		} elseif ( empty( $check['allowed'] ) ) {
-			$basis = 'group_limit_exhausted';
+			$basis = 'local_runtime_unavailable';
 		}
 
 		return array(
@@ -910,8 +910,8 @@ class PressArk_Permission_Service {
 				? 'This capability stayed hidden because the current quota window is exhausted.'
 				: sprintf( '%s stayed hidden because the current quota window is exhausted.', $scope ),
 			'entitlement' => $is_singular
-				? 'This capability is not included on the current plan.'
-				: sprintf( '%s are not included on the current plan.', $scope ),
+				? 'This capability is unavailable in the current runtime context.'
+				: sprintf( '%s are unavailable in the current runtime context.', $scope ),
 			'approval'    => $is_singular
 				? 'This capability needs a human-approved route in this context.'
 				: sprintf( '%s need a human-approved route in this context.', $scope ),

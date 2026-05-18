@@ -35,7 +35,7 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		'profile'    => array( 'view_site_profile', 'refresh_site_profile' ),
 		'logs'       => array( 'list_logs', 'read_log', 'analyze_logs', 'clear_log' ),
 		'index'      => array( 'search_knowledge', 'index_status', 'rebuild_index' ),
-		'plugins'    => array( 'list_plugins', 'toggle_plugin' ),
+		'plugins'    => array( 'list_plugins' ),
 		'themes'     => array( 'list_themes', 'get_theme_settings', 'get_customizer_schema', 'update_theme_setting', 'switch_theme' ),
 		'database'   => array( 'database_stats', 'cleanup_database', 'optimize_database' ),
 		'templates'  => array( 'get_templates', 'edit_template' ),
@@ -633,6 +633,14 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 	public function read_resource( array $params ): array {
 		$uri  = sanitize_text_field( $params['uri'] ?? '' );
 		$mode = sanitize_key( (string) ( $params['mode'] ?? 'summary' ) );
+		// v5.4.0: Accept "full" and "payload" as aliases for "detail".
+		// The model's natural reach for these terms (matching how the artifact
+		// browse_hint used to phrase it) was previously coerced to "summary"
+		// and produced the same wrapper-metadata stub on every retry — observed
+		// 2026-05-12 on an SEO audit chain: 3 wasted rounds chasing an artifact.
+		if ( in_array( $mode, array( 'full', 'payload' ), true ) ) {
+			$mode = 'detail';
+		}
 		if ( ! in_array( $mode, array( 'summary', 'detail', 'raw' ), true ) ) {
 			$mode = 'summary';
 		}
@@ -651,6 +659,20 @@ class PressArk_Handler_Discovery extends PressArk_Handler_Base {
 		$cached = $result['cached'] ?? false;
 		$meta   = $this->find_resource_meta( $uri );
 		$read_meta = is_array( $result['meta'] ?? null ) ? $result['meta'] : array();
+
+		// v5.4.0: For tool-result artifacts, the wrapper metadata
+		// (resource_type, artifact_id, tool_name, ...) is bookkeeping the model
+		// already saw in the artifact preview. Unwrap to the stored `result`
+		// so "summary" actually summarizes the payload shape, and "detail" /
+		// "raw" return the payload directly. Without this, the model gets keys
+		// like ["resource_type","artifact_id",...] when it asks to read an
+		// analyze_seo result — and has no way to find the actual issues list.
+		$is_tool_result_artifact = is_array( $data )
+			&& 'tool_result_artifact' === ( $data['resource_type'] ?? '' )
+			&& array_key_exists( 'result', $data );
+		if ( $is_tool_result_artifact ) {
+			$data = $data['result'];
+		}
 
 		if ( 'raw' === $mode ) {
 			$message = is_string( $data )

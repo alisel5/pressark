@@ -17,6 +17,15 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Canonical URL, robots meta, and noindex/nofollow conflict checks added.
  * Content length, external links, featured image demoted to observations.
  * Multiple H1s demoted to info (not penalized).
+ *
+ * v5.7.2 (2026-05-12): Audit output is now the canonical source of truth
+ * for audit→fix routing. Each check that carries a `fix` text also carries
+ * `fix_tool` (the PressArk tool that resolves the finding, or null when
+ * the finding is theme/SEO-plugin-handled or manual) and `fix_target_keys`
+ * (the tool param keys the fix should populate). The model no longer
+ * has to infer the mapping from check `name` to fix_seo allowlist keys.
+ * Legacy `quick_fixes` (update_meta-shape, no consumers) was dropped —
+ * it was misleading-signal weight in every audit response.
  */
 class PressArk_SEO_Scanner {
 
@@ -77,7 +86,6 @@ class PressArk_SEO_Scanner {
 						),
 					),
 				),
-				'quick_fixes'  => array(),
 				'subscores'    => null,
 				'observations' => array(),
 			);
@@ -121,9 +129,9 @@ class PressArk_SEO_Scanner {
 		}
 		$total_score = (int) round( $total_score );
 
-		// Merge all checks, quick_fixes, observations.
-		$checks      = array_merge( $indexing['checks'], $appearance['checks'], $quality['checks'], $social['checks'] );
-		$quick_fixes = array_merge( $indexing['quick_fixes'], $appearance['quick_fixes'], $quality['quick_fixes'], $social['quick_fixes'] );
+		// v5.7.2: quick_fixes dropped (legacy update_meta-shape, no consumers).
+		// Per-check `fix_tool` + `fix_target_keys` are now the source of truth for fix routing.
+		$checks = array_merge( $indexing['checks'], $appearance['checks'], $quality['checks'], $social['checks'] );
 
 		// Add observation checks to checks[] with status:info for backward compat.
 		foreach ( $obs as $ob ) {
@@ -140,7 +148,6 @@ class PressArk_SEO_Scanner {
 			'url'          => $url,
 			'noindex'      => false,
 			'checks'       => $checks,
-			'quick_fixes'  => $quick_fixes,
 			'subscores'    => $subscores,
 			'observations' => $obs,
 		);
@@ -263,12 +270,11 @@ class PressArk_SEO_Scanner {
 	// ── Category: Indexing Health (30%, 0-100) ───────────────────────
 
 	/**
-	 * @return array{score: int, checks: array, observations: array, quick_fixes: array}
+	 * @return array{score: int, checks: array, observations: array}
 	 */
 	private function check_indexing_health( int $post_id, \WP_Post $post, string $content, ?string $seo_plugin ): array {
-		$checks      = array();
-		$quick_fixes = array();
-		$score       = 0;
+		$checks = array();
+		$score  = 0;
 
 		// 1. Canonical URL (30 pts).
 		$canonical = PressArk_SEO_Resolver::read( $post_id, 'canonical' );
@@ -314,11 +320,13 @@ class PressArk_SEO_Scanner {
 		} else {
 			// No canonical set, no plugin.
 			$checks[] = array(
-				'name'     => __( 'Canonical URL', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'indexing_health',
-				'message'  => __( 'No canonical URL set. Risk of duplicate content.', 'pressark' ),
-				'fix'      => __( 'Set a canonical URL or install an SEO plugin.', 'pressark' ),
+				'name'            => __( 'Canonical URL', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'indexing_health',
+				'message'         => __( 'No canonical URL set. Risk of duplicate content.', 'pressark' ),
+				'fix'             => __( 'Set a canonical URL or install an SEO plugin.', 'pressark' ),
+				'fix_tool'        => null,
+				'fix_target_keys' => array(),
 			);
 		}
 
@@ -373,15 +381,17 @@ class PressArk_SEO_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Indexing Conflicts', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'indexing_health',
-				'message'  => sprintf(
+				'name'            => __( 'Indexing Conflicts', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'indexing_health',
+				'message'         => sprintf(
 					/* translators: %s: semicolon-separated list of indexing conflicts */
 					__( 'Indexing conflict detected: %s.', 'pressark' ),
 					implode( '; ', $conflicts )
 				),
-				'fix'      => __( 'Review robots directives and canonical URL for consistency.', 'pressark' ),
+				'fix'             => __( 'Review robots directives and canonical URL for consistency.', 'pressark' ),
+				'fix_tool'        => null,
+				'fix_target_keys' => array(),
 			);
 		}
 
@@ -416,11 +426,13 @@ class PressArk_SEO_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Schema Markup', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'indexing_health',
-				'message'  => __( 'No schema markup detected.', 'pressark' ),
-				'fix'      => __( 'Consider adding JSON-LD schema or installing an SEO plugin.', 'pressark' ),
+				'name'            => __( 'Schema Markup', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'indexing_health',
+				'message'         => __( 'No schema markup detected.', 'pressark' ),
+				'fix'             => __( 'Consider adding JSON-LD schema or installing an SEO plugin.', 'pressark' ),
+				'fix_tool'        => null,
+				'fix_target_keys' => array(),
 			);
 		}
 
@@ -428,19 +440,17 @@ class PressArk_SEO_Scanner {
 			'score'        => min( 100, $score ),
 			'checks'       => $checks,
 			'observations' => array(),
-			'quick_fixes'  => $quick_fixes,
 		);
 	}
 
 	// ── Category: Search Appearance (30%, 0-100) ─────────────────────
 
 	/**
-	 * @return array{score: int, checks: array, observations: array, quick_fixes: array}
+	 * @return array{score: int, checks: array, observations: array}
 	 */
 	private function check_search_appearance( int $post_id, \WP_Post $post, string $content, ?string $seo_plugin, string $plain_text ): array {
-		$checks      = array();
-		$quick_fixes = array();
-		$score       = 0;
+		$checks = array();
+		$score  = 0;
 
 		$title     = $post->post_title;
 		$site_name = get_bloginfo( 'name' );
@@ -484,15 +494,17 @@ class PressArk_SEO_Scanner {
 			} else {
 				$score   += 20;
 				$checks[] = array(
-					'name'     => __( 'Meta Title', 'pressark' ),
-					'status'   => 'warning',
-					'category' => 'search_appearance',
-					'message'  => sprintf(
+					'name'            => __( 'Meta Title', 'pressark' ),
+					'status'          => 'warning',
+					'category'        => 'search_appearance',
+					'message'         => sprintf(
 						/* translators: %d: meta title length in characters */
 						__( 'Meta title is %d chars. Ideal range: 30-70 characters (sweet spot: ~55).', 'pressark' ),
 						$title_len
 					),
-					'fix'      => __( 'Adjust meta title length to 30-70 characters.', 'pressark' ),
+					'fix'             => __( 'Adjust meta title length to 30-70 characters.', 'pressark' ),
+					'fix_tool'        => 'fix_seo',
+					'fix_target_keys' => array( 'meta_title' ),
 				);
 			}
 		} elseif ( 'template' === $title_source ) {
@@ -510,22 +522,17 @@ class PressArk_SEO_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Meta Title', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'search_appearance',
-				'message'  => sprintf(
+				'name'            => __( 'Meta Title', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'search_appearance',
+				'message'         => sprintf(
 					/* translators: %s: fallback generated meta title */
 					__( 'No meta title set. Using default: "%s"', 'pressark' ),
 					$display_title
 				),
-				'fix'      => __( 'Set a custom meta title (30-70 characters).', 'pressark' ),
-			);
-			$suggested_title = mb_substr( $title . ' | ' . $site_name, 0, 60 );
-			$quick_fixes[]   = array(
-				'type'            => 'update_meta',
-				'post_id'         => $post_id,
-				'key'             => '_pressark_meta_title',
-				'suggested_value' => $suggested_title,
+				'fix'             => __( 'Set a custom meta title (30-70 characters).', 'pressark' ),
+				'fix_tool'        => 'fix_seo',
+				'fix_target_keys' => array( 'meta_title' ),
 			);
 		}
 
@@ -566,15 +573,17 @@ class PressArk_SEO_Scanner {
 			} else {
 				$score   += 18;
 				$checks[] = array(
-					'name'     => __( 'Meta Description', 'pressark' ),
-					'status'   => 'warning',
-					'category' => 'search_appearance',
-					'message'  => sprintf(
+					'name'            => __( 'Meta Description', 'pressark' ),
+					'status'          => 'warning',
+					'category'        => 'search_appearance',
+					'message'         => sprintf(
 						/* translators: %d: meta description length in characters */
 						__( 'Meta description is %d chars. Ideal range: 50-200 characters (sweet spot: ~155).', 'pressark' ),
 						$desc_len
 					),
-					'fix'      => __( 'Adjust meta description to 50-200 characters.', 'pressark' ),
+					'fix'             => __( 'Adjust meta description to 50-200 characters.', 'pressark' ),
+					'fix_tool'        => 'fix_seo',
+					'fix_target_keys' => array( 'meta_description' ),
 				);
 			}
 		} elseif ( 'template' === $desc_source ) {
@@ -592,21 +601,14 @@ class PressArk_SEO_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Meta Description', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'search_appearance',
-				'message'  => __( 'No meta description found.', 'pressark' ),
-				'fix'      => __( 'Add a meta description (50-200 characters).', 'pressark' ),
+				'name'            => __( 'Meta Description', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'search_appearance',
+				'message'         => __( 'No meta description found.', 'pressark' ),
+				'fix'             => __( 'Add a meta description (50-200 characters).', 'pressark' ),
+				'fix_tool'        => 'fix_seo',
+				'fix_target_keys' => array( 'meta_description' ),
 			);
-			$suggested_desc = mb_substr( wp_trim_words( $plain_text, 25, '...' ), 0, 160 );
-			if ( mb_strlen( $suggested_desc ) > 20 ) {
-				$quick_fixes[] = array(
-					'type'            => 'update_meta',
-					'post_id'         => $post_id,
-					'key'             => '_pressark_meta_description',
-					'suggested_value' => $suggested_desc,
-				);
-			}
 		}
 
 		// 3. URL Slug (25 pts).
@@ -638,25 +640,29 @@ class PressArk_SEO_Scanner {
 					$issues[] = __( 'too long', 'pressark' );
 				}
 				$checks[] = array(
-					'name'     => __( 'URL Slug', 'pressark' ),
-					'status'   => 'warning',
-					'category' => 'search_appearance',
-					'message'  => sprintf(
+					'name'            => __( 'URL Slug', 'pressark' ),
+					'status'          => 'warning',
+					'category'        => 'search_appearance',
+					'message'         => sprintf(
 						/* translators: 1: URL slug, 2: comma-separated list of slug issues */
 						__( 'Slug "/%1$s" %2$s.', 'pressark' ),
 						$slug,
 						implode( ', ', $issues )
 					),
-					'fix'      => __( 'Shorten the slug and remove stop words.', 'pressark' ),
+					'fix'             => __( 'Shorten the slug and remove stop words.', 'pressark' ),
+					'fix_tool'        => 'edit_content',
+					'fix_target_keys' => array( 'slug' ),
 				);
 			}
 		} else {
 			$checks[] = array(
-				'name'     => __( 'URL Slug', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'search_appearance',
-				'message'  => __( 'No slug set.', 'pressark' ),
-				'fix'      => __( 'Set a clean, keyword-focused URL slug.', 'pressark' ),
+				'name'            => __( 'URL Slug', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'search_appearance',
+				'message'         => __( 'No slug set.', 'pressark' ),
+				'fix'             => __( 'Set a clean, keyword-focused URL slug.', 'pressark' ),
+				'fix_tool'        => 'edit_content',
+				'fix_target_keys' => array( 'slug' ),
 			);
 		}
 
@@ -664,20 +670,18 @@ class PressArk_SEO_Scanner {
 			'score'        => min( 100, $score ),
 			'checks'       => $checks,
 			'observations' => array(),
-			'quick_fixes'  => $quick_fixes,
 		);
 	}
 
 	// ── Category: Content Quality (25%, 0-100) ──────────────────────
 
 	/**
-	 * @return array{score: int, checks: array, observations: array, quick_fixes: array}
+	 * @return array{score: int, checks: array, observations: array}
 	 */
 	private function check_content_quality( \WP_Post $post, string $content ): array {
-		$checks      = array();
-		$quick_fixes = array();
-		$score       = 0;
-		$title       = $post->post_title;
+		$checks = array();
+		$score  = 0;
+		$title  = $post->post_title;
 
 		// 1. H1 Tag (30 pts) — presence only, multiple H1 = info (not penalized).
 		$h1_count = 0;
@@ -704,11 +708,13 @@ class PressArk_SEO_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'H1 Tag', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'content_quality',
-				'message'  => __( 'No H1 tag found in content.', 'pressark' ),
-				'fix'      => __( 'Add one H1 heading to the page content.', 'pressark' ),
+				'name'            => __( 'H1 Tag', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'content_quality',
+				'message'         => __( 'No H1 tag found in content.', 'pressark' ),
+				'fix'             => __( 'Add one H1 heading to the page content.', 'pressark' ),
+				'fix_tool'        => 'edit_content',
+				'fix_target_keys' => array( 'content' ),
 			);
 		}
 
@@ -735,20 +741,24 @@ class PressArk_SEO_Scanner {
 			} else {
 				$score   += 10;
 				$checks[] = array(
-					'name'     => __( 'Heading Hierarchy', 'pressark' ),
-					'status'   => 'warning',
-					'category' => 'content_quality',
-					'message'  => __( 'Heading levels skip (e.g., H1 to H3 without H2).', 'pressark' ),
-					'fix'      => __( 'Ensure headings follow H1→H2→H3 order without gaps.', 'pressark' ),
+					'name'            => __( 'Heading Hierarchy', 'pressark' ),
+					'status'          => 'warning',
+					'category'        => 'content_quality',
+					'message'         => __( 'Heading levels skip (e.g., H1 to H3 without H2).', 'pressark' ),
+					'fix'             => __( 'Ensure headings follow H1→H2→H3 order without gaps.', 'pressark' ),
+					'fix_tool'        => 'edit_content',
+					'fix_target_keys' => array( 'content' ),
 				);
 			}
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Heading Hierarchy', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'content_quality',
-				'message'  => __( 'No headings found in content.', 'pressark' ),
-				'fix'      => __( 'Add structured headings (H1, H2, H3) to organize content.', 'pressark' ),
+				'name'            => __( 'Heading Hierarchy', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'content_quality',
+				'message'         => __( 'No headings found in content.', 'pressark' ),
+				'fix'             => __( 'Add structured headings (H1, H2, H3) to organize content.', 'pressark' ),
+				'fix_tool'        => 'edit_content',
+				'fix_target_keys' => array( 'content' ),
 			);
 		}
 
@@ -777,16 +787,18 @@ class PressArk_SEO_Scanner {
 				);
 			} else {
 				$checks[] = array(
-					'name'     => __( 'Image Alt Text', 'pressark' ),
-					'status'   => 'fail',
-					'category' => 'content_quality',
-					'message'  => sprintf(
+					'name'            => __( 'Image Alt Text', 'pressark' ),
+					'status'          => 'fail',
+					'category'        => 'content_quality',
+					'message'         => sprintf(
 						/* translators: 1: number of images missing alt text, 2: total number of images */
 						__( '%1$d of %2$d images missing alt text.', 'pressark' ),
 						$missing_alt,
 						$total_images
 					),
-					'fix'      => __( 'Add descriptive alt text to all images.', 'pressark' ),
+					'fix'             => __( 'Add descriptive alt text to all images.', 'pressark' ),
+					'fix_tool'        => 'edit_content',
+					'fix_target_keys' => array( 'content' ),
 				);
 			}
 		} else {
@@ -823,11 +835,13 @@ class PressArk_SEO_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Internal Links', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'content_quality',
-				'message'  => __( 'No internal links found.', 'pressark' ),
-				'fix'      => __( 'Add links to related content on your site.', 'pressark' ),
+				'name'            => __( 'Internal Links', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'content_quality',
+				'message'         => __( 'No internal links found.', 'pressark' ),
+				'fix'             => __( 'Add links to related content on your site.', 'pressark' ),
+				'fix_tool'        => 'edit_content',
+				'fix_target_keys' => array( 'content' ),
 			);
 		}
 
@@ -835,19 +849,17 @@ class PressArk_SEO_Scanner {
 			'score'        => min( 100, $score ),
 			'checks'       => $checks,
 			'observations' => array(),
-			'quick_fixes'  => $quick_fixes,
 		);
 	}
 
 	// ── Category: Social Sharing (15%, 0-100) ───────────────────────
 
 	/**
-	 * @return array{score: int, checks: array, observations: array, quick_fixes: array}
+	 * @return array{score: int, checks: array, observations: array}
 	 */
 	private function check_social_sharing( int $post_id ): array {
-		$checks      = array();
-		$quick_fixes = array();
-		$score       = 0;
+		$checks = array();
+		$score  = 0;
 
 		// Open Graph Tags (100 pts within category).
 		$og_title = PressArk_SEO_Resolver::read( $post_id, 'og_title' );
@@ -876,28 +888,34 @@ class PressArk_SEO_Scanner {
 		} elseif ( 2 === $og_set ) {
 			$score   += 65;
 			$checks[] = array(
-				'name'     => __( 'Open Graph Tags', 'pressark' ),
-				'status'   => 'warning',
-				'category' => 'social_sharing',
-				'message'  => __( '2/3 Open Graph tags set.', 'pressark' ),
-				'fix'      => __( 'Add og:title, og:description, and og:image for social sharing.', 'pressark' ),
+				'name'            => __( 'Open Graph Tags', 'pressark' ),
+				'status'          => 'warning',
+				'category'        => 'social_sharing',
+				'message'         => __( '2/3 Open Graph tags set.', 'pressark' ),
+				'fix'             => __( 'Add og:title, og:description, and og:image for social sharing.', 'pressark' ),
+				'fix_tool'        => 'fix_seo',
+				'fix_target_keys' => array( 'og_title', 'og_description', 'og_image' ),
 			);
 		} elseif ( 1 === $og_set ) {
 			$score   += 30;
 			$checks[] = array(
-				'name'     => __( 'Open Graph Tags', 'pressark' ),
-				'status'   => 'warning',
-				'category' => 'social_sharing',
-				'message'  => __( '1/3 Open Graph tags set.', 'pressark' ),
-				'fix'      => __( 'Add og:title, og:description, and og:image for social sharing.', 'pressark' ),
+				'name'            => __( 'Open Graph Tags', 'pressark' ),
+				'status'          => 'warning',
+				'category'        => 'social_sharing',
+				'message'         => __( '1/3 Open Graph tags set.', 'pressark' ),
+				'fix'             => __( 'Add og:title, og:description, and og:image for social sharing.', 'pressark' ),
+				'fix_tool'        => 'fix_seo',
+				'fix_target_keys' => array( 'og_title', 'og_description', 'og_image' ),
 			);
 		} else {
 			$checks[] = array(
-				'name'     => __( 'Open Graph Tags', 'pressark' ),
-				'status'   => 'fail',
-				'category' => 'social_sharing',
-				'message'  => __( 'No Open Graph tags set.', 'pressark' ),
-				'fix'      => __( 'Add Open Graph tags for better social media previews.', 'pressark' ),
+				'name'            => __( 'Open Graph Tags', 'pressark' ),
+				'status'          => 'fail',
+				'category'        => 'social_sharing',
+				'message'         => __( 'No Open Graph tags set.', 'pressark' ),
+				'fix'             => __( 'Add Open Graph tags for better social media previews.', 'pressark' ),
+				'fix_tool'        => 'fix_seo',
+				'fix_target_keys' => array( 'og_title', 'og_description', 'og_image' ),
 			);
 		}
 
@@ -905,7 +923,6 @@ class PressArk_SEO_Scanner {
 			'score'        => min( 100, $score ),
 			'checks'       => $checks,
 			'observations' => array(),
-			'quick_fixes'  => $quick_fixes,
 		);
 	}
 

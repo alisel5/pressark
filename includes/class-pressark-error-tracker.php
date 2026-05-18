@@ -64,6 +64,7 @@ class PressArk_Error_Tracker {
 		}
 
 		if ( self::should_write_to_php_error_log( $level_index ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Intentional production error logging gated by should_write_to_php_error_log(): warnings+ always log, lower severities require WP_DEBUG/WP_DEBUG_LOG. This class is the plugin's structured error tracker.
 			error_log( $log_line );
 		}
 

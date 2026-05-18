@@ -1,12 +1,17 @@
 <?php
 /**
  * Local cost ledger for reservation telemetry.
+ *
+ * SQL safety note: every prepare() call uses literal SQL with %s/%d placeholders;
+ * the only interpolated token is {$table} from self::table_name() (a wpdb-prefixed
+ * literal). User data is bound exclusively through prepare() args.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 class PressArk_Cost_Ledger {
 
 	public static function table_name(): string {
@@ -220,3 +225,4 @@ class PressArk_Cost_Ledger {
 		return $row ?: array();
 	}
 }
+// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching

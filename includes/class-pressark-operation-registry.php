@@ -849,7 +849,7 @@ class PressArk_Operation_Registry {
 
 		// ── Content — writes ────────────────────────────────────
 		self::register_all( array(
-			array( 'edit_content',   'core', 'preview', 'content', 'edit_content',   'post_edit',   null, 'Edit post/page: title, content, excerpt, slug, status' ),
+			array( 'edit_content',   'core', 'preview', 'content', 'edit_content',   'post_edit',   null, 'Edit post/page: title, content (replace), append_content (add at end), prepend_content (add at start), excerpt, slug, status' ),
 			array( 'update_meta',    'core', 'preview', 'content', 'update_meta',    'meta_update', null, 'Update post meta: SEO title, description, OG tags, custom fields' ),
 			array( 'create_post',    'core', 'preview', 'content', 'create_post',    'new_post',    null, 'Create a new post or page with optional slug, excerpt, SEO, social metadata, and scheduling' ),
 			array( 'delete_content', 'core', 'confirm', 'content', 'delete_content', 'none',        null, 'Move a post or page to trash' ),
@@ -920,7 +920,7 @@ class PressArk_Operation_Registry {
 		self::register_all( array(
 			array( 'site_health',                'health', 'read', 'system',      'site_health',                       'none', null, 'Site Health status: issues, recommendations, environment' ),
 			array( 'inspect_hooks',              'health', 'read', 'diagnostics', 'handle_inspect_hooks',              'none', null, 'Inspect plugin/theme hooks on a WordPress action' ),
-			array( 'measure_page_speed',         'health', 'read', 'diagnostics', 'handle_measure_page_speed',         'none', null, 'Measure page load time: TTFB, cache, script count' ),
+			array( 'measure_page_speed',         'health', 'read', 'diagnostics', 'handle_measure_page_speed',         'none', null, 'Measure page load time: cache, script count' ),
 			array( 'profile_queries',            'health', 'read', 'diagnostics', 'handle_profile_queries',            'none', null, 'Profile DB queries: slowest, duplicates, totals' ),
 			array( 'get_revision_history',       'health', 'read', 'diagnostics', 'handle_get_revision_history',       'none', null, 'Post edit history with field-level diffs for undo/revert' ),
 			array( 'discover_rest_routes',       'health', 'read', 'diagnostics', 'handle_discover_rest_routes',       'none', null, 'List all REST API endpoints grouped by plugin namespace' ),
@@ -983,7 +983,6 @@ class PressArk_Operation_Registry {
 		// ── Plugins ─────────────────────────────────────────────
 		self::register_all( array(
 			array( 'list_plugins',  'plugins', 'read',    'system', 'list_plugins',  'none', null, 'List installed plugins with status, version, updates' ),
-			array( 'toggle_plugin', 'plugins', 'confirm', 'system', 'toggle_plugin', 'none', null, 'Activate or deactivate a plugin' ),
 		) );
 
 		// ── Themes ──────────────────────────────────────────────
@@ -1834,29 +1833,6 @@ class PressArk_Operation_Registry {
 				),
 			),
 
-			'toggle_plugin' => array(
-				'search_hint'   => 'activate deactivate plugin enable disable',
-				'interrupt'     => 'cancel',
-				'tags'          => array( 'plugins', 'system' ),
-				'idempotent'    => true,
-				'parameter_contract' => self::toggle_plugin_parameter_contract(),
-				'model_guidance'     => array(
-					'Use list_plugins first when the plugin file path is unclear.',
-				),
-				'read_invalidation' => array(
-					'scope'  => 'site',
-					'reason' => 'Plugin changes can stale broad site context and resources.',
-				),
-				'verification'  => array(
-					'strategy'     => 'none',
-					'read_tool'    => '',
-					'read_args'    => array(),
-					'check_fields' => array(),
-					'intensity'    => 'light',
-					'nudge'        => true,
-				),
-			),
-
 			'manage_scheduled_task' => array(
 				'search_hint'   => 'cron scheduled task run remove reschedule',
 				'interrupt'     => 'cancel',
@@ -2371,6 +2347,11 @@ class PressArk_Operation_Registry {
 			'changes.scheduled_date'  => array( 'scheduled_date', 'post_date', 'changes.post_date' ),
 			'changes.sticky'          => array( 'sticky' ),
 			'changes.post_format'     => array( 'post_format', 'format' ),
+			// v5.6.1: First-class append/prepend verbs. Aliases catch the
+			// common synonyms two consecutive sub-agents reached for on
+			// 2026-05-12 when only a `content` (full-replace) verb existed.
+			'changes.append_content'  => array( 'append_content', 'content_append', 'append' ),
+			'changes.prepend_content' => array( 'prepend_content', 'content_prepend', 'prepend' ),
 		);
 	}
 
@@ -2408,7 +2389,15 @@ class PressArk_Operation_Registry {
 					'properties'    => array(
 						'content'        => array(
 							'type'        => 'string',
-							'description' => 'Replacement post_content HTML.',
+							'description' => 'Replacement post_content HTML (full replacement). Use this when rewriting the whole post body. For inserting new content without rewriting, prefer append_content or prepend_content.',
+						),
+						'append_content' => array(
+							'type'        => 'string',
+							'description' => 'Block-markup HTML to append AFTER the existing post_content. Use this when adding a paragraph or section without overwriting the rest (e.g. SEO link block). Wrap in <!-- wp:paragraph --> / wp:* delimiters for Gutenberg pages so the new content renders as native blocks.',
+						),
+						'prepend_content' => array(
+							'type'        => 'string',
+							'description' => 'Block-markup HTML to prepend BEFORE the existing post_content. Use this when inserting a hero/intro block at the top of the post without rewriting the body.',
 						),
 						'title'          => array(
 							'type'        => 'string',
@@ -2822,31 +2811,6 @@ class PressArk_Operation_Registry {
 				),
 			),
 			'required'   => array( 'changes' ),
-		);
-	}
-
-	/**
-	 * Authoritative contract for toggle_plugin.
-	 *
-	 * @since 5.5.0
-	 */
-	private static function toggle_plugin_parameter_contract(): array {
-		return array(
-			'type'       => 'object',
-			'strict'     => true,
-			'properties' => array(
-				'plugin_file' => array(
-					'type'        => 'string',
-					'description' => 'Plugin file path such as woocommerce/woocommerce.php.',
-					'minLength'   => 1,
-				),
-				'activate'    => array(
-					'type'        => 'boolean',
-					'description' => 'True to activate, false to deactivate.',
-					'default'     => true,
-				),
-			),
-			'required'   => array( 'plugin_file' ),
 		);
 	}
 

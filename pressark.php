@@ -159,7 +159,7 @@ if ( ! function_exists( 'pressark_http_trace_write' ) ) {
 			// termination path that skips register_shutdown_function).
 			@file_put_contents(
 				'/tmp/pressark-shutdown.ping',
-				gmdate( 'H:i:s' ) . ' uri=' . ( $_SERVER['REQUEST_URI'] ?? '?' ) . ' active_route=' . ( $GLOBALS['pressark_http_trace_active_route'] ?? '<unset>' ) . "\n",
+				gmdate( 'H:i:s' ) . ' uri=' . sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ?? '?' ) ) . ' active_route=' . ( $GLOBALS['pressark_http_trace_active_route'] ?? '<unset>' ) . "\n",
 				FILE_APPEND
 			);
 
@@ -231,7 +231,10 @@ function pressark_should_enable_freemius_sandbox_defaults(): bool {
 	return str_ends_with( $host, '.local' ) || str_ends_with( $host, '.test' );
 }
 
-// Freemius sandbox removed for production release (v5.1.0).
+// Freemius sandbox: opt-in via wp-config. Define both WP_FS__DEV_MODE=true
+// and PRESSARK_FS_SECRET_KEY='sk_...' to enable Freemius hosted sandbox
+// checkouts. Production builds leave both undefined and ship without a
+// secret_key, keeping is_payments_sandbox() false.
 
 if ( ! function_exists( 'pressark_fs' ) ) {
 	function pressark_fs() {
@@ -249,7 +252,7 @@ if ( ! function_exists( 'pressark_fs' ) ) {
 
 		require_once $sdk_path;
 
-		$pressark_fs = fs_dynamic_init( array(
+		$pressark_fs_args = array(
 			'id'                  => '26376',
 			'slug'                => 'pressark',
 			'type'                => 'plugin',
@@ -261,16 +264,27 @@ if ( ! function_exists( 'pressark_fs' ) ) {
 			// install, so the connection step cannot be skipped.
 			'enable_anonymous'    => true,
 			'is_org_compliant'    => true,
-			'trial'               => array(
-				'days'               => 7,
-				'is_require_payment' => false,
-			),
 			'menu'                => array(
 				'slug'    => 'pressark',
-				'account' => false,
+				// Account page must remain enabled — Freemius routes the
+				// post-purchase redirect through it to sync the install/
+				// license/plan into the local SDK state. Disabling it
+				// breaks the upgrade flow: webhooks reach the bank but
+				// the plugin's fs_accounts stays empty, so is_paying_or_trial()
+				// keeps returning false and the UI shows Free indefinitely.
+				'account' => true,
 				'support' => false,
 			),
-		) );
+		);
+
+		if (
+			defined( 'WP_FS__DEV_MODE' ) && WP_FS__DEV_MODE
+			&& defined( 'PRESSARK_FS_SECRET_KEY' ) && PRESSARK_FS_SECRET_KEY
+		) {
+			$pressark_fs_args['secret_key'] = PRESSARK_FS_SECRET_KEY;
+		}
+
+		$pressark_fs = fs_dynamic_init( $pressark_fs_args );
 
 		return $pressark_fs;
 	}
@@ -292,7 +306,6 @@ spl_autoload_register( static function ( string $class ): void {
 		'PressArk_Admin'                 => 'includes/class-admin.php',
 		'PressArk_Admin_Activity'        => 'includes/class-admin-activity.php',
 		'PressArk_Admin_Automations'     => 'includes/class-admin-automations.php',
-		'PressArk_Admin_Watchdog'        => 'includes/class-admin-watchdog.php',
 		'PressArk_Activity_Event_Store'  => 'includes/class-pressark-activity-event-store.php',
 		'PressArk_Activity_Trace'        => 'includes/class-pressark-activity-trace.php',
 		'PressArk_Agent'                 => 'includes/class-pressark-agent.php',
@@ -316,6 +329,7 @@ spl_autoload_register( static function ( string $class ): void {
 		'PressArk_Content_Index'         => 'includes/class-pressark-content-index.php',
 		'PressArk_Context'               => 'includes/class-pressark-context.php',
 		'PressArk_Context_Collector'     => 'includes/class-pressark-context-collector.php',
+		'PressArk_Continuation_Service'  => 'includes/class-pressark-continuation-service.php',
 		'PressArk_Cost_Ledger'           => 'includes/class-pressark-cost-ledger.php',
 		'PressArk_Cron_Manager'          => 'includes/class-pressark-cron-manager.php',
 		'PressArk_Dashboard'             => 'includes/class-dashboard.php',
@@ -408,9 +422,6 @@ spl_autoload_register( static function ( string $class ): void {
 		'PressArk_Tool_Result_Artifacts' => 'includes/class-pressark-tool-result-artifacts.php',
 		'PressArk_Tools'                 => 'includes/class-pressark-tools.php',
 		'PressArk_Usage_Tracker'         => 'includes/class-usage-tracker.php',
-		'PressArk_Watchdog_Alerter'      => 'includes/class-pressark-watchdog-alerter.php',
-		'PressArk_Watchdog_Preferences'  => 'includes/class-pressark-watchdog-preferences.php',
-		'PressArk_Watchdog_Templates'    => 'includes/class-pressark-watchdog-templates.php',
 		'PressArk_WC_Events'             => 'includes/class-pressark-wc-events.php',
 		'PressArk'                       => 'includes/class-pressark.php',
 	);
@@ -632,6 +643,20 @@ function pressark_credit_payment_dedup_key( string $payment_id ): string {
 }
 
 /**
+ * Check whether the current user may manage PressArk billing/settings.
+ */
+function pressark_current_user_can_manage_settings(): bool {
+	if (
+		class_exists( 'PressArk_Capabilities' )
+		&& method_exists( 'PressArk_Capabilities', 'current_user_can_manage_settings' )
+	) {
+		return PressArk_Capabilities::current_user_can_manage_settings();
+	}
+
+	return current_user_can( 'manage_options' );
+}
+
+/**
  * Apply a credit purchase through the bank without trusting local tier claims.
  *
  * The bank remains authoritative for subscription eligibility, payment
@@ -641,11 +666,13 @@ function pressark_credit_payment_dedup_key( string $payment_id ): string {
  * @param int    $user_id User receiving credits.
  * @param string $pack_type Resolved pack type.
  * @param string $payment_id Freemius payment ID.
+ * @param string $checkout_intent_id Optional non-secret checkout correlation ID.
  * @return array
  */
-function pressark_apply_credit_purchase( int $user_id, string $pack_type, string $payment_id ): array {
-	$payment_id = sanitize_text_field( $payment_id );
-	$pack_type  = sanitize_key( $pack_type );
+function pressark_apply_credit_purchase( int $user_id, string $pack_type, string $payment_id, string $checkout_intent_id = '' ): array {
+	$payment_id         = sanitize_text_field( $payment_id );
+	$pack_type          = sanitize_key( $pack_type );
+	$checkout_intent_id = sanitize_text_field( $checkout_intent_id );
 
 	if ( $user_id <= 0 || '' === $pack_type || '' === $payment_id ) {
 		return array(
@@ -665,7 +692,7 @@ function pressark_apply_credit_purchase( int $user_id, string $pack_type, string
 	}
 
 	$bank   = new PressArk_Token_Bank();
-	$result = $bank->purchase_credits( $user_id, $pack_type, $payment_id );
+	$result = $bank->purchase_credits( $user_id, $pack_type, $payment_id, $checkout_intent_id );
 	$success = ! empty( $result['success'] );
 	$idempotent = ! empty( $result['idempotent'] );
 
@@ -867,7 +894,7 @@ function pressark_on_credit_purchase( $payment ): void {
  *
  * Unlike after_license_change which fires during sync, this fires AFTER the SDK
  * has fully updated local plan/license data, making it more reliable for detecting
- * the current plan state.
+ * the current billing state.
  *
  * @param string $plan_name Current plan name after sync.
  */
@@ -905,7 +932,8 @@ if ( function_exists( 'pressark_fs' ) ) {
  * @return string JavaScript function body.
  */
 function pressark_checkout_completed_js(): string {
-	$nonce = wp_create_nonce( 'pressark_credit_purchase' );
+	$credit_nonce  = wp_create_nonce( 'pressark_credit_purchase' );
+	$billing_nonce = wp_create_nonce( 'pressark_billing_refresh' );
 
 	return 'function (purchaseData) {
 		return new Promise(function(resolve) {
@@ -913,15 +941,23 @@ function pressark_checkout_completed_js(): string {
 				resolve();
 				return;
 			}
-			jQuery.post(window.ajaxurl || "/wp-admin/admin-ajax.php", {
+			var ajaxUrl = window.ajaxurl || "/wp-admin/admin-ajax.php";
+			var confirmCredits = jQuery.post(ajaxUrl, {
 				action: "pressark_confirm_credit_purchase",
-				_ajax_nonce: ' . wp_json_encode( $nonce ) . ',
+				_ajax_nonce: ' . wp_json_encode( $credit_nonce ) . ',
 				payment_id: String(purchaseData.payment.id || ""),
 				pricing_id: String(purchaseData.payment.pricing_id || purchaseData.pricing_id || ""),
 				gross: String(purchaseData.payment.gross || 0),
 				plan_name: (purchaseData.plan && purchaseData.plan.name) ? purchaseData.plan.name : "",
 				product_name: (purchaseData.plan && purchaseData.plan.title) ? purchaseData.plan.title : ""
-			}).always(function() { resolve(); });
+			});
+			confirmCredits.always(function() {
+				jQuery.post(ajaxUrl, {
+					action: "pressark_refresh_billing_from_bank",
+					_ajax_nonce: ' . wp_json_encode( $billing_nonce ) . ',
+					trigger: "purchase_completed"
+				}).always(function() { resolve(); });
+			});
 		});
 	}';
 }
@@ -934,9 +970,61 @@ function pressark_checkout_completed_js(): string {
  * Non-credit payments (plan upgrades) are silently skipped.
  */
 add_action( 'wp_ajax_pressark_confirm_credit_purchase', 'pressark_ajax_confirm_credit_purchase' );
+add_action( 'wp_ajax_pressark_prepare_credit_checkout', 'pressark_ajax_prepare_credit_checkout' );
+add_action( 'wp_ajax_pressark_refresh_billing_from_bank', 'pressark_ajax_refresh_billing_from_bank' );
+
+/**
+ * Create a short-lived checkout intent before opening Freemius Checkout.
+ */
+function pressark_ajax_prepare_credit_checkout(): void {
+	check_ajax_referer( 'pressark_credit_purchase' );
+
+	if ( ! pressark_current_user_can_manage_settings() ) {
+		wp_send_json_error( array( 'message' => 'Forbidden' ), 403 );
+	}
+
+	$user_id = get_current_user_id();
+	if ( $user_id <= 0 ) {
+		wp_send_json_error( array( 'message' => 'Not authenticated' ), 401 );
+	}
+
+	$pack_type  = sanitize_key( wp_unslash( $_POST['pack_type'] ?? '' ) );
+	$pricing_id = absint( $_POST['pricing_id'] ?? 0 );
+	if ( '' === $pack_type || $pricing_id <= 0 ) {
+		wp_send_json_error( array( 'message' => 'Missing checkout context' ), 400 );
+	}
+
+	$pack_catalog = PressArk_Entitlements::get_credit_pack_catalog();
+	$pack         = (array) ( $pack_catalog[ $pack_type ] ?? array() );
+	$expected_id  = (int) ( $pack['pricing_id'] ?? $pack['freemius_pricing_id'] ?? 0 );
+	if ( empty( $pack ) || ( $expected_id > 0 && $pricing_id !== $expected_id ) ) {
+		wp_send_json_error( array( 'message' => 'Invalid credit pack' ), 400 );
+	}
+
+	$bank   = new PressArk_Token_Bank();
+	$result = $bank->create_credit_checkout_intent( $user_id, $pack_type, $pricing_id );
+
+	if ( empty( $result['success'] ) || empty( $result['checkout_intent'] ) ) {
+		wp_send_json_error(
+			array(
+				'message' => (string) ( $result['error'] ?? 'Could not prepare checkout.' ),
+			),
+			503
+		);
+	}
+
+	wp_send_json_success( array(
+		'checkout_intent' => (string) $result['checkout_intent'],
+		'expires_at'      => (string) ( $result['expires_at'] ?? '' ),
+	) );
+}
 
 function pressark_ajax_confirm_credit_purchase(): void {
 	check_ajax_referer( 'pressark_credit_purchase' );
+
+	if ( ! pressark_current_user_can_manage_settings() ) {
+		wp_send_json_error( array( 'message' => 'Forbidden' ), 403 );
+	}
 
 	$user_id = get_current_user_id();
 	if ( $user_id <= 0 ) {
@@ -944,6 +1032,9 @@ function pressark_ajax_confirm_credit_purchase(): void {
 	}
 
 	$payment_id = sanitize_text_field( wp_unslash( $_POST['payment_id'] ?? '' ) );
+	$checkout_intent_id = sanitize_text_field(
+		wp_unslash( $_POST['checkout_intent'] ?? $_POST['checkout_intent_id'] ?? '' )
+	);
 	if ( '' === $payment_id ) {
 		wp_send_json_error( 'Missing payment_id' );
 	}
@@ -963,7 +1054,7 @@ function pressark_ajax_confirm_credit_purchase(): void {
 		wp_send_json_success( array( 'skipped' => true ) );
 	}
 
-	$result = pressark_apply_credit_purchase( $user_id, $pack_type, $payment_id );
+	$result = pressark_apply_credit_purchase( $user_id, $pack_type, $payment_id, $checkout_intent_id );
 	if ( empty( $result['success'] ) ) {
 		wp_send_json_error(
 			array(
@@ -979,6 +1070,175 @@ function pressark_ajax_confirm_credit_purchase(): void {
 		'already_applied' => ! empty( $result['already_applied'] ),
 		'idempotent'      => ! empty( $result['idempotent'] ),
 	) );
+}
+
+/**
+ * Explicitly refresh billing/Freemius state from the token bank.
+ *
+ * This is used after Freemius checkout returns to wp-admin. Freemius webhooks
+ * can arrive after the page is rendered, so the browser polls this endpoint
+ * briefly until the bank has the verified install snapshot. The endpoint does
+ * not grant entitlements directly; it runs the same bank-verified handshake
+ * path that hydrates the local Freemius SDK state.
+ */
+function pressark_ajax_refresh_billing_from_bank(): void {
+	check_ajax_referer( 'pressark_billing_refresh' );
+
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => 'Forbidden' ), 403 );
+	}
+
+	$attempt = max( 1, absint( $_POST['attempt'] ?? 1 ) );
+	if ( 1 === $attempt ) {
+		pressark_clear_billing_refresh_transients();
+	}
+
+	$result = array();
+	if ( class_exists( 'PressArk_Token_Bank' ) ) {
+		$bank   = new PressArk_Token_Bank();
+		$result = $bank->handshake();
+	}
+	set_transient( 'pressark_pending_activation_bank_refresh_' . md5( (string) home_url() ), 1, MINUTE_IN_SECONDS );
+
+	$license = class_exists( 'PressArk_License' ) ? new PressArk_License() : null;
+	$tier    = $license ? $license->get_tier() : PressArk_Entitlements::normalize_tier( (string) get_option( 'pressark_cached_tier', 'free' ) );
+	$fs      = function_exists( 'pressark_fs' ) ? pressark_fs() : null;
+	$site    = $fs && method_exists( $fs, 'get_site' ) ? $fs->get_site() : null;
+	$plan    = $fs && method_exists( $fs, 'get_plan' ) ? $fs->get_plan() : null;
+
+	$is_paying = $fs && method_exists( $fs, 'is_paying_or_trial' ) ? (bool) $fs->is_paying_or_trial() : false;
+	$is_pending = $fs && method_exists( $fs, 'is_pending_activation' ) ? (bool) $fs->is_pending_activation() : false;
+	$verified = ! empty( $result['verified'] ) || (bool) get_option( 'pressark_handshake_verified', false );
+
+	wp_send_json_success(
+		array(
+			'handshake_success' => ! empty( $result['success'] ),
+			'handshake_error'   => (string) ( $result['error'] ?? '' ),
+			'bank_tier'         => (string) ( $result['tier'] ?? '' ),
+			'tier'              => $tier,
+			'verified'          => $verified,
+			'paying'            => $is_paying,
+			'pending'           => $is_pending,
+			'site_id'           => $site && ! empty( $site->id ) ? (string) $site->id : '',
+			'plan_name'         => $plan && ! empty( $plan->name ) ? (string) $plan->name : '',
+			'should_reload'     => $verified && $is_paying && PressArk_Entitlements::is_paid_tier( $tier ),
+		)
+	);
+}
+
+function pressark_clear_billing_refresh_transients(): void {
+	delete_transient( 'pressark_pending_activation_bank_refresh_' . md5( (string) home_url() ) );
+
+	if ( class_exists( 'PressArk_Token_Bank' ) ) {
+		$identity = PressArk_Token_Bank::ensure_installation_uuid();
+		if ( '' === $identity ) {
+			$identity = PressArk_Token_Bank::current_site_identity();
+		}
+
+		if ( '' !== $identity ) {
+			delete_transient( 'pressark_handshake_attempted_' . md5( $identity ) );
+			delete_transient( 'pressark_handshake_upgrade_' . md5( $identity ) );
+		}
+	}
+
+	$host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+	if ( '' !== $host ) {
+		delete_transient( 'pressark_handshake_attempted_' . md5( $host ) );
+		delete_transient( 'pressark_handshake_upgrade_' . md5( $host ) );
+	}
+}
+
+add_action( 'admin_footer', 'pressark_print_billing_refresh_poller' );
+
+function pressark_print_billing_refresh_poller(): void {
+	if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+
+	$checkout_keys = array(
+		'_fs_checkout_action',
+		'_fs_checkout_data',
+		'process_redirect',
+		'pending_activation',
+		'purchase_completed',
+	);
+
+	$has_checkout_signal = false;
+	foreach ( $checkout_keys as $key ) {
+		if ( isset( $_GET[ $key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$has_checkout_signal = true;
+			break;
+		}
+	}
+
+	if ( ! $has_checkout_signal ) {
+		return;
+	}
+
+	$config = array(
+		'ajaxUrl'           => admin_url( 'admin-ajax.php' ),
+		'nonce'             => wp_create_nonce( 'pressark_billing_refresh' ),
+		'hasCheckoutSignal' => $has_checkout_signal,
+		'maxAttempts'       => 6,
+		'intervalMs'        => 5000,
+	);
+	?>
+	<script>
+	(function(config) {
+		if (!config || !config.ajaxUrl || !config.nonce) {
+			return;
+		}
+
+		var storageKey = 'pressarkBillingRefreshDone:' + window.location.pathname + window.location.search;
+		try {
+			if (config.hasCheckoutSignal && window.sessionStorage && sessionStorage.getItem(storageKey) === '1') {
+				return;
+			}
+		} catch (e) {}
+
+		var attempt = 0;
+		var poll = function() {
+			attempt += 1;
+			var body = new window.URLSearchParams();
+			body.set('action', 'pressark_refresh_billing_from_bank');
+			body.set('_ajax_nonce', config.nonce);
+			body.set('trigger', config.hasCheckoutSignal ? 'checkout_return' : 'pending_activation');
+			body.set('attempt', String(attempt));
+
+			window.fetch(config.ajaxUrl, {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+				body: body.toString()
+			})
+				.then(function(response) { return response.json(); })
+				.then(function(payload) {
+					var data = payload && payload.success ? payload.data : null;
+					if (data && data.should_reload) {
+						try {
+							if (window.sessionStorage) {
+								sessionStorage.setItem(storageKey, '1');
+							}
+						} catch (e) {}
+						window.setTimeout(function() { window.location.reload(); }, 300);
+						return;
+					}
+
+					if (attempt < config.maxAttempts) {
+						window.setTimeout(poll, config.intervalMs);
+					}
+				})
+				.catch(function() {
+					if (attempt < config.maxAttempts) {
+						window.setTimeout(poll, config.intervalMs);
+					}
+				});
+		};
+
+		window.setTimeout(poll, 600);
+	})(<?php echo wp_json_encode( $config ); ?>);
+	</script>
+	<?php
 }
 
 // Register WP-CLI commands when running in CLI context.
@@ -1140,13 +1400,14 @@ function pressark_init(): void {
 	PressArk_Frontend_SEO::register_hooks();
 	PressArk_WC_Events::register_hooks();
 
-	// Watchdog alert batch flush — must fire even outside wp-admin.
-	add_action(
-		PressArk_Watchdog_Alerter::FLUSH_HOOK,
-		array( PressArk_Watchdog_Alerter::class, 'handle_flush_batch' ),
-		10,
-		2
-	);
+	// Watchdog feature removed — clear any orphan flush schedule from prior versions.
+	if ( ! get_option( 'pressark_watchdog_flush_cleared', false ) ) {
+		wp_clear_scheduled_hook( 'pressark_flush_alert_batch' );
+		if ( function_exists( 'as_unschedule_all_actions' ) ) {
+			as_unschedule_all_actions( 'pressark_flush_alert_batch' );
+		}
+		update_option( 'pressark_watchdog_flush_cleared', true, false );
+	}
 
 	// Cache invalidation hooks.
 	add_action( 'after_switch_theme', static function (): void {

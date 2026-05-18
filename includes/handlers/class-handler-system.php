@@ -29,7 +29,6 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 			case 'list_scheduled_tasks':
 			case 'manage_scheduled_task':
 			case 'list_plugins':
-			case 'toggle_plugin':
 			case 'list_themes':
 			case 'database_stats':
 			case 'cleanup_database':
@@ -810,39 +809,84 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		$blocks = parse_blocks( $nav_post->post_content );
 
 		if ( $action === 'add_item' ) {
-			$item    = $params['item'] ?? $params;
-			$label   = sanitize_text_field( $item['label'] ?? $item['title'] ?? '' );
-			$url     = esc_url_raw( $item['url'] ?? '' );
-			$post_id = absint( $item['post_id'] ?? $item['object_id'] ?? 0 );
-
-			if ( empty( $label ) || empty( $url ) ) {
-				return array( 'success' => false, 'message' => __( 'label and url are required to add a navigation item.', 'pressark' ) );
+			// v5.7.8 (2026-05-12): Support multiple natural shapes for add_item.
+			// Observed 2026-05-12 on "Create Privacy Notice + Cookie Policy and
+			// add both to main menu" chain: model emitted
+			// `update_menu(menu_id=4, append=[{post_id:28},{post_id:30}])` — a
+			// bulk "append posts to menu" shape that the prior handler couldn't
+			// parse (it took $params['item'] ?? $params, found no label/url at
+			// the top level, and returned a hard error). The model's natural
+			// mental model is "add posts to menu by ID", not "construct a
+			// navigation-link block with explicit label+url+kind". Same
+			// iter-22/iter-21 anti-pattern: required low-level fields the
+			// model could derive from a high-level reference.
+			//
+			// New behavior: accept `item`, top-level fields, OR a bulk list at
+			// `items`/`append`/`posts`. For each entry, resolve label and url
+			// from post_id when available before failing on the required-field
+			// check. Build one navigation-link block per entry.
+			$items_input = array();
+			if ( is_array( $params['items'] ?? null ) ) {
+				$items_input = $params['items'];
+			} elseif ( is_array( $params['append'] ?? null ) ) {
+				$items_input = $params['append'];
+			} elseif ( is_array( $params['posts'] ?? null ) ) {
+				// Support `posts: [28, 30]` (scalar IDs) AND `posts: [{post_id:28}, ...]`.
+				$items_input = array_map( static function ( $p ) {
+					return is_scalar( $p ) ? array( 'post_id' => absint( $p ) ) : (array) $p;
+				}, $params['posts'] );
+			} else {
+				$items_input = array( $params['item'] ?? $params );
 			}
 
-			// Resolve URL kind and ID.
-			$kind = 'custom';
-			if ( $post_id ) {
-				$linked_post = get_post( $post_id );
-				if ( $linked_post ) {
-					$kind = 'post-type';
-					$url  = get_permalink( $post_id );
+			foreach ( $items_input as $item ) {
+				if ( ! is_array( $item ) ) {
+					continue;
 				}
+				$label   = sanitize_text_field( $item['label'] ?? $item['title'] ?? '' );
+				$url     = esc_url_raw( $item['url'] ?? '' );
+				$post_id = absint( $item['post_id'] ?? $item['object_id'] ?? 0 );
+
+				// Resolve from post_id BEFORE the required-field check.
+				// A post_id alone is enough: label comes from post_title,
+				// url comes from get_permalink. Same shape the FSE editor
+				// uses when an admin adds a page to navigation by clicking it.
+				$kind = 'custom';
+				if ( $post_id ) {
+					$linked_post = get_post( $post_id );
+					if ( $linked_post ) {
+						$kind = 'post-type';
+						if ( '' === $label ) {
+							$label = sanitize_text_field( $linked_post->post_title );
+						}
+						if ( '' === $url ) {
+							$url = get_permalink( $post_id );
+						}
+					}
+				}
+
+				if ( '' === $label || '' === $url ) {
+					return array(
+						'success' => false,
+						'message' => __( 'Each navigation item needs either a post_id (label and url will be resolved from the post) or explicit label + url fields.', 'pressark' ),
+					);
+				}
+
+				$new_block = array(
+					'blockName'    => 'core/navigation-link',
+					'attrs'        => array_filter( array(
+						'label' => $label,
+						'url'   => $url,
+						'kind'  => $kind,
+						'id'    => $post_id ?: null,
+					) ),
+					'innerBlocks'  => array(),
+					'innerHTML'    => '',
+					'innerContent' => array(),
+				);
+
+				$blocks[] = $new_block;
 			}
-
-			$new_block = array(
-				'blockName'    => 'core/navigation-link',
-				'attrs'        => array_filter( array(
-					'label' => $label,
-					'url'   => $url,
-					'kind'  => $kind,
-					'id'    => $post_id ?: null,
-				) ),
-				'innerBlocks'  => array(),
-				'innerHTML'    => '',
-				'innerContent' => array(),
-			);
-
-			$blocks[] = $new_block;
 		}
 
 		if ( $action === 'remove_item' ) {
@@ -1729,38 +1773,6 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 		);
 	}
 
-	public function toggle_plugin( array $params ): array {
-		$manager     = new PressArk_Plugins();
-		$plugin_file = sanitize_text_field( $params['plugin_file'] ?? '' );
-		$activate    = (bool) ( $params['activate'] ?? true );
-
-		if ( empty( $plugin_file ) ) {
-			return array( 'success' => false, 'message' => __( 'Plugin file path is required.', 'pressark' ) );
-		}
-
-		// Prevent PressArk from deactivating itself.
-		if ( ! $activate && defined( 'PRESSARK_FILE' ) && plugin_basename( PRESSARK_FILE ) === $plugin_file ) {
-			return array(
-				'success' => false,
-				'message' => __( 'PressArk cannot deactivate itself. Deactivate it from the Plugins page.', 'pressark' ),
-			);
-		}
-
-		$result = $manager->toggle( $plugin_file, $activate );
-
-		if ( $result['success'] ) {
-			$this->logger->log(
-				'toggle_plugin',
-				null,
-				'plugin',
-				wp_json_encode( array( 'file' => $plugin_file, 'was_active' => ! $activate ) ),
-				wp_json_encode( array( 'file' => $plugin_file, 'active' => $activate ) )
-			);
-		}
-
-		return $result;
-	}
-
 	// ── Themes ───────────────────────────────────────────────────────────
 
 	public function list_themes( array $params ): array {
@@ -2516,52 +2528,6 @@ class PressArk_Handler_System extends PressArk_Handler_Base {
 					'after'  => 'run' === $task_action ? __( 'Execute immediately', 'pressark' ) : __( 'Remove from schedule', 'pressark' ),
 				),
 			),
-		);
-	}
-
-	/**
-	 * Preview for toggle_plugin.
-	 */
-	public function preview_toggle_plugin( array $params, array $action ): array {
-		$pf = $params['plugin_file'] ?? ( $action['plugin_file'] ?? '' );
-		$pa = (bool) ( $params['activate'] ?? ( $action['activate'] ?? true ) );
-		$changes = array(
-			array(
-				'field'  => __( 'Plugin', 'pressark' ),
-				'before' => $pf,
-				'after'  => $pa ? __( 'Activate', 'pressark' ) : __( 'Deactivate', 'pressark' ),
-			),
-		);
-
-		if ( $pa && class_exists( 'PressArk_Extension_Manifests' ) ) {
-			$report = PressArk_Extension_Manifests::get_report( (string) $pf );
-			if ( ! empty( $report['has_manifest'] ) ) {
-				$summary = is_array( $report['summary'] ?? null ) ? $report['summary'] : array();
-				$changes[] = array(
-					'field'  => __( 'Extension Manifest', 'pressark' ),
-					'before' => ! empty( $report['valid'] ) ? __( 'Validated', 'pressark' ) : __( 'Blocked', 'pressark' ),
-					'after'  => sprintf(
-						/* translators: 1: operation count 2: resource count */
-						__( '%1$d operations, %2$d resources', 'pressark' ),
-						(int) ( $summary['operations_count'] ?? 0 ),
-						(int) ( $summary['resources_count'] ?? 0 )
-					),
-				);
-
-				$changes[] = array(
-					'field'  => __( 'Trust Review', 'pressark' ),
-					'before' => sprintf(
-						'%s / %s',
-						(string) ( $summary['trust_class'] ?? 'derived_summary' ),
-						(string) ( $summary['prompt_injection_class'] ?? 'guarded' )
-					),
-					'after'  => sanitize_text_field( (string) ( $report['errors'][0] ?? $report['trust_warning'] ?? __( 'Review extension manifest metadata before enabling.', 'pressark' ) ) ),
-				);
-			}
-		}
-
-		return array(
-			'changes' => $changes,
 		);
 	}
 

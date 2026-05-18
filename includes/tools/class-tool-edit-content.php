@@ -14,7 +14,7 @@ class PressArk_Tool_Edit_Content extends PressArk_Tool_Base {
 				array( 'name' => 'post_id', 'required' => false ),
 				array( 'name' => 'url', 'required' => false ),
 				array( 'name' => 'slug', 'required' => false ),
-				array( 'name' => 'changes', 'required' => true, 'desc' => 'Fields: title, content, excerpt, slug, status, sticky, post_format' ),
+				array( 'name' => 'changes', 'required' => true, 'desc' => 'Fields: title, content (full replace), append_content (add after existing), prepend_content (add before existing), excerpt, slug, status, sticky, post_format. To add a paragraph without rewriting the whole post, use append_content/prepend_content with valid wp:* block markup.' ),
 			),
 		);
 	

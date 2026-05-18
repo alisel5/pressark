@@ -1449,13 +1449,13 @@ class PressArk_Handler_Elementor extends PressArk_Handler_Base {
 				$action   = $params['action'] ?? 'show';
 				$settings = &$element['settings'];
 
-				// Simple show/hide (Pro feature — sets _visibility).
+				// Simple show/hide via Elementor's _visibility setting.
 				if ( in_array( $action, array( 'show', 'hide' ), true ) ) {
 					$settings['_visibility'] = $action === 'hide' ? 'hidden' : 'visible';
 					$changes['_visibility']  = $settings['_visibility'];
 				}
 
-				// Responsive hide — always available in free.
+				// Responsive hide flags.
 				if ( ! empty( $params['hide_on'] ) && is_array( $params['hide_on'] ) ) {
 					$device_map = array(
 						'desktop' => 'hide_desktop',

@@ -624,8 +624,12 @@ class PressArk_Capability_Health {
 
 		foreach ( array( 'provider_transport', 'bank', 'content_index', 'site_profile' ) as $node_id ) {
 			$node = is_array( $nodes[ $node_id ] ?? null ) ? $nodes[ $node_id ] : array();
-			$state = sanitize_key( (string) ( $node['state'] ?? 'healthy' ) );
+			$state  = sanitize_key( (string) ( $node['state'] ?? 'healthy' ) );
+			$status = sanitize_key( (string) ( $node['status'] ?? '' ) );
 			if ( in_array( $state, array( 'healthy' ), true ) ) {
+				continue;
+			}
+			if ( ( 'bank' === $node_id && 'provisional' === $status ) || ( 'content_index' === $node_id && 'unavailable' === $status ) ) {
 				continue;
 			}
 
@@ -633,29 +637,6 @@ class PressArk_Capability_Health {
 				'severity' => in_array( $state, array( 'auth_blocked' ), true ) ? 'error' : 'warning',
 				'title'    => sanitize_text_field( (string) ( $node['label'] ?? ucfirst( $node_id ) ) ),
 				'summary'  => sanitize_text_field( (string) ( $node['summary'] ?? '' ) ),
-			);
-		}
-
-		$hidden_tool_groups = (array) ( $graph['hidden']['tool_groups'] ?? array() );
-		$hidden_resource_groups = (array) ( $graph['hidden']['resource_groups'] ?? array() );
-		if ( ! empty( $hidden_tool_groups ) || ! empty( $hidden_resource_groups ) ) {
-			$parts = array();
-			if ( ! empty( $hidden_tool_groups ) ) {
-				$parts[] = sprintf( '%d tool group(s)', count( $hidden_tool_groups ) );
-			}
-			if ( ! empty( $hidden_resource_groups ) ) {
-				$parts[] = sprintf( '%d resource group(s)', count( $hidden_resource_groups ) );
-			}
-
-			$notices[] = array(
-				'severity' => 'warning',
-				'title'    => 'Hidden capability surfaces',
-				'summary'  => sanitize_text_field(
-					sprintf(
-						'Some capability surfaces are hidden until their prerequisites are available: %s.',
-						implode( ', ', $parts )
-					)
-				),
 			);
 		}
 

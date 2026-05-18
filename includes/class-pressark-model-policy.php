@@ -23,7 +23,7 @@ class PressArk_Model_Policy {
 
 	private static ?array $multiplier_cache = null;
 
-	/** Models restricted to Pro+ tiers. */
+	/** Higher-cost bundled service models. */
 	private const PRO_MODELS = array(
 		'anthropic/claude-haiku-4.5',
 		'moonshotai/kimi-k2.5',
@@ -32,7 +32,7 @@ class PressArk_Model_Policy {
 		'anthropic/claude-sonnet-4.6',
 	);
 
-	/** Models restricted to Team+ tiers (team, agency, enterprise). */
+	/** Highest-cost bundled service models. */
 	private const TEAM_MODELS = array(
 		'anthropic/claude-opus-4.6',
 		'openai/gpt-5.3-codex',
@@ -369,13 +369,12 @@ class PressArk_Model_Policy {
 	/**
 	 * Resolve the model to use for a given request context.
 	 *
-	 * @param string $tier      User's plan tier.
+	 * @param string $tier      User's plan tier, used only for default included-service routing.
 	 * @param bool   $deep_mode Whether deep mode is active.
 	 * @return string Model identifier.
 	 */
 	public static function resolve( string $tier, bool $deep_mode = false ): string {
-		$model  = get_option( 'pressark_model', 'auto' );
-		$is_pro = PressArk_Entitlements::is_paid_tier( $tier );
+		$model = get_option( 'pressark_model', 'auto' );
 
 		// Custom model (user-set).
 		if ( 'custom' === $model && ! $deep_mode ) {
@@ -383,27 +382,17 @@ class PressArk_Model_Policy {
 			return ! empty( $custom ) ? $custom : PressArk_Entitlements::default_model( 'free' );
 		}
 
-		// Auto mode — tier-based default.
+		// Auto mode is credit-aware, not feature-gated.
 		if ( 'auto' === $model ) {
-			if ( $deep_mode && $is_pro ) {
+			if ( $deep_mode ) {
 				return PressArk_Entitlements::default_model( 'pro' );
 			}
-			return PressArk_Entitlements::default_model( $tier );
-		}
-
-		// Deep mode upgrade: free models → premium when user is Pro.
-		if ( $deep_mode && $is_pro && in_array( $model, self::FREE_MODELS, true ) ) {
-			return PressArk_Entitlements::default_model( 'pro' );
-		}
-
-		// Pro model gate: downgrade for free-tier users.
-		if ( in_array( $model, self::PRO_MODELS, true ) && ! $is_pro ) {
 			return PressArk_Entitlements::default_model( 'free' );
 		}
 
-		// Team+ model gate: downgrade for non-team tiers.
-		if ( self::is_team_model( $model ) && ! self::is_team_tier( $tier ) ) {
-			return PressArk_Entitlements::default_model( PressArk_Entitlements::is_paid_tier( $tier ) ? 'pro' : 'free' );
+		// Deep mode may select a stronger bundled model; it is still paid for by credits.
+		if ( $deep_mode && in_array( $model, self::FREE_MODELS, true ) ) {
+			return PressArk_Entitlements::default_model( 'pro' );
 		}
 
 		return $model;
@@ -414,10 +403,9 @@ class PressArk_Model_Policy {
 	/**
 	 * Get the recommended model for a specific task type.
 	 *
-	 * Routes based on task complexity, tier, and cost efficiency:
-	 *   - Free tier always gets economy models.
-	 *   - Pro tier gets standard models.
-	 *   - Deep mode on Pro+ gets premium models.
+	 * Routes based on task complexity and cost efficiency:
+	 *   - Standard mode uses balanced models.
+	 *   - Deep mode uses premium models.
 	 *
 	 * @param string $task_type 'classify', 'analyze', 'generate', 'edit', 'code', 'chat', 'diagnose'.
 	 * @param string $tier      User's plan tier.
@@ -426,11 +414,8 @@ class PressArk_Model_Policy {
 	 */
 	public static function for_task( string $task_type, string $tier, bool $deep_mode = false ): string {
 		$routing = self::TASK_ROUTING[ $task_type ] ?? self::TASK_ROUTING['chat'];
-		$is_pro  = PressArk_Entitlements::is_paid_tier( $tier );
 
-		if ( ! $is_pro ) {
-			$model = $routing['economy'];
-		} elseif ( $deep_mode ) {
+		if ( $deep_mode ) {
 			$model = $routing['premium'];
 		} else {
 			$model = $routing['standard'];
@@ -457,9 +442,6 @@ class PressArk_Model_Policy {
 				$configured = sanitize_text_field( (string) get_option( 'pressark_summarize_custom_model', '' ) );
 			}
 			if ( '' !== $configured && 'auto' !== $configured ) {
-				if ( in_array( $configured, self::PRO_MODELS, true ) && ! PressArk_Entitlements::is_paid_tier( $tier ) ) {
-					return self::PHASE_ROUTING[ $phase ]['economy'] ?? self::PHASE_ROUTING['summarize']['economy'];
-				}
 				return $configured;
 			}
 
@@ -482,11 +464,8 @@ class PressArk_Model_Policy {
 		}
 
 		$routing = self::PHASE_ROUTING[ $phase ] ?? self::PHASE_ROUTING['final_synthesis'];
-		$is_pro  = PressArk_Entitlements::is_paid_tier( $tier );
 
-		if ( ! $is_pro ) {
-			$model = $routing['economy'];
-		} elseif ( self::phase_uses_premium( $phase, $context ) ) {
+		if ( self::phase_uses_premium( $phase, $context ) ) {
 			$model = $routing['premium'];
 		} else {
 			$model = $routing['standard'];
@@ -516,7 +495,7 @@ class PressArk_Model_Policy {
 	}
 
 	/**
-	 * Whether a phase should use premium routing for paid tiers.
+	 * Whether a phase should use premium routing.
 	 *
 	 * @param string $phase   Phase key.
 	 * @param array  $context Optional routing hints.
@@ -866,27 +845,31 @@ class PressArk_Model_Policy {
 	}
 
 	/**
-	 * Check if a model requires Pro+ tier.
+	 * Check whether legacy callers consider a model Pro+.
+	 * Kept for backward compatibility; model access is credit-metered instead.
 	 *
 	 * @param string $model Model identifier.
 	 * @return bool
 	 */
 	public static function is_pro_model( string $model ): bool {
-		return in_array( $model, self::PRO_MODELS, true ) || in_array( $model, self::TEAM_MODELS, true );
+		unset( $model );
+		return false;
 	}
 
 	/**
-	 * Check if a model requires Team+ tier.
+	 * Check whether legacy callers consider a model higher-tier.
+	 * Kept for backward compatibility; model access is credit-metered instead.
 	 *
 	 * @param string $model Model identifier.
 	 * @return bool
 	 */
 	public static function is_team_model( string $model ): bool {
-		return in_array( $model, self::TEAM_MODELS, true );
+		unset( $model );
+		return false;
 	}
 
 	/**
-	 * Check if a tier qualifies for Team+ models.
+	 * Check if a tier is in the legacy higher-tier grouping.
 	 *
 	 * @param string $tier Plan tier.
 	 * @return bool

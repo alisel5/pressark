@@ -353,6 +353,14 @@ class PressArk_Run_Approval_Service {
 	 * @return array Execution result.
 	 */
 	public static function apply_preview_keep( string $run_id, int $user_id, string $policy ): array {
+		// v5.6.4 (2026-05-12): Belt-and-suspenders. PressArk_Preview::keep()
+		// also raises memory_limit; calling it here too is harmless and
+		// guards the policy-eval / capability-check path that runs BEFORE
+		// keep() — PressArk_Permission_Service::evaluate over hundreds of
+		// staged tool args can itself push memory before keep() is reached.
+		if ( method_exists( 'PressArk_Preview', 'raise_memory_limit_for_apply' ) ) {
+			PressArk_Preview::raise_memory_limit_for_apply();
+		}
 		$run_store = new PressArk_Run_Store();
 		$run       = $run_store->get( $run_id );
 
@@ -494,7 +502,46 @@ class PressArk_Run_Approval_Service {
 			if ( ! empty( $result['success'] ) ) {
 				$checkpoint->clear_blockers();
 				$checkpoint->set_workflow_stage( 'settled' );
-				$checkpoint->clear_plan_state(); // v5.3.0
+				// v5.7.5 (2026-05-12): Only clear plan_state if no plan steps remain.
+				// Observed 2026-05-12 on "Create Contact Us page and add it to the
+				// main menu" chain: step 3 (create_post) preview was Kept successfully,
+				// step 4 (update_menu) was still `pending` in plan_artifact, but the
+				// unconditional clear_plan_state() wiped the artifact. iter-15 had
+				// added a `$has_remaining_plan_steps` check in
+				// attach_continuation_context (line ~4897 of orchestration-service)
+				// to fire auto-resume when plan steps remain — but the check reads
+				// from $checkpoint->get_plan_artifact() AFTER this clear, so it sees
+				// an empty steps[] and returns false. Result: chain ended silently
+				// at step 3/4, user got "Changes applied successfully." but never
+				// saw step 4 execute. Fix: mirror should_clear_plan_state_after_execution's
+				// logic here — preserve the artifact while any step is not in a
+				// terminal status (completed/verified/skipped). Once the final step
+				// is reached and its Keep auto-completes it server-side, this branch
+				// runs again with all steps terminal and the clear fires correctly.
+				$should_clear = true;
+				if ( method_exists( $checkpoint, 'get_plan_artifact' ) ) {
+					$artifact = (array) $checkpoint->get_plan_artifact();
+					$steps    = is_array( $artifact['steps'] ?? null ) ? $artifact['steps'] : array();
+					foreach ( $steps as $step ) {
+						$status = sanitize_key( (string) ( $step['status'] ?? 'pending' ) );
+						if ( ! in_array( $status, array( 'completed', 'verified', 'skipped' ), true ) ) {
+							$should_clear = false;
+							break;
+						}
+					}
+				}
+				// v5.7.13 (2026-05-13): Phase 3a forensic — log divergence
+				// Phase 3b: evaluator is the canonical clear/no-clear gate.
+				if ( class_exists( 'PressArk_Continuation_Service' ) ) {
+					$execution = method_exists( $checkpoint, 'get_execution' )
+						? (array) $checkpoint->get_execution()
+						: array();
+					$decision  = PressArk_Continuation_Service::evaluate( $checkpoint, $execution );
+					$should_clear = ! empty( $decision['should_clear_plan'] );
+				}
+				if ( $should_clear ) {
+					$checkpoint->clear_plan_state(); // v5.3.0 (gated by v5.7.5 above)
+				}
 			} else {
 				$checkpoint->add_blocker( (string) ( $result['message'] ?? 'Preview apply failed.' ) );
 			}
@@ -561,10 +608,10 @@ class PressArk_Run_Approval_Service {
 			$checkpoint = PressArk_Checkpoint::from_array( array() );
 		}
 
-		$checkpoint->sync_execution_goal( (string) ( $run['message'] ?? '' ) );
 		if ( ! empty( $run['workflow_state'] ) && is_array( $run['workflow_state'] ) ) {
 			$checkpoint->absorb_run_snapshot( $run['workflow_state'] );
 		}
+		$checkpoint->sync_execution_goal( (string) ( $run['message'] ?? '' ) );
 		return $checkpoint;
 	}
 
@@ -756,6 +803,14 @@ class PressArk_Run_Approval_Service {
 					$execution
 				);
 			}
+		}
+
+		// v5.7.13 (2026-05-13): Phase 3a — read-only continuation-evaluator
+		// adapter. Same hook as orchestration-service::attach_continuation_context.
+		// Phase 3b: attach_to_result now overwrites canonical continuation
+		// fields from the evaluator; evaluator_* mirrors remain for debugging.
+		if ( class_exists( 'PressArk_Continuation_Service' ) ) {
+			$result = PressArk_Continuation_Service::attach_to_result( $result, $checkpoint );
 		}
 
 		return $result;

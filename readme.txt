@@ -63,11 +63,13 @@ PressArk is serviceware. Core AI features require either the bundled PressArk AI
 
 **Plans**
 
-* Free - 100,000 credits per month, sampled tool access, no deep mode or automations
-* Pro - 5,000,000 credits, premium AI models, up to 5 automations, 1 site
-* Team - 15,000,000 credits, up to 15 automations, 5 sites
-* Agency - 40,000,000 credits, up to 50 automations, 25 sites
-* Enterprise - 100,000,000 credits, unlimited automations, unlimited sites
+* Free - 100,000 included PressArk service credits per month
+* Pro - 5,000,000 included PressArk service credits per month
+* Team - 15,000,000 included PressArk service credits per month
+* Agency - 40,000,000 included PressArk service credits per month
+* Enterprise - 100,000,000 included PressArk service credits per month
+
+All plugin tools, deep mode, model selection, BYOK configuration, and scheduled prompts are available in the directory build. Bundled PressArk AI service usage is metered by credits; higher-cost models and longer requests consume more credits.
 
 **Credit Packs**
 
@@ -166,15 +168,15 @@ All plugin data is removed, including custom database tables, plugin options, tr
 
 = 5.1.0 =
 
-* New: Updated AI model lineup — DeepSeek V3.2, MiniMax M2.7 (free), Claude Haiku 4.5, Kimi K2.5, GLM-5, GPT-5.4 Mini (pro), Claude Sonnet 4.6, Claude Opus 4.6, GPT-5.4, GPT-5.3 Codex (team+)
-* New: Team+ model tier gate — premium models now exclusive to Team, Agency, and Enterprise plans
-* New: Value ICU class for mid-tier models — better credit efficiency for pro users
+* New: Updated AI model lineup — DeepSeek V3.2, MiniMax M2.7, Claude Haiku 4.5, Kimi K2.5, GLM-5, GPT-5.4 Mini, Claude Sonnet 4.6, Claude Opus 4.6, GPT-5.4, GPT-5.3 Codex
+* New: Credit-metered model access — higher-cost models consume more credits instead of being locally plan-locked
+* New: Value ICU class for mid-tier models — better credit efficiency for bundled service users
 * Improvement: Token-based context compression (258K ceiling) replaces ICU-based — model-agnostic, no more premature compression
 * Improvement: AI compaction cooldown prevents repeated summarization calls burning credits
 * Fix: Multi-card confirm actions now work correctly with partial settlement
 * Fix: Context compression auto-continue with silent continuation UX
 * Fix: Type safety for comment_ids and block attrs from AI models passing strings instead of arrays
-* Fix: Custom model option now only available for BYOK users (removed from subscription plans)
+* Fix: Custom model option now follows BYOK routing while bundled service models remain credit-metered
 
 = 5.0.5 =
 

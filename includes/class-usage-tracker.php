@@ -5,8 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Tracks free-tier usage. Only WRITE actions count toward the limit.
- * Read actions (scans, listing, reading) are always unlimited.
+ * Tracks local usage telemetry. Plugin actions are not plan-gated.
  *
  * v3.5.0: Delegates tier/BYOK/write-policy checks to PressArk_Entitlements.
  * Local is_pro() HMAC check retained only as offline fallback — the license
@@ -82,7 +81,7 @@ class PressArk_Usage_Tracker {
 	);
 
 	/**
-	 * Actions that count toward the monthly limit (write operations).
+	 * Write operations tracked for telemetry.
 	 */
 	const PAID_ACTIONS = array(
 		'edit_content',
@@ -121,7 +120,6 @@ class PressArk_Usage_Tracker {
 		'elementor_edit_widget',
 		'elementor_create_from_template',
 		'elementor_find_replace',
-		'toggle_plugin',
 		'update_theme_setting',
 		'switch_theme',
 		'cleanup_database',
@@ -143,14 +141,14 @@ class PressArk_Usage_Tracker {
 	}
 
 	/**
-	 * Check if an action type is a write (paid) action.
+	 * Check if an action type is a write action.
 	 */
 	public function is_write_action( string $action_type ): bool {
 		return in_array( $action_type, self::PAID_ACTIONS, true );
 	}
 
 	/**
-	 * Get the filterable free-tier write limit.
+	 * Get the legacy write limit.
 	 *
 	 * v3.5.0: Delegates to PressArk_Entitlements for the canonical value.
 	 */
@@ -207,9 +205,8 @@ class PressArk_Usage_Tracker {
 	 * Get remaining write actions.
 	 *
 	 * v3.5.0: Delegates to PressArk_Entitlements for tier check.
-	 * v3.5.1: Reports from the entitlement model (group-quota based) rather
-	 *         than the legacy flat write counter, so the number the user sees
-	 *         matches the number that actually gates their access.
+	 * v3.5.1: Reports from the entitlement model rather than the legacy flat
+	 *         write counter.
 	 */
 	public function get_writes_remaining( string $tier = '' ): int {
 		if ( empty( $tier ) ) {
@@ -224,7 +221,7 @@ class PressArk_Usage_Tracker {
 	}
 
 	/**
-	 * Check if user is on a paid plan.
+	 * Check if user is on a paid service-credit plan.
 	 *
 	 * v3.5.0: Delegates to PressArk_License::get_tier() →
 	 * PressArk_Entitlements::is_paid_tier(). The Freemius SDK handles
@@ -247,34 +244,15 @@ class PressArk_Usage_Tracker {
 	/**
 	 * Get full usage data for display.
 	 *
-	 * v3.5.1: Reports from the real entitlement model (group-quota based)
-	 * so the user sees the same numbers that actually gate their access.
-	 * The legacy flat write counter is still tracked for telemetry but no
-	 * longer drives the user-facing "remaining" number.
+	 * v3.5.1: Reports from the entitlement model. The legacy flat write
+	 * counter is still tracked for telemetry but no longer drives access.
 	 */
 	public function get_usage_data(): array {
-		$tier   = ( new PressArk_License() )->get_tier();
-		$is_pro = PressArk_Entitlements::is_paid_tier( $tier );
-
-		if ( $is_pro ) {
-			return array(
-				'writes_used'      => 0,
-				'writes_limit'     => 0,
-				'writes_remaining' => PHP_INT_MAX,
-				'is_pro'           => true,
-				'reads'            => 'unlimited',
-			);
-		}
-
-		$group_limit = (int) PressArk_Entitlements::tier_value( $tier, 'group_limit' );
-		$max_used    = PressArk_Entitlements::max_used_across_groups( $tier );
-		$remaining   = PressArk_Entitlements::min_remaining_across_groups( $tier );
-
 		return array(
-			'writes_used'      => $max_used,
-			'writes_limit'     => $group_limit,
-			'writes_remaining' => $remaining,
-			'is_pro'           => false,
+			'writes_used'      => 0,
+			'writes_limit'     => 0,
+			'writes_remaining' => PHP_INT_MAX,
+			'is_pro'           => true,
 			'reads'            => 'unlimited',
 		);
 	}
@@ -316,8 +294,7 @@ class PressArk_Usage_Tracker {
 	/**
 	 * Get usage stats for settings page.
 	 *
-	 * v3.5.1: edits_used reports from entitlement model (group-based) not
-	 * the legacy flat counter, so settings page matches real gating.
+	 * v3.5.1: edits_used reports local telemetry and no longer gates access.
 	 */
 	public function get_monthly_stats(): array {
 		$user_id     = get_current_user_id();
@@ -327,16 +304,13 @@ class PressArk_Usage_Tracker {
 		$seo_scans      = $this->count_monthly_log_actions( $user_id, $month_start, 'analyze_seo' );
 		$security_scans = $this->count_monthly_log_actions( $user_id, $month_start, 'scan_security' );
 
-		$tier   = ( new PressArk_License() )->get_tier();
-		$is_pro = PressArk_Entitlements::is_paid_tier( $tier );
-
 		return array(
-			'edits_used'     => $is_pro ? 0 : PressArk_Entitlements::max_used_across_groups( $tier ),
-			'edits_limit'    => (int) PressArk_Entitlements::tier_value( $tier, 'group_limit' ),
+			'edits_used'     => 0,
+			'edits_limit'    => 0,
 			'seo_scans'      => $seo_scans,
 			'security_scans' => $security_scans,
 			'total_actions'  => $total_actions,
-			'is_pro'         => $is_pro,
+			'is_pro'         => true,
 		);
 	}
 

@@ -44,6 +44,7 @@ function pressark_uninstall_site(): void {
 		'pressark_tasks',
 		'pressark_runs',
 		'pressark_automations',
+		'pressark_alert_batches', // Legacy table from removed Watchdog feature — drop if present.
 	);
 
 	foreach ( $tables as $table ) {
@@ -95,6 +96,7 @@ function pressark_uninstall_site(): void {
 		'pressark_automation_wake',
 		'pressark_kick_as_runner',
 		'pressark_caps_continue_user_migration',
+		'pressark_flush_alert_batch', // Legacy hook from removed Watchdog feature.
 	);
 
 	foreach ( $cron_hooks as $hook ) {

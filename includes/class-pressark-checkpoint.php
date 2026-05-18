@@ -97,6 +97,10 @@ class PressArk_Checkpoint {
 	 * Export to array (serialization for REST response / frontend storage).
 	 */
 	public function to_array(): array {
+		$derived_plan_steps = $this->derive_plan_steps_from_artifact();
+		if ( ! empty( $derived_plan_steps ) ) {
+			$this->plan_steps = $derived_plan_steps;
+		}
 		$this->sync_stores_from_legacy_fields();
 		$conversation = $this->conversation_state->to_checkpoint_array();
 		$approval     = $this->approval_state->to_checkpoint_array();
@@ -923,14 +927,31 @@ class PressArk_Checkpoint {
 
 	public function set_plan_steps( array $steps ): void {
 		$this->plan_steps = self::sanitize_plan_steps( $steps, $this->plan_state );
+		if ( empty( $this->plan_steps ) || ! class_exists( 'PressArk_Plan_Artifact' ) ) {
+			return;
+		}
+
+		$artifact = PressArk_Plan_Artifact::from_plan_steps(
+			$this->plan_steps,
+			array(
+				'prior_artifact' => $this->get_plan_artifact(),
+				'approval_level' => sanitize_key( (string) ( $this->plan_state['approval_level'] ?? '' ) ),
+				'execute_message' => sanitize_textarea_field( (string) ( $this->plan_state['request_context']['execute_message'] ?? $this->plan_state['request_context']['message'] ?? '' ) ),
+				'request_summary' => sanitize_text_field( (string) ( $this->plan_state['request_context']['message'] ?? '' ) ),
+			)
+		);
+		if ( ! empty( $artifact ) ) {
+			$this->set_plan_artifact( $artifact );
+		}
 	}
 
 	public function get_plan_steps(): array {
-		if ( ! empty( $this->plan_steps ) ) {
-			return $this->plan_steps;
+		$derived = $this->derive_plan_steps_from_artifact();
+		if ( ! empty( $derived ) ) {
+			return $derived;
 		}
 
-		return $this->derive_plan_steps_from_artifact();
+		return $this->plan_steps;
 	}
 
 	public function clear_plan_steps(): void {
@@ -1112,6 +1133,7 @@ class PressArk_Checkpoint {
 			: (string) ( $this->plan_state['plan_text'] ?? '' );
 		$this->plan_state['approval_level']   = sanitize_key( (string) ( $clean['approval_level'] ?? '' ) );
 		unset( $this->plan_state['next_version'] );
+		$this->plan_steps = $this->derive_plan_steps_from_artifact();
 	}
 
 	public function get_plan_artifact(): array {
@@ -1421,6 +1443,7 @@ class PressArk_Checkpoint {
 			$where['user_id'] = $user_id;
 		}
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom-table write to {prefix}pressark_chats; no core API. Caching not appropriate (write path; subsequent reads invalidate).
 		$rows = $wpdb->update(
 			$table,
 			array(
@@ -1449,6 +1472,7 @@ class PressArk_Checkpoint {
 
 		global $wpdb;
 		$table = $wpdb->prefix . 'pressark_chats';
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- $table is the wpdb-prefixed literal 'pressark_chats'; user data bound via %d placeholders. Custom table; no core API; chat checkpoint reads are short-lived per-session and not worth a cache layer.
 		if ( $user_id > 0 ) {
 			$json = $wpdb->get_var(
 				$wpdb->prepare(
@@ -1465,6 +1489,7 @@ class PressArk_Checkpoint {
 				)
 			);
 		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ( empty( $json ) ) {
 			return null;
@@ -1972,22 +1997,44 @@ class PressArk_Checkpoint {
 		}
 
 		$derived = array();
+		$legacy_by_id      = array();
+		$legacy_by_content = array();
+		foreach ( $this->plan_steps as $legacy_step ) {
+			if ( ! is_array( $legacy_step ) ) {
+				continue;
+			}
+			$legacy_id = sanitize_key( (string) ( $legacy_step['id'] ?? '' ) );
+			if ( '' !== $legacy_id ) {
+				$legacy_by_id[ $legacy_id ] = $legacy_step;
+			}
+			$legacy_content = sanitize_text_field( (string) ( $legacy_step['content'] ?? $legacy_step['text'] ?? '' ) );
+			if ( '' !== $legacy_content ) {
+				$legacy_by_content[ $legacy_content ] = $legacy_step;
+			}
+		}
 		foreach ( PressArk_Plan_Artifact::to_plan_steps( $artifact ) as $row ) {
-			$content = sanitize_text_field( (string) ( $row['text'] ?? '' ) );
+			$content = sanitize_text_field( (string) ( $row['content'] ?? $row['text'] ?? '' ) );
 			if ( '' === $content ) {
 				continue;
 			}
 
+			$row_id = sanitize_key( (string) ( $row['id'] ?? '' ) );
+			$legacy = '' !== $row_id && isset( $legacy_by_id[ $row_id ] )
+				? $legacy_by_id[ $row_id ]
+				: ( $legacy_by_content[ $content ] ?? array() );
 			$kind   = sanitize_key( (string) ( $row['kind'] ?? '' ) );
 			$status = self::sanitize_plan_step_status( (string) ( $row['status'] ?? 'pending' ) );
 			$derived[] = array(
+				'id'                => $row_id,
 				'content'          => $content,
-				'activeForm'       => 'completed' === $status ? 'Completed: ' . $content : ( 'in_progress' === $status ? 'Working on: ' . $content : 'Work on: ' . $content ),
+				'activeForm'       => sanitize_text_field( (string) ( $row['activeForm'] ?? $legacy['activeForm'] ?? ( 'completed' === $status ? 'Completed: ' . $content : ( 'in_progress' === $status ? 'Working on: ' . $content : 'Work on: ' . $content ) ) ) ),
 				'status'           => $status,
-				'post_id'          => 0,
-				'tool_name'        => '',
-				'preview_required' => in_array( $kind, array( 'preview', 'confirm', 'write' ), true ),
-				'apply_succeeded'  => in_array( $kind, array( 'preview', 'confirm', 'write' ), true ) ? 'completed' === $status : true,
+				'post_id'          => absint( $row['post_id'] ?? $legacy['post_id'] ?? 0 ),
+				'tool_name'        => sanitize_key( (string) ( $row['tool_name'] ?? $legacy['tool_name'] ?? '' ) ),
+				'preview_required' => array_key_exists( 'preview_required', $row ) ? ! empty( $row['preview_required'] ) : ( array_key_exists( 'preview_required', $legacy ) ? ! empty( $legacy['preview_required'] ) : in_array( $kind, array( 'preview', 'confirm', 'write' ), true ) ),
+				'apply_succeeded'  => array_key_exists( 'apply_succeeded', $row ) ? ! empty( $row['apply_succeeded'] ) : ( array_key_exists( 'apply_succeeded', $legacy ) ? ! empty( $legacy['apply_succeeded'] ) : ( in_array( $kind, array( 'preview', 'confirm', 'write' ), true ) ? 'completed' === $status : true ) ),
+				'applied_tool_name'=> sanitize_key( (string) ( $row['applied_tool_name'] ?? $legacy['applied_tool_name'] ?? '' ) ),
+				'updated_at'       => sanitize_text_field( (string) ( $row['updated_at'] ?? $legacy['updated_at'] ?? '' ) ),
 			);
 		}
 
@@ -2005,13 +2052,14 @@ class PressArk_Checkpoint {
 				continue;
 			}
 
-			$content = sanitize_text_field( (string) ( $step['content'] ?? '' ) );
+			$content = sanitize_text_field( (string) ( $step['content'] ?? $step['text'] ?? $step['title'] ?? $step['label'] ?? '' ) );
 			if ( '' === $content ) {
 				continue;
 			}
 
 			$status = self::sanitize_plan_step_status( (string) ( $step['status'] ?? 'pending' ) );
 			$steps[] = array(
+				'id'               => sanitize_key( (string) ( $step['id'] ?? '' ) ),
 				'content'          => $content,
 				'activeForm'       => sanitize_text_field( (string) ( $step['activeForm'] ?? $content ) ),
 				'status'           => $status,
@@ -2021,6 +2069,9 @@ class PressArk_Checkpoint {
 				'apply_succeeded'  => ! empty( $step['apply_succeeded'] ),
 				'applied_tool_name'=> sanitize_key( (string) ( $step['applied_tool_name'] ?? '' ) ),
 				'updated_at'       => sanitize_text_field( (string) ( $step['updated_at'] ?? '' ) ),
+				'kind'             => sanitize_key( (string) ( $step['kind'] ?? '' ) ),
+				'group'            => sanitize_key( (string) ( $step['group'] ?? '' ) ),
+				'metadata'         => is_array( $step['metadata'] ?? null ) ? array_map( 'sanitize_text_field', (array) $step['metadata'] ) : array(),
 			);
 		}
 
@@ -2053,11 +2104,16 @@ class PressArk_Checkpoint {
 
 	private static function sanitize_plan_step_status( string $status ): string {
 		$status = sanitize_key( $status );
+		if ( 'active' === $status ) {
+			$status = 'in_progress';
+		}
 		if ( in_array( $status, array( 'done', 'verified' ), true ) ) {
 			$status = 'completed';
 		}
 
-		return in_array( $status, array( 'pending', 'in_progress', 'completed' ), true )
+		// v5.8.6 (2026-05-13, post-iter-41): preserve explicit blocked
+		// plan steps so a failed diagnostic branch can be skipped cleanly.
+		return in_array( $status, array( 'pending', 'blocked', 'in_progress', 'completed' ), true )
 			? $status
 			: 'pending';
 	}

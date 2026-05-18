@@ -368,6 +368,7 @@ class PressArk_Capabilities {
 
 		$meta_key     = $wpdb->get_blog_prefix() . 'capabilities';
 		$last_user_id = (int) get_option( self::USER_MIGRATION_CURSOR_OPTION, 0 );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time legacy capability migration that pages through usermeta by cursor; runs once per upgrade. Caching adds nothing because the cursor advances each batch.
 		$user_ids     = $wpdb->get_col(
 			$wpdb->prepare(
 				"SELECT user_id
@@ -505,6 +506,7 @@ class PressArk_Capabilities {
 			return $base_access;
 		}
 
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- $filter is read from self::ACCESS_FILTERS, a private class constant whose values are all pressark_* prefixed by construction.
 		return (bool) apply_filters( $filter, $base_access, $user_id );
 	}
 }

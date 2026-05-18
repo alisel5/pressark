@@ -91,6 +91,7 @@ class PressArk_Cron_Manager {
 			return;
 		}
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- $table is the wpdb-prefixed literal 'actionscheduler_actions'; user data bound via %s placeholders. Direct query: no core API for AS table at this granularity. Caching: this is a real-time queue-health snapshot — cached counts would mask backlog.
 		global $wpdb;
 		$table = $wpdb->prefix . 'actionscheduler_actions';
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
@@ -102,6 +103,7 @@ class PressArk_Cron_Manager {
 			'pressark%',
 			'pending'
 		) );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ( $pending > 0 ) {
 			ActionScheduler::runner()->run();

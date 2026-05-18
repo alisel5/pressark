@@ -176,9 +176,6 @@ class PressArk_Preflight {
 		}
 		self::$booted = true;
 
-		// Priority 10: Critical safety guards.
-		self::register_rule( array( __CLASS__, 'rule_self_deactivation' ), 10 );
-
 		// Priority 50: Domain-specific reroutes.
 		self::register_rule( array( __CLASS__, 'rule_elementor_content_edit' ), 50 );
 		self::register_rule( array( __CLASS__, 'rule_wc_product_content_edit' ), 50 );
@@ -193,29 +190,6 @@ class PressArk_Preflight {
 		 * @since 5.5.0
 		 */
 		do_action( 'pressark_preflight_boot' );
-	}
-
-	// ── Rule: Self-deactivation prevention ───────────────────────────
-
-	/**
-	 * Prevent PressArk from deactivating itself.
-	 */
-	public static function rule_self_deactivation( string $tool, array $params, array $context ): ?array {
-		if ( 'deactivate_plugin' !== $tool ) {
-			return null;
-		}
-
-		$plugin = $params['plugin'] ?? ( $params['slug'] ?? '' );
-		$plugin = strtolower( trim( $plugin ) );
-
-		if ( in_array( $plugin, array( 'pressark', 'pressark/pressark.php' ), true ) ) {
-			return self::block(
-				__( 'PressArk cannot deactivate itself.', 'pressark' ),
-				__( 'Deactivate PressArk from the WordPress Plugins page.', 'pressark' )
-			);
-		}
-
-		return null;
 	}
 
 	// ── Rule: Elementor content edit ─────────────────────────────────
@@ -242,8 +216,13 @@ class PressArk_Preflight {
 			return null;
 		}
 
-		$changes = $params['changes'] ?? $params;
-		if ( ! isset( $changes['content'] ) ) {
+		$changes      = $params['changes'] ?? $params;
+		// v5.6.1: append/prepend verbs hit the same post_content path as
+		// 'content' and are equally invisible on Elementor pages.
+		$touches_body = isset( $changes['content'] )
+			|| isset( $changes['append_content'] ) || isset( $changes['content_append'] ) || isset( $changes['append'] )
+			|| isset( $changes['prepend_content'] ) || isset( $changes['content_prepend'] ) || isset( $changes['prepend'] );
+		if ( ! $touches_body ) {
 			return null; // Not touching content — title/status/etc changes are fine.
 		}
 

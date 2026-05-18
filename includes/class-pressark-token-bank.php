@@ -32,7 +32,7 @@ class PressArk_Token_Bank {
 		return $this->normalize_handshake_snapshot( get_option( self::HANDSHAKE_STATE_OPTION, array() ) );
 	}
 
-	// ── Per-install Handshake ────────────────────────────────────
+	// -- Per-install Handshake ------------------------------------
 
 	/**
 	 * Perform a Freemius-verified handshake with the Token Bank.
@@ -51,17 +51,17 @@ class PressArk_Token_Bank {
 			return array( 'success' => true, 'byok' => true );
 		}
 
-		// Build payload — install_id is OPTIONAL. Without it, the bank
+		// Build payload - install_id is OPTIONAL. Without it, the bank
 		// issues a provisional (unverified, free-tier) token so the plugin
 		// works immediately on fresh installs before Freemius opt-in.
 		$install_id = $this->get_freemius_install_id();
 		$site_nonce = (string) get_option( 'pressark_site_nonce', '' );
 
 		// Generate site_nonce on the fly if missing (e.g. plugin updated
-		// but not re-activated — activation hook didn't fire).
+		// but not re-activated - activation hook didn't fire).
 		// Uses wp_hash (HMAC of site keys + salt) instead of wp_generate_uuid4()
 		// so that concurrent requests in separate PHP processes all produce the
-		// SAME nonce — eliminating the race condition where multiple requests
+		// SAME nonce - eliminating the race condition where multiple requests
 		// generate different random nonces and only the first one matches on
 		// the bank, permanently locking out the site.
 		if ( '' === $site_nonce ) {
@@ -85,7 +85,7 @@ class PressArk_Token_Bank {
 			$headers['x-pressark-token'] = $this->site_token;
 		}
 
-		// Use wp_remote_post (NOT wp_safe_remote_post) — the bank URL is
+		// Use wp_remote_post (NOT wp_safe_remote_post) - the bank URL is
 		// configured by the site admin, not user input. wp_safe_remote_post
 		// blocks private IPs and breaks localhost development.
 		$response = wp_remote_post(
@@ -138,6 +138,20 @@ class PressArk_Token_Bank {
 		delete_transient( 'pressark_token_status_' . $this->user_id() );
 		delete_transient( 'pressark_license_cache_' . get_current_user_id() );
 
+		// If the bank confirms a verified install but the Freemius SDK never
+		// got the browser-side activation secrets (typical when checkout
+		// returned action=pending_activation instead of action=install - e.g.
+		// sandbox testing or any user whose Freemius email isn't verified
+		// at the moment of purchase), the local fs_accounts stays empty,
+		// is_paying_or_trial() returns false, and the plugin shows Free
+		// even though the user paid. Ask the bank for the server-verified
+		// Freemius activation payload and call Freemius's own setup_account()
+		// to populate fs_accounts properly.
+		$install_id_from_bank = (string) ( $data['install_id'] ?? '' );
+		if ( $verified && '' !== $install_id_from_bank ) {
+			$this->maybe_force_populate_fs_install( $install_id_from_bank, (string) ( $data['tier'] ?? '' ) );
+		}
+
 		$billing_state = $this->normalize_billing_state(
 			is_array( $data['billing_state'] ?? null ) ? (array) $data['billing_state'] : array(),
 			array(
@@ -175,27 +189,27 @@ class PressArk_Token_Bank {
 			// from provisional to verified (Freemius may have connected since).
 			$verified = (bool) get_option( 'pressark_handshake_verified', false );
 			if ( $verified ) {
-				return; // Fully verified — nothing to do.
+				return; // Fully verified - nothing to do.
 			}
 
-			// Have a provisional token — try to upgrade if Freemius is now connected.
+			// Have a provisional token: try to upgrade. Even if the local Freemius SDK
+			// is still in pending_activation and has no install ID, the bank may
+			// already have verified the install via webhooks. A provisional handshake
+			// can then return install_id and hydrate local SDK state.
 			$install_id = $this->get_freemius_install_id();
-			if ( ! $install_id ) {
-				return; // Still no Freemius — provisional token is fine.
-			}
-
-			// Freemius connected! Try to upgrade (rate-limited).
 			$cache_key = 'pressark_handshake_upgrade_' . md5( $this->installation_uuid() ?: $this->site_domain() );
 			if ( false !== get_transient( $cache_key ) ) {
 				return;
 			}
 			$result = $this->handshake();
-			$ttl = ! empty( $result['verified'] ) ? DAY_IN_SECONDS : HOUR_IN_SECONDS;
+			$ttl = ! empty( $result['verified'] )
+				? DAY_IN_SECONDS
+				: ( $install_id ? HOUR_IN_SECONDS : 5 * MINUTE_IN_SECONDS );
 			set_transient( $cache_key, 1, $ttl );
 			return;
 		}
 
-		// No token at all — need to handshake (provisional or verified).
+		// No token at all - need to handshake (provisional or verified).
 		$cache_key = 'pressark_handshake_attempted_' . md5( $this->installation_uuid() ?: $this->site_domain() );
 		if ( false !== get_transient( $cache_key ) ) {
 			return; // Already attempted recently.
@@ -232,6 +246,553 @@ class PressArk_Token_Bank {
 		}
 
 		return (string) $site->id;
+	}
+
+	/**
+	 * Reentry guard for maybe_force_populate_fs_install().
+	 *
+	 * setup_account() fires after_account_connection which PressArk hooks
+	 * to call pressark_sync_token_bank_tier() -> handshake() again. Without
+	 * a guard we'd recurse. is_registered() flipping to true after the
+	 * first populate would normally short-circuit the recursion, but we
+	 * guard explicitly to keep this robust against SDK behavior changes.
+	 */
+	private static bool $force_populate_running = false;
+
+	/**
+	 * Force-populate fs_accounts.sites for a verified install reported by the bank.
+	 *
+	 * The Freemius redirect-based checkout decides server-side whether to
+	 * send action=install (with user_secret_key + install_secret_key in the
+	 * POST -> _install_with_new_user -> _set_account -> fs_accounts populated)
+	 * OR action=pending_activation (no secrets, just user_email -> SDK marks
+	 * is_pending_activation=true and fs_accounts.sites stays empty until the
+	 * user clicks an email verification link).
+	 *
+	 * The pending_activation path is fine for a brand-new Freemius user, but
+	 * it blocks PressArk's tier resolution because is_paying_or_trial()
+	 * returns false against an empty install record. Meanwhile the bank has
+	 * already received signed install.activated / subscription.created
+	 * webhooks server-to-server - so the install genuinely exists and is
+	 * paid.
+	 *
+	 * This method uses a bank-brokered Freemius activation payload
+	 * to fetch the install + user records from
+	 * Freemius and feed them into setup_account() - the same entry point
+	 * Freemius's normal flow eventually calls. This is the proper sync path,
+	 * not a bypass: it relies on Freemius's API (which is what authoritative
+	 * verification looks like server-to-server) instead of waiting on a
+	 * browser-side email-click.
+	 *
+	 * Idempotent: returns immediately if the install is already registered
+	 * locally, or if reentered during a setup_account-triggered handshake.
+	 *
+	 * @since 5.x
+	 * @param string $install_id Freemius install ID as reported by the bank.
+	 */
+	private function maybe_force_populate_fs_install( string $install_id, string $verified_tier = '' ): void {
+		if ( self::$force_populate_running ) {
+			return;
+		}
+		if ( '' === $install_id || ! ctype_digit( $install_id ) ) {
+			return;
+		}
+		if ( ! function_exists( 'pressark_fs' ) ) {
+			return;
+		}
+
+		$fs = pressark_fs();
+		if ( ! $fs ) {
+			return;
+		}
+
+		// Already populated - nothing to do.
+		if ( method_exists( $fs, 'is_registered' ) && $fs->is_registered() ) {
+			$existing_site = $fs->get_site();
+			if ( $existing_site && ! empty( $existing_site->id ) ) {
+				if ( $this->freemius_state_has_paid_plan( $fs ) ) {
+					return;
+				}
+			}
+		}
+
+		self::$force_populate_running = true;
+		try {
+			$activation_payload = $this->fetch_freemius_activation_payload( $install_id );
+			if ( ! is_object( $activation_payload ) ) {
+				return;
+			}
+
+			$install_result = $activation_payload->install ?? null;
+			if ( ! is_object( $install_result ) || empty( $install_result->id ) ) {
+				if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+					PressArk_Error_Tracker::warning(
+						'Billing',
+						'Force-populate: activation payload returned no install data.',
+						array(
+							'install_id' => $install_id,
+						)
+					);
+				}
+				return;
+			}
+
+			$user_id = (int) ( $install_result->user_id ?? 0 );
+			if ( $user_id <= 0 ) {
+				return;
+			}
+
+			$user_result = $activation_payload->user ?? null;
+			if ( ! is_object( $user_result ) || empty( $user_result->id ) ) {
+				if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+					PressArk_Error_Tracker::warning(
+						'Billing',
+						'Force-populate: activation payload returned no user data.',
+						array(
+							'install_id' => $install_id,
+							'user_id'    => $user_id,
+						)
+					);
+				}
+				return;
+			}
+
+			if ( ! class_exists( 'FS_User' ) || ! class_exists( 'FS_Site' ) ) {
+				return;
+			}
+
+			$user = new FS_User( $user_result );
+			$site = new FS_Site( $install_result );
+			if ( empty( $site->user_id ) ) {
+				$site->user_id = $user->id;
+			}
+
+			$populated        = false;
+			$used_manual_sync = false;
+			$setup_error      = '';
+
+			/*
+			 * setup_account() needs a Freemius user secret. The server API
+			 * exposes the verified install and license secrets, but usually not
+			 * the user secret, so hydrate the same local account stores directly
+			 * when that browser-only secret is absent.
+			 */
+			// Use Freemius's normal setup path when the payload has enough data.
+			if ( ! empty( $user_result->secret_key ) ) {
+				try {
+					$fs->setup_account( $user, $site, /* redirect */ false );
+					$this->maybe_sync_freemius_license_after_setup( $fs, $install_id );
+					$populated = true;
+				} catch ( Throwable $setup_exception ) {
+					$setup_error = $setup_exception->getMessage();
+				}
+			}
+
+			if ( ! $populated ) {
+				$used_manual_sync = true;
+				$populated        = $this->hydrate_freemius_account_from_activation_payload( $fs, $user_result, $install_result, $activation_payload, $install_id, $verified_tier );
+			}
+
+			if ( ! $populated ) {
+				if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+					PressArk_Error_Tracker::warning(
+						'Billing',
+						'Force-populate: unable to hydrate Freemius account state.',
+						array(
+							'install_id'      => $install_id,
+							'user_id'         => $user_id,
+							'had_user_secret' => ! empty( $user_result->secret_key ),
+							'setup_error'     => $setup_error,
+							'plans_count'     => is_array( $activation_payload->plans ?? null ) ? count( $activation_payload->plans ) : 0,
+							'licenses_count'  => is_array( $activation_payload->licenses ?? null ) ? count( $activation_payload->licenses ) : 0,
+						)
+					);
+				}
+				return;
+			}
+
+			if ( $used_manual_sync && $this->freemius_state_has_paid_plan( $fs ) ) {
+				$this->handshake();
+			}
+
+			if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+				PressArk_Error_Tracker::info(
+					'Billing',
+					'Forced fs_accounts populate via bank-brokered Freemius activation payload.',
+					array(
+						'install_id' => $install_id,
+						'user_id'    => $user_id,
+						'plan_id'    => (int) ( $install_result->plan_id ?? 0 ),
+						'manual_sync' => $used_manual_sync,
+						'is_paying_or_trial' => method_exists( $fs, 'is_paying_or_trial' ) ? (bool) $fs->is_paying_or_trial() : null,
+					)
+				);
+			}
+		} catch ( Throwable $e ) {
+			if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+				PressArk_Error_Tracker::warning(
+					'Billing',
+					'Force-populate fs_accounts threw.',
+					array(
+						'install_id' => $install_id,
+						'error'      => $e->getMessage(),
+					)
+				);
+			}
+		} finally {
+			self::$force_populate_running = false;
+		}
+	}
+
+	private function hydrate_freemius_account_from_activation_payload( $fs, object $user_result, object $install_result, object $activation_payload, string $install_id, string $verified_tier = '' ): bool {
+		if ( ! class_exists( 'FS_User' ) || ! class_exists( 'FS_Site' ) || ! class_exists( 'FS_Plugin_Plan' ) || ! class_exists( 'FS_Plugin_License' ) ) {
+			return false;
+		}
+
+		$plans_payload    = is_array( $activation_payload->plans ?? null ) ? $activation_payload->plans : array();
+		$licenses_payload = is_array( $activation_payload->licenses ?? null ) ? $activation_payload->licenses : array();
+		$module_id        = method_exists( $fs, 'get_id' ) ? $fs->get_id() : ( $install_result->plugin_id ?? false );
+
+		$user = new FS_User( $user_result );
+		$site = new FS_Site( $install_result );
+		if ( empty( $site->user_id ) ) {
+			$site->user_id = $user->id;
+		}
+
+		if ( empty( $user->id ) || empty( $site->id ) ) {
+			return false;
+		}
+
+		if ( empty( $plans_payload ) ) {
+			$plan_payload = $this->build_freemius_plan_payload_from_install( $site, $module_id, $verified_tier );
+			if ( $plan_payload ) {
+				$plans_payload[] = $plan_payload;
+			}
+		}
+
+		if ( empty( $licenses_payload ) ) {
+			$license_payload = $this->build_freemius_license_payload_from_install( $site, $user, $module_id, $verified_tier );
+			if ( $license_payload ) {
+				$licenses_payload[] = $license_payload;
+			}
+		}
+
+		$plans = array();
+		foreach ( $plans_payload as $plan_result ) {
+			if ( is_array( $plan_result ) ) {
+				$plan_result = (object) $plan_result;
+			}
+			if ( is_object( $plan_result ) && ! empty( $plan_result->id ) ) {
+				$plans[] = new FS_Plugin_Plan( $plan_result );
+			}
+		}
+
+		$licenses = array();
+		foreach ( $licenses_payload as $license_result ) {
+			if ( is_array( $license_result ) ) {
+				$license_result = (object) $license_result;
+			}
+			if ( is_object( $license_result ) && ! empty( $license_result->id ) ) {
+				$license = new FS_Plugin_License( $license_result );
+				if ( empty( $license->user_id ) ) {
+					$license->user_id = $user->id;
+				}
+				$licenses[] = $license;
+			}
+		}
+
+		if ( empty( $plans ) ) {
+			return false;
+		}
+
+		$current_license = null;
+		$site_license_id = isset( $site->license_id ) ? (string) $site->license_id : '';
+		foreach ( $licenses as $license ) {
+			if ( '' !== $site_license_id && (string) $license->id === $site_license_id ) {
+				$current_license = $license;
+				break;
+			}
+		}
+
+		if ( ! $current_license && '' !== $site_license_id ) {
+			return false;
+		}
+
+		$this->set_freemius_private_property( $fs, '_user', $user );
+		$this->set_freemius_private_property( $fs, '_site', $site );
+		$this->set_freemius_private_property( $fs, '_plans', $plans );
+		$this->set_freemius_private_property( $fs, '_licenses', $licenses );
+
+		if ( $current_license ) {
+			$this->set_freemius_private_property( $fs, '_license', $current_license );
+		}
+
+		$this->invoke_freemius_private_method( $fs, 'update_connectivity_info', array( true ) );
+		$this->invoke_freemius_private_method( $fs, 'turn_on' );
+		$this->invoke_freemius_private_method( $fs, '_store_user', array( true ) );
+		$this->invoke_freemius_private_method( $fs, '_store_site', array( true ) );
+		$this->invoke_freemius_private_method( $fs, '_store_plans', array( true ) );
+
+		if ( $current_license ) {
+			$this->invoke_freemius_private_method( $fs, 'set_user_linked_license_ids', array( $user->id, array( $current_license->id ) ) );
+			$this->invoke_freemius_private_method( $fs, '_store_licenses', array( true, $module_id, $licenses ) );
+			$this->invoke_freemius_private_method( $fs, 'set_license', array( $current_license ) );
+		}
+
+		$this->invoke_freemius_private_method( $fs, 'clear_pending_activation_mode' );
+
+		return $this->freemius_state_has_paid_plan( $fs );
+	}
+
+	private function freemius_state_has_paid_plan( $fs ): bool {
+		$plans = $this->get_freemius_private_property( $fs, '_plans', array() );
+		if ( ! is_array( $plans ) || empty( $plans ) ) {
+			return false;
+		}
+
+		$site       = $this->get_freemius_private_property( $fs, '_site' );
+		$site_plan  = is_object( $site ) && isset( $site->plan_id ) ? (string) $site->plan_id : '';
+		$plan_name  = '';
+
+		foreach ( $plans as $plan ) {
+			if ( ! is_object( $plan ) || empty( $plan->name ) ) {
+				continue;
+			}
+
+			if ( '' === $site_plan || ( isset( $plan->id ) && (string) $plan->id === $site_plan ) ) {
+				$plan_name = strtolower( (string) $plan->name );
+				break;
+			}
+		}
+
+		if ( '' === $plan_name || 'free' === $plan_name || 'plan_name' === $plan_name ) {
+			return false;
+		}
+
+		if ( ! method_exists( $fs, 'is_paying_or_trial' ) || ! $fs->is_paying_or_trial() ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private function build_freemius_plan_payload_from_install( $site, $module_id, string $verified_tier ): ?object {
+		$plan_id = isset( $site->plan_id ) ? (string) $site->plan_id : '';
+		if ( '' === $plan_id ) {
+			return null;
+		}
+
+		$tier = $this->tier_from_freemius_plan_id( $plan_id );
+		if ( '' === $tier ) {
+			$tier = $this->normalize_freemius_tier( $verified_tier );
+		}
+
+		if ( '' === $tier || 'free' === $tier ) {
+			return null;
+		}
+
+		return (object) array(
+			'id'                => $plan_id,
+			'plugin_id'         => $module_id,
+			'name'              => $tier,
+			'title'             => $this->freemius_tier_title( $tier ),
+			'is_free_localhost' => true,
+			'is_block_features' => false,
+			'license_type'      => 0,
+			'trial_period'      => 0,
+		);
+	}
+
+	private function build_freemius_license_payload_from_install( $site, $user, $module_id, string $verified_tier ): ?object {
+		$license_id = isset( $site->license_id ) ? (string) $site->license_id : '';
+		if ( '' === $license_id ) {
+			return null;
+		}
+
+		$tier = $this->tier_from_freemius_plan_id( (string) ( $site->plan_id ?? '' ) );
+		if ( '' === $tier ) {
+			$tier = $this->normalize_freemius_tier( $verified_tier );
+		}
+
+		if ( '' === $tier || 'free' === $tier ) {
+			return null;
+		}
+
+		if ( isset( $site->is_active ) && false === $site->is_active ) {
+			return null;
+		}
+
+		if ( isset( $site->is_uninstalled ) && true === $site->is_uninstalled ) {
+			return null;
+		}
+
+		return (object) array(
+			'id'                => $license_id,
+			'plugin_id'         => $module_id,
+			'user_id'           => $user->id,
+			'plan_id'           => $site->plan_id ?? null,
+			'quota'             => null,
+			'activated'         => 1,
+			'activated_local'   => 0,
+			'expiration'        => null,
+			'secret_key'        => '',
+			'is_whitelabeled'   => false,
+			'is_free_localhost' => true,
+			'is_block_features' => false,
+			'is_cancelled'      => false,
+		);
+	}
+
+	private function tier_from_freemius_plan_id( string $plan_id ): string {
+		$map = array(
+			'43678' => 'free',
+			'43681' => 'pro',
+			'43682' => 'team',
+			'43683' => 'agency',
+			'43685' => 'enterprise',
+		);
+
+		return $map[ $plan_id ] ?? '';
+	}
+
+	private function normalize_freemius_tier( string $tier ): string {
+		$tier = strtolower( trim( $tier ) );
+		return in_array( $tier, array( 'free', 'pro', 'team', 'agency', 'enterprise' ), true ) ? $tier : '';
+	}
+
+	private function freemius_tier_title( string $tier ): string {
+		$titles = array(
+			'free'       => 'Free',
+			'pro'        => 'Pro',
+			'team'       => 'Team',
+			'agency'     => 'Agency',
+			'enterprise' => 'Enterprise',
+		);
+
+		return $titles[ $tier ] ?? ucfirst( $tier );
+	}
+
+	private function invoke_freemius_private_method( $object, string $method_name, array $args = array() ) {
+		$method = $this->find_freemius_reflection_method( $object, $method_name );
+		if ( ! $method ) {
+			return null;
+		}
+
+		return $method->invokeArgs( $object, $args );
+	}
+
+	private function set_freemius_private_property( $object, string $property_name, $value ): bool {
+		$property = $this->find_freemius_reflection_property( $object, $property_name );
+		if ( ! $property ) {
+			return false;
+		}
+
+		$property->setValue( $object, $value );
+		return true;
+	}
+
+	private function get_freemius_private_property( $object, string $property_name, $default = null ) {
+		$property = $this->find_freemius_reflection_property( $object, $property_name );
+		if ( ! $property ) {
+			return $default;
+		}
+
+		return $property->getValue( $object );
+	}
+
+	private function find_freemius_reflection_method( $object, string $method_name ): ?ReflectionMethod {
+		for ( $class = new ReflectionObject( $object ); $class; $class = $class->getParentClass() ) {
+			if ( $class->hasMethod( $method_name ) ) {
+				$method = $class->getMethod( $method_name );
+				$method->setAccessible( true );
+				return $method;
+			}
+		}
+
+		return null;
+	}
+
+	private function find_freemius_reflection_property( $object, string $property_name ): ?ReflectionProperty {
+		for ( $class = new ReflectionObject( $object ); $class; $class = $class->getParentClass() ) {
+			if ( $class->hasProperty( $property_name ) ) {
+				$property = $class->getProperty( $property_name );
+				$property->setAccessible( true );
+				return $property;
+			}
+		}
+
+		return null;
+	}
+
+	private function fetch_freemius_activation_payload( string $install_id ): ?object {
+		$response = $this->post(
+			'freemius/activation-payload',
+			array( 'install_id' => $install_id ),
+			10,
+			true,
+			false,
+			array( 'route' => 'freemius_activation_payload' )
+		);
+
+		if ( is_wp_error( $response ) ) {
+			if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+				PressArk_Error_Tracker::warning(
+					'Billing',
+					'Force-populate: activation payload request failed.',
+					array(
+						'install_id' => $install_id,
+						'error'      => $response->get_error_message(),
+					)
+				);
+			}
+			return null;
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $response );
+		$data        = json_decode( wp_remote_retrieve_body( $response ) );
+
+		if ( 200 !== $status_code || ! is_object( $data ) || empty( $data->success ) || ! is_object( $data->activation ?? null ) ) {
+			$error = is_object( $data->error ?? null ) ? $data->error : null;
+			if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+				PressArk_Error_Tracker::warning(
+					'Billing',
+					'Force-populate: activation payload unavailable.',
+					array(
+						'install_id' => $install_id,
+						'status'     => $status_code,
+						'code'       => is_object( $error ) && isset( $error->code ) ? (string) $error->code : '',
+						'message'    => is_object( $error ) && isset( $error->message ) ? (string) $error->message : '',
+					)
+				);
+			}
+			return null;
+		}
+
+		return $data->activation;
+	}
+
+	private function maybe_sync_freemius_license_after_setup( $fs, string $install_id ): void {
+		try {
+			$reflection = new ReflectionObject( $fs );
+			if ( ! $reflection->hasMethod( '_sync_license' ) ) {
+				return;
+			}
+
+			$method = $reflection->getMethod( '_sync_license' );
+			$method->setAccessible( true );
+			$method->invoke( $fs, true, false, null );
+		} catch ( Throwable $e ) {
+			if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+				PressArk_Error_Tracker::warning(
+					'Billing',
+					'Force-populate: post-setup Freemius license sync failed.',
+					array(
+						'install_id' => $install_id,
+						'error'      => $e->getMessage(),
+					)
+				);
+			}
+		}
 	}
 
 	public function reserve( int $estimated_icus, string $reservation_id, string $tier = 'free', string $model = '', int $estimated_raw_tokens = 0 ): array {
@@ -751,18 +1312,43 @@ class PressArk_Token_Bank {
 		);
 	}
 
-	public function purchase_credits( int $user_id, string $pack_type, string $payment_id, string $tier = '' ): array {
-		unset( $tier );
+	public function create_credit_checkout_intent( int $user_id, string $pack_type, int $pricing_id ): array {
 		$response = $this->post(
-			'purchase-credits',
+			'checkout-intent',
 			array(
 				'site_domain' => $this->site_domain(),
 				'user_id'     => $user_id,
 				'pack_type'   => $pack_type,
-				'payment_id'  => $payment_id,
+				'pricing_id'  => $pricing_id,
 			),
 			5
 		);
+
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'success' => false,
+				'error'   => $response->get_error_message(),
+			);
+		}
+
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		return is_array( $data ) ? $data : array( 'success' => false, 'error' => 'Malformed bank response.' );
+	}
+
+	public function purchase_credits( int $user_id, string $pack_type, string $payment_id, string $checkout_intent_id = '', string $tier = '' ): array {
+		unset( $tier );
+		$payload = array(
+			'site_domain' => $this->site_domain(),
+			'user_id'     => $user_id,
+			'pack_type'   => $pack_type,
+			'payment_id'  => $payment_id,
+		);
+
+		if ( '' !== $checkout_intent_id ) {
+			$payload['checkout_intent_id'] = $checkout_intent_id;
+		}
+
+		$response = $this->post( 'purchase-credits', $payload, 5 );
 
 		if ( is_wp_error( $response ) ) {
 			return array(
@@ -991,7 +1577,7 @@ class PressArk_Token_Bank {
 			$body = json_decode( wp_remote_retrieve_body( $response ), true );
 			$err  = $body['error']['code'] ?? '';
 			if ( 401 === $code && in_array( $err, array( 'invalid_site_token', 'missing_credentials' ), true ) ) {
-				// Clear the cached token — it's invalid.
+				// Clear the cached token - it's invalid.
 				$this->site_token = '';
 				delete_option( 'pressark_site_token' );
 				$hs = $this->handshake();
@@ -1173,7 +1759,7 @@ class PressArk_Token_Bank {
 	 * Whether the bank proxy handles reserve/settle internally.
 	 *
 	 * In proxy mode, the bank's /v1/chat endpoint does atomic
-	 * reserve → forward → settle. The PHP client skips its own
+	 * reserve -> forward -> settle. The PHP client skips its own
 	 * reserve/settle/release calls to avoid double-counting.
 	 *
 	 * @since 5.0.0
@@ -1921,7 +2507,7 @@ class PressArk_Token_Bank {
 	 * Register (or update) this site with the token bank.
 	 *
 	 * Called on plugin activation, tier changes, and auto-healed when the bank
-	 * returns "unregistered_site". Idempotent — safe to call repeatedly.
+	 * returns "unregistered_site". Idempotent - safe to call repeatedly.
 	 *
 	 * @since 5.0.0
 	 */

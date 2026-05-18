@@ -635,8 +635,8 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			'manage_stock'   => $data['manage_stock'],
 			'pricing_state'  => $pricing_state,
 			'data'           => $data,
-			/* translators: %s: comma-separated list of updated product fields. */
 			'message'        => sprintf(
+				/* translators: 1: comma-separated list of updated product fields, 2: pricing state summary. */
 				__( 'Product updated: %1$s. Pricing now %2$s.', 'pressark' ),
 				implode( ', ', $changed_list ),
 				$this->summarize_wc_product_pricing_state( $pricing_state )
@@ -874,15 +874,22 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		// v3.7.0: Flush WC transient caches once after the entire batch.
 		$this->flush_wc_batch_caches();
 
+		$scope_label       = $this->describe_wc_bulk_product_scope( $resolution, count( $products ) );
+		$scope_description = $this->describe_wc_bulk_product_scope_sentence( $resolution, count( $products ), $scope_label );
+
 		$response = array(
 			'success' => $errors === 0,
 			'updated' => $updated,
 			'errors'  => $errors,
 			'matched' => count( $products ),
+			'scope_label' => $scope_label,
+			'scope_description' => $scope_description,
 			'message' => sprintf(
-				/* translators: 1: updated count 2: error count */
-				__( 'Bulk update: %1$d product(s) updated, %2$d error(s).', 'pressark' ),
+				/* translators: 1: updated count 2: matched count 3: scope label 4: error count */
+				__( 'Bulk update: %1$d of %2$d %3$s updated, %4$d error(s).', 'pressark' ),
 				$updated,
+				count( $products ),
+				$scope_label,
 				$errors
 			),
 		);
@@ -1204,6 +1211,97 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		}
 
 		return $summary;
+	}
+
+	private function describe_wc_bulk_product_scope( array $resolution, int $matched_count ): string {
+		$scope  = sanitize_key( (string) ( $resolution['scope'] ?? 'explicit' ) );
+		$status = $this->wc_product_status_label( sanitize_key( (string) ( $resolution['status'] ?? '' ) ) );
+		$prefix = '' !== $status ? $status . ' ' : '';
+
+		if ( ! empty( $resolution['truncated'] ) ) {
+			return sprintf(
+				/* translators: %s: product status label */
+				__( 'first matched %sWooCommerce product(s) in this batch', 'pressark' ),
+				$prefix
+			);
+		}
+
+		if ( 'matching' === $scope ) {
+			$search = sanitize_text_field( (string) ( $resolution['search'] ?? '' ) );
+			if ( '' !== $search ) {
+				return sprintf(
+					/* translators: 1: product status label 2: search term */
+					__( '%1$sWooCommerce product(s) matching "%2$s"', 'pressark' ),
+					$prefix,
+					$search
+				);
+			}
+
+			return sprintf(
+				/* translators: %s: product status label */
+				__( 'matching %sWooCommerce product(s)', 'pressark' ),
+				$prefix
+			);
+		}
+
+		if ( 'all' === $scope ) {
+			return sprintf(
+				/* translators: %s: product status label */
+				__( '%sWooCommerce product(s)', 'pressark' ),
+				$prefix
+			);
+		}
+
+		return __( 'selected WooCommerce product(s)', 'pressark' );
+	}
+
+	private function describe_wc_bulk_product_scope_sentence( array $resolution, int $matched_count, string $scope_label ): string {
+		$scope = sanitize_key( (string) ( $resolution['scope'] ?? 'explicit' ) );
+		if ( 'explicit' === $scope ) {
+			return sprintf(
+				/* translators: 1: product count 2: scope label */
+				__( 'Resolved %1$d %2$s from the supplied product list.', 'pressark' ),
+				$matched_count,
+				$scope_label
+			);
+		}
+
+		if ( ! empty( $resolution['truncated'] ) ) {
+			return sprintf(
+				/* translators: 1: scope name 2: product count 3: scope label */
+				__( 'Scope "%1$s" resolved to %2$d %3$s; additional matched products may require another batch.', 'pressark' ),
+				$scope,
+				$matched_count,
+				$scope_label
+			);
+		}
+
+		// v5.8.16 (2026-05-14): expose the resolved WooCommerce scope/count so
+		// wraps do not overclaim "all products" when the tool only matched
+		// product posts, not pages/posts or other site content.
+		return sprintf(
+			/* translators: 1: scope name 2: product count 3: scope label */
+			__( 'Scope "%1$s" resolved to %2$d %3$s; this does not include pages, posts, or other non-product content.', 'pressark' ),
+			$scope,
+			$matched_count,
+			$scope_label
+		);
+	}
+
+	private function wc_product_status_label( string $status ): string {
+		if ( '' === $status ) {
+			return '';
+		}
+
+		$labels = array(
+			'publish' => __( 'published', 'pressark' ),
+			'draft'   => __( 'draft', 'pressark' ),
+			'private' => __( 'private', 'pressark' ),
+			'pending' => __( 'pending', 'pressark' ),
+			'any'     => __( 'matched', 'pressark' ),
+		);
+
+		return $labels[ $status ] ?? str_replace( '_', ' ', $status );
 	}
 
 	private function format_wc_bulk_product_error_detail( array $product_result, string $message, int $fallback_index ): string {
@@ -5646,10 +5744,15 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 			);
 		}
 
+		$scope_label       = $this->describe_wc_bulk_product_scope( $resolution, count( $products ) );
+		$scope_description = $this->describe_wc_bulk_product_scope_sentence( $resolution, count( $products ), $scope_label );
+
 		$preview = array(
 			'title'   => __( 'Bulk product update', 'pressark' ),
-			/* translators: %1$d: number of products that will be updated. */
-			'summary' => sprintf( __( '%1$d product(s) will be updated.', 'pressark' ), count( $products ) ),
+			/* translators: 1: number of matched products 2: scope label */
+			'summary' => sprintf( __( '%1$d %2$s will be updated.', 'pressark' ), count( $products ), $scope_label ),
+			'scope_label' => $scope_label,
+			'scope_description' => $scope_description,
 			'changes' => array(),
 		);
 		if ( ! empty( $resolution['matched_product_types'] ) ) {
@@ -5713,6 +5816,9 @@ class PressArk_Handler_WooCommerce extends PressArk_Handler_Base {
 		}
 
 		$preview_notes = array();
+		if ( '' !== $scope_description ) {
+			$preview_notes[] = $scope_description;
+		}
 		if ( ! empty( $resolution['warnings'] ) ) {
 			$preview_notes[] = implode( ' ', array_map( 'strval', (array) $resolution['warnings'] ) );
 		}

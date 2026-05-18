@@ -3,14 +3,13 @@
  * PressArk Entitlements — Unified entitlement service (v3.5.0).
  *
  * Single source of truth for:
- *   - Tier definitions (token budgets, limits, features)
+ *   - Tier definitions (included service credits and service capacity)
  *   - BYOK mode
- *   - Write policy and group-sampling quotas
- *   - Model access gating
+ *   - Credit metering policy
  *   - Plan info payloads
  *
  * All other classes (Token_Bank, Reservation, Usage_Tracker, Model_Policy,
- * Chat pipeline) delegate to this class for tier/grant/quota decisions.
+ * Chat pipeline) delegate to this class for tier/grant/credit decisions.
  *
  * @package PressArk
  * @since   2.8.0
@@ -82,9 +81,9 @@ class PressArk_Entitlements {
 	 *
 	 * token_budget    — monthly token allowance for the token-bank service.
 	 * output_buffer   — estimated output tokens per request (reservation sizing).
-	 * group_limit     — max non-read tool calls per week across ALL groups (0 = unlimited).
-	 * write_limit     — max write actions per month via legacy tracker (0 = unlimited).
-	 * deep_mode       — whether deep-mode model upgrades are available.
+	 * group_limit     — legacy local quota, kept at 0 so plugin actions are not plan-gated.
+	 * write_limit     — legacy local quota, kept at 0 so edits are not plan-gated.
+	 * deep_mode       — plugin UI toggle availability (not plan-gated).
 	 * max_agent_rounds — hard agent loop cap (from v3.2.0 orchestration).
 	 * max_sites       — license seat count (-1 = unlimited).
 	 * concurrency     — max simultaneous AI requests.
@@ -96,12 +95,12 @@ class PressArk_Entitlements {
 			'icu_budget'              => 100000,
 			'token_budget'            => 100000,
 			'output_buffer'           => 3000,
-			'group_limit'             => 6,
-			'write_limit'             => 5,
-			'deep_mode'               => false,
-			'max_agent_rounds'        => 8,
-			'agent_token_budget'      => 3000,
-			'workflow_token_budget'   => 2000,
+			'group_limit'             => 0,
+			'write_limit'             => 0,
+			'deep_mode'               => true,
+			'max_agent_rounds'        => 30,
+			'agent_token_budget'      => 8000,
+			'workflow_token_budget'   => 5000,
 			'burst_per_min'           => 5,
 			'hourly_limit'            => 30,
 			'ip_per_min'              => 10,
@@ -109,9 +108,9 @@ class PressArk_Entitlements {
 			'concurrency'             => 1,
 			'default_model'           => 'deepseek/deepseek-v3.2',
 			'label'                   => 'Free',
-			'max_automations'         => 0,
+			'max_automations'         => -1,
 			'min_automation_interval' => 0,
-			'max_request_icus'        => 50000,
+			'max_request_icus'        => 300000,
 			'watchdog_alerts'         => false,
 			'watchdog_digest'         => false,
 			'watchdog_triggers'       => false,
@@ -133,11 +132,11 @@ class PressArk_Entitlements {
 			'concurrency'             => 2,
 			'default_model'           => 'anthropic/claude-sonnet-4.6',
 			'label'                   => 'Pro',
-			'max_automations'         => 5,
-			'min_automation_interval' => 3600,
+			'max_automations'         => -1,
+			'min_automation_interval' => 0,
 			'max_request_icus'        => 300000,
-			'watchdog_alerts'         => true,
-			'watchdog_digest'         => true,
+			'watchdog_alerts'         => false,
+			'watchdog_digest'         => false,
 			'watchdog_triggers'       => false,
 		),
 		'team' => array(
@@ -157,12 +156,12 @@ class PressArk_Entitlements {
 			'concurrency'             => 3,
 			'default_model'           => 'anthropic/claude-sonnet-4.6',
 			'label'                   => 'Team',
-			'max_automations'         => 15,
-			'min_automation_interval' => 1800,
+			'max_automations'         => -1,
+			'min_automation_interval' => 0,
 			'max_request_icus'        => 500000,
-			'watchdog_alerts'         => true,
-			'watchdog_digest'         => true,
-			'watchdog_triggers'       => true,
+			'watchdog_alerts'         => false,
+			'watchdog_digest'         => false,
+			'watchdog_triggers'       => false,
 		),
 		'agency' => array(
 			'icu_budget'              => 40000000,
@@ -181,12 +180,12 @@ class PressArk_Entitlements {
 			'concurrency'             => 5,
 			'default_model'           => 'anthropic/claude-sonnet-4.6',
 			'label'                   => 'Agency',
-			'max_automations'         => 50,
-			'min_automation_interval' => 900,
+			'max_automations'         => -1,
+			'min_automation_interval' => 0,
 			'max_request_icus'        => 1000000,
-			'watchdog_alerts'         => true,
-			'watchdog_digest'         => true,
-			'watchdog_triggers'       => true,
+			'watchdog_alerts'         => false,
+			'watchdog_digest'         => false,
+			'watchdog_triggers'       => false,
 		),
 		'enterprise' => array(
 			'icu_budget'              => 100000000,
@@ -206,16 +205,16 @@ class PressArk_Entitlements {
 			'default_model'           => 'anthropic/claude-sonnet-4.6',
 			'label'                   => 'Enterprise',
 			'max_automations'         => -1,
-			'min_automation_interval' => 300,
+			'min_automation_interval' => 0,
 			'max_request_icus'        => 2500000,
-			'watchdog_alerts'         => true,
-			'watchdog_digest'         => true,
-			'watchdog_triggers'       => true,
+			'watchdog_alerts'         => false,
+			'watchdog_digest'         => false,
+			'watchdog_triggers'       => false,
 		),
 	);
 
-	/** Features requiring Pro+ tier. */
-	private const PRO_FEATURES = array( 'deep_mode', 'automations' );
+	/** No plugin-distributed features are paywalled; billing plans add service credits. */
+	private const PRO_FEATURES = array();
 
 	/** Groups whose tools never count toward sampling limits. */
 	public const UNLIMITED_GROUPS = array( 'discovery', 'core' );
@@ -422,18 +421,20 @@ class PressArk_Entitlements {
 	// ── Feature Gate ────────────────────────────────────────────────
 
 	/**
-	 * Check if a tier can use a specific feature.
+	 * Check whether a plugin feature is available locally.
 	 *
 	 * @param string $tier    User's current tier.
 	 * @param string $feature Feature key (e.g., 'deep_mode').
 	 * @return bool
 	 */
 	public static function can_use_feature( string $tier, string $feature ): bool {
+		unset( $tier );
+
 		if ( in_array( $feature, self::PRO_FEATURES, true ) ) {
-			return self::is_paid_tier( $tier );
+			return true;
 		}
-		// Check tier config for feature-specific flag.
-		$val = self::tier_value( $tier, $feature );
+
+		$val = self::tier_value( 'free', $feature );
 		if ( is_bool( $val ) ) {
 			return $val;
 		}
@@ -444,24 +445,22 @@ class PressArk_Entitlements {
 
 	/**
 	 * Check if a user on this tier can perform write actions.
-	 * Unified check — replaces scattered is_pro() + has_any_remaining() calls.
+	 * Local write access is not plan-gated; remote AI calls are credit-metered.
 	 *
 	 * @param string $tier Current tier.
 	 * @return bool
 	 */
 	public static function can_write( string $tier ): bool {
-		if ( self::is_paid_tier( $tier ) ) {
-			return true;
-		}
-		return self::has_any_remaining();
+		unset( $tier );
+		return true;
 	}
 
 	/**
-	 * Get the free-tier write limit.
+	 * Get the legacy write limit. Zero means local writes are unlimited.
 	 */
 	public static function write_limit( string $tier ): int {
-		$limit = (int) self::tier_value( $tier, 'write_limit' );
-		return $limit > 0 ? (int) apply_filters( 'pressark_free_limit', $limit ) : 0;
+		unset( $tier );
+		return 0;
 	}
 
 	// ── Group Usage Check ───────────────────────────────────────────
@@ -469,7 +468,7 @@ class PressArk_Entitlements {
 	/**
 	 * Check if a tool call is allowed under the entitlement model.
 	 *
-	 * Free tier: 6 non-read tool calls per week across ALL groups combined.
+	 * Local plugin tool access is not plan-gated; remote AI calls are credit-metered.
 	 *
 	 * @param string $tier            User's current tier.
 	 * @param string $group           Tool group name.
@@ -545,51 +544,22 @@ class PressArk_Entitlements {
 
 	/**
 	 * Record a successful non-read tool call for the current user.
-	 * Only increments for free-tier users on non-unlimited groups.
-	 * Tracks per-group for analytics; enforcement is against the weekly total.
+	 * Legacy local quota tracking is intentionally disabled.
 	 *
 	 * @param string $group Tool group name.
 	 */
 	public static function record_group_usage( string $group ): void {
-		// Only track for free tier.
-		$tier = ( new PressArk_License() )->get_tier();
-		if ( self::is_paid_tier( $tier ) ) {
-			return;
-		}
-
-		// Never count unlimited groups.
-		if ( in_array( $group, self::UNLIMITED_GROUPS, true ) ) {
-			return;
-		}
-
-		$user_id = get_current_user_id();
-		if ( ! $user_id ) {
-			return;
-		}
-
-		$usage = self::get_group_usage();
-		$usage['groups'][ $group ] = ( $usage['groups'][ $group ] ?? 0 ) + 1;
-
-		update_user_meta( $user_id, 'pressark_group_usage', $usage );
+		unset( $group );
 	}
 
 	/**
-	 * Get the total non-read tool calls used this week across all groups.
+	 * Get the legacy total non-read tool calls used this week.
+	 * Local tool usage is no longer a limit, so this remains zero.
 	 *
 	 * @return int Total used count.
 	 */
 	public static function get_total_usage(): int {
-		$usage = self::get_group_usage();
-		$total = 0;
-
-		foreach ( ( $usage['groups'] ?? array() ) as $group => $count ) {
-			if ( in_array( $group, self::UNLIMITED_GROUPS, true ) ) {
-				continue;
-			}
-			$total += (int) $count;
-		}
-
-		return $total;
+		return 0;
 	}
 
 	/**
@@ -599,12 +569,8 @@ class PressArk_Entitlements {
 	 * @return int Remaining calls (0 = fully exhausted).
 	 */
 	public static function min_remaining_across_groups( string $tier = 'free' ): int {
-		$group_limit = (int) self::tier_value( $tier, 'group_limit' );
-		if ( $group_limit <= 0 ) {
-			return PHP_INT_MAX;
-		}
-
-		return max( 0, $group_limit - self::get_total_usage() );
+		unset( $tier );
+		return PHP_INT_MAX;
 	}
 
 	/**
@@ -614,12 +580,8 @@ class PressArk_Entitlements {
 	 * @return int Total used count.
 	 */
 	public static function max_used_across_groups( string $tier = 'free' ): int {
-		$group_limit = (int) self::tier_value( $tier, 'group_limit' );
-		if ( $group_limit <= 0 ) {
-			return 0;
-		}
-
-		return self::get_total_usage();
+		unset( $tier );
+		return 0;
 	}
 
 	/**
@@ -628,12 +590,7 @@ class PressArk_Entitlements {
 	 * @return bool True if under the weekly limit.
 	 */
 	public static function has_any_remaining(): bool {
-		$group_limit = (int) self::tier_value( 'free', 'group_limit' );
-		if ( $group_limit <= 0 ) {
-			return true;
-		}
-
-		return self::get_total_usage() < $group_limit;
+		return true;
 	}
 
 	// ── Plan Info ───────────────────────────────────────────────────
@@ -661,7 +618,7 @@ class PressArk_Entitlements {
 			'token_budget'               => (int) $config['token_budget'],
 			'is_byok'                    => self::is_byok(),
 			'upgrade_url'                => pressark_get_upgrade_url(),
-			'can_buy_credits'            => ! self::is_byok() && self::is_paid_tier( $tier ),
+			'can_buy_credits'            => ! self::is_byok(),
 			'credits_remaining'          => 0,
 			'purchased_credits_remaining' => 0,
 			'legacy_bonus_remaining'     => 0,
@@ -717,7 +674,7 @@ class PressArk_Entitlements {
 			$info['billing_contract_mismatch'] = ! empty( $info['billing_contract_hash'] ) && $info['billing_contract_hash'] !== $info['local_billing_contract_hash'];
 			$info['verified_handshake']  = ! empty( $status['verified_handshake'] );
 			$info['provisional_handshake'] = ! empty( $status['provisional_handshake'] );
-			$info['can_buy_credits']    = self::is_paid_tier( $billing_tier );
+			$info['can_buy_credits']    = true;
 			$info['tokens_used']       = $info['icus_used'];
 			$info['tokens_remaining']  = $info['icus_remaining'];
 		} else {
@@ -749,31 +706,7 @@ class PressArk_Entitlements {
 			$info['provisional_handshake'] = false;
 		}
 
-		if ( 'free' === $tier ) {
-			$usage       = self::get_group_usage();
-			$group_limit = $config['group_limit'];
-			$total_used  = self::get_total_usage();
-
-			// Per-group breakdown for analytics/display.
-			$group_breakdown = array();
-			$all_groups      = PressArk_Operation_Registry::group_names();
-
-			foreach ( $all_groups as $group ) {
-				if ( in_array( $group, self::UNLIMITED_GROUPS, true ) ) {
-					continue;
-				}
-				$group_breakdown[ $group ] = $usage['groups'][ $group ] ?? 0;
-			}
-
-			$info['group_usage'] = array(
-				'total_used'      => $total_used,
-				'total_limit'     => $group_limit,
-				'total_remaining' => max( 0, $group_limit - $total_used ),
-				'per_group'       => $group_breakdown,
-			);
-		} else {
-			$info['group_usage'] = null; // No limits.
-		}
+		$info['group_usage'] = null; // Local plugin actions are not plan-gated.
 
 		return $info;
 	}
@@ -798,7 +731,7 @@ class PressArk_Entitlements {
 				}
 
 				if ( 'free' === $tier ) {
-					return 'Your monthly credits are used up. Upgrade to Pro for 50x more credits and premium AI models.';
+					return 'Your monthly included credits are used up. Buy more credits or choose a plan with a larger included credit allowance.';
 				}
 
 				$bank            = new PressArk_Token_Bank();
@@ -811,21 +744,15 @@ class PressArk_Entitlements {
 				}
 
 				return sprintf(
-					'Your billing-cycle credits are used up on the %s plan. Buy more credits or upgrade your plan for more allowance.',
+					'Your billing-cycle credits are used up on the %s plan. Buy more credits or choose a plan with a larger included credit allowance.',
 					$label
 				);
 			case 'group_limit':
-				return sprintf(
-					'You\'ve used all %d free tool actions for this week. Scans, analysis, and reading remain unlimited. Your limit resets every Monday. Upgrade to Pro for unlimited access to all tools.',
-					self::tier_value( $tier, 'group_limit' )
-				);
+				return 'Local plugin tools are available without a plan gate; remote AI requests are limited only by credits.';
 			case 'write_limit':
-				return sprintf(
-					'You\'ve used all %d free edits this week. Scans, analysis, and reading remain unlimited. Upgrade to Pro for unlimited edits — plans start at $19/mo.',
-					self::tier_value( $tier, 'write_limit' )
-				);
+				return 'Local plugin edits are available without a plan gate; remote AI requests are limited only by credits.';
 			default:
-				return 'Usage limit reached for the current billing period. Upgrade for more capacity.';
+				return 'Usage limit reached for the current billing period. Buy more credits or choose a larger included credit allowance.';
 		}
 	}
 
@@ -841,20 +768,14 @@ class PressArk_Entitlements {
 	 * @return array Structured error with upgrade info.
 	 */
 	public static function denied_error( string $group, string $current_tier, int $used, int $limit ): array {
-		$upgrade_url = pressark_get_upgrade_url();
-
 		return array(
 			'allowed'     => false,
 			'success'     => false,
 			'error'       => 'entitlement_denied',
-			'message'     => sprintf(
-				'You\'ve used all %d free tool actions this week. Your limit resets every Monday. Upgrade to Pro for unlimited access to all tools.',
-				$limit
-			),
+			'message'     => 'This action is unavailable right now. Remote AI usage is controlled by your available credits.',
 			'group'       => $group,
 			'used'        => $used,
 			'limit'       => $limit,
-			'upgrade_url' => $upgrade_url,
 		);
 	}
 
@@ -942,84 +863,17 @@ class PressArk_Entitlements {
 		string $tool_name = ''
 	): array {
 		$tier = self::normalize_tier( $tier );
-
-		if ( self::is_paid_tier( $tier ) ) {
-			return array(
-				'allowed'   => true,
-				'behavior'  => 'allow',
-				'reason'    => '',
-				'ui_action' => 'none',
-				'tier'      => $tier,
-				'group'     => $group,
-				'tool_name' => $tool_name,
-			);
-		}
-
-		if ( 'read' === $tool_capability || in_array( $group, self::UNLIMITED_GROUPS, true ) ) {
-			return array(
-				'allowed'   => true,
-				'behavior'  => 'allow',
-				'reason'    => '',
-				'ui_action' => 'none',
-				'tier'      => $tier,
-				'group'     => $group,
-				'tool_name' => $tool_name,
-			);
-		}
-
-		$group_limit = (int) self::tier_value( $tier, 'group_limit' );
-		if ( $group_limit <= 0 ) {
-			return array(
-				'allowed'   => true,
-				'behavior'  => 'allow',
-				'reason'    => '',
-				'ui_action' => 'none',
-				'tier'      => $tier,
-				'group'     => $group,
-				'tool_name' => $tool_name,
-			);
-		}
-
-		$usage      = self::get_group_usage_snapshot( $user_id );
-		$total_used = self::total_usage_from_snapshot( $usage );
-		$remaining  = max( 0, $group_limit - $total_used );
-
-		if ( $total_used >= $group_limit ) {
-			$message = sprintf(
-				'You\'ve used all %d free tool actions this week. Your limit resets every Monday. Upgrade to Pro for unlimited access to all tools.',
-				$group_limit
-			);
-
-			return array(
-				'allowed'     => false,
-				'behavior'    => 'ask',
-				'reason'      => $message,
-				'message'     => $message,
-				'ui_action'   => 'upgrade_modal',
-				'error'       => 'entitlement_denied',
-				'basis'       => 'group_limit_exhausted',
-				'tier'        => $tier,
-				'group'       => $group,
-				'tool_name'   => $tool_name,
-				'used'        => $total_used,
-				'limit'       => $group_limit,
-				'remaining'   => 0,
-				'upgrade_url' => pressark_get_upgrade_url(),
-			);
-		}
+		unset( $tool_capability, $user_id );
 
 		return array(
 			'allowed'   => true,
 			'behavior'  => 'allow',
 			'reason'    => '',
 			'ui_action' => 'none',
-			'basis'     => 'weekly_remaining',
+			'basis'     => 'credits_only',
 			'tier'      => $tier,
 			'group'     => $group,
 			'tool_name' => $tool_name,
-			'used'      => $total_used,
-			'limit'     => $group_limit,
-			'remaining' => $remaining,
 		);
 	}
 

@@ -85,23 +85,9 @@ class PressArk_Automation_Dispatcher {
 		$task_store = new PressArk_Task_Store();
 		$task_idempotency_key = self::build_task_idempotency_key( $automation_id, $scheduled_slot );
 
-		// Validate entitlements.
+		// Resolve the automation owner's billing context for credit checks.
 		$license = new PressArk_License();
 		$tier = $license->get_tier();
-
-		if ( ! PressArk_Entitlements::can_use_feature( $tier, 'automations' ) ) {
-			$store->update( $automation_id, array(
-				'last_run_id'  => '',
-				'last_task_id' => '',
-			) );
-			$store->record_failure( $automation_id, '', 'Automation feature not available on ' . PressArk_Entitlements::tier_label( $tier ) . ' plan.' );
-			if ( ! $skip_claim ) {
-				self::compute_and_persist_next( $automation, $store );
-				$store->release_claim( $automation_id );
-			}
-			PressArk_Notification_Manager::notify_automation_failure( $automation, 'Your plan does not include scheduled automations. Upgrade to continue.' );
-			return;
-		}
 
 		// Token budget check.
 		if ( ! PressArk_Entitlements::can_write( $tier ) ) {

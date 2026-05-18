@@ -345,17 +345,20 @@ class PressArk_Security_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'         => __( 'Exposed Files', 'pressark' ),
-				'category'     => 'files',
-				'status'       => 'warning',
-				'severity'     => 'low',
-				'message'      => sprintf(
+				'name'            => __( 'Exposed Files', 'pressark' ),
+				'category'        => 'files',
+				'status'          => 'warning',
+				'severity'        => 'low',
+				'message'         => sprintf(
 					/* translators: %s: comma-separated list of exposed files */
 					__( 'Exposed files: %s. These reveal WordPress version info.', 'pressark' ),
 					implode( ', ', $exposed_files )
 				),
-				'fix'          => __( 'Delete readme.html, license.txt, and wp-config-sample.php from the server.', 'pressark' ),
-				'auto_fixable' => true,
+				'fix'             => __( 'Delete readme.html, license.txt, and wp-config-sample.php from the server.', 'pressark' ),
+				'auto_fixable'    => true,
+				// v5.7.11 (2026-05-13): iter-22's audit→fix routing contract applied to scan_security.
+				'fix_tool'        => 'fix_security',
+				'fix_target_keys' => array( 'delete_exposed_files' ),
 			);
 		}
 
@@ -378,13 +381,16 @@ class PressArk_Security_Scanner {
 			);
 		} else {
 			$checks[] = array(
-				'name'         => __( 'XML-RPC', 'pressark' ),
-				'category'     => 'authentication',
-				'status'       => 'warning',
-				'severity'     => 'low',
-				'message'      => __( 'XML-RPC is enabled. This is a common brute-force attack vector.', 'pressark' ),
-				'fix'          => __( 'Disable XML-RPC unless needed for Jetpack or mobile apps.', 'pressark' ),
-				'auto_fixable' => true,
+				'name'            => __( 'XML-RPC', 'pressark' ),
+				'category'        => 'authentication',
+				'status'          => 'warning',
+				'severity'        => 'low',
+				'message'         => __( 'XML-RPC is enabled. This is a common brute-force attack vector.', 'pressark' ),
+				'fix'             => __( 'Disable XML-RPC unless needed for Jetpack or mobile apps.', 'pressark' ),
+				'auto_fixable'    => true,
+				// v5.7.11 (2026-05-13): iter-22's audit→fix routing contract applied to scan_security.
+				'fix_tool'        => 'fix_security',
+				'fix_target_keys' => array( 'disable_xmlrpc' ),
 			);
 		}
 

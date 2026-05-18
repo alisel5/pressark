@@ -149,6 +149,23 @@ class PressArk_Planning_Policy {
 			);
 		}
 
+		if ( $this->is_resolved_single_target_followup_write( $trimmed, $writes_likely, $context, $commerce_critical_write, $destructive_score, $predicted_write_count ) ) {
+			// v5.8.15 (2026-05-14): resolved same-target follow-up writes use preview flow, not read-only hard Plan Mode.
+			return $this->build_decision(
+				self::MODE_NONE,
+				false,
+				false,
+				array_values( array_unique( array_merge( $reason_codes, array( 'resolved_single_target_write' ) ) ) ),
+				min( $complexity_score, 3 ),
+				min( $risk_score, 3 ),
+				min( $breadth_score, 2 ),
+				min( $uncertainty_score, 1 ),
+				$destructive_score,
+				1,
+				1
+			);
+		}
+
 		$small_protected_write = $writes_likely
 			&& $predicted_write_count <= 1
 			&& $group_count <= 1
@@ -203,7 +220,7 @@ class PressArk_Planning_Policy {
 				$log_path,
 				sprintf(
 					"[%s] POLICY hp=%d legacy=%d writes=%d breadth=%d destructive=%d uncertainty=%d async=%d writes_likely=%d discovery=%d risk=%d groups=%d complexity=%d\n",
-					date( 'H:i:s' ),
+					gmdate( 'H:i:s' ),
 					$hard_plan ? 1 : 0,
 					$legacy_signal ? 1 : 0,
 					$predicted_write_count,
@@ -416,7 +433,11 @@ class PressArk_Planning_Policy {
 	 */
 	private function destructive_score( string $message, array $permission_probe ): int {
 		$score = 0;
-		if ( 1 === preg_match( '/\b(?:delete|remove|trash|purge|wipe|reset|clear|overwrite|deactivate|disable|uninstall|revoke)\b/i', $message ) ) {
+		if ( 1 === preg_match( '/\b(?:delete|remove|trash|purge|wipe|reset|overwrite|deactivate|disable|uninstall|revoke)\b/i', $message ) ) {
+			$score += 7;
+		}
+		// v5.8.12 (2026-05-14): treat "clear" as destructive only with destructive objects, not CTA clarity.
+		if ( 1 === preg_match( '/\bclear(?:\s+(?:all|every|cache|caches|transients?|settings?|options?|logs?|orders?|products?|posts?|pages?|content|cart|stock|inventory|sale|sales|coupons?))\b/i', $message ) ) {
 			$score += 7;
 		}
 		if ( 1 === preg_match( '/\b(?:replace all|bulk replace|mass update|change every)\b/i', $message ) ) {
@@ -533,6 +554,67 @@ class PressArk_Planning_Policy {
 	}
 
 	/**
+	 * Same-chat "publish it" / "fix 3" commands are already target-resolved by
+	 * the request compiler. Treat them as bounded writes and let preview/confirm
+	 * approval carry the safety work instead of sending them through hard Plan Mode.
+	 */
+	private function is_resolved_single_target_followup_write(
+		string $message,
+		bool $writes_likely,
+		array $context,
+		bool $commerce_critical_write,
+		int $destructive_score,
+		int $predicted_write_count
+	): bool {
+		if (
+			! $writes_likely
+			|| absint( $context['post_id'] ?? 0 ) <= 0
+			|| $commerce_critical_write
+			|| $destructive_score > 2
+			|| $predicted_write_count > 1
+		) {
+			return false;
+		}
+
+		$normalized = strtolower( trim( (string) preg_replace( '/\s+/', ' ', wp_strip_all_tags( $message ) ) ) );
+		if ( '' === $normalized || mb_strlen( $normalized ) > 160 ) {
+			return false;
+		}
+
+		$word_count = str_word_count( preg_replace( '/[^\p{L}\p{N}\s%+\-]/u', ' ', $normalized ) );
+		if ( $word_count > 14 ) {
+			return false;
+		}
+
+		$numbered_action = $this->message_looks_like_numbered_action_followup( $normalized );
+		if (
+			! $numbered_action
+			&& 1 !== preg_match( '/\b(?:it|this|that|the\s+(?:draft|page|post|product|item|content|landing\s+page))\b/i', $normalized )
+		) {
+			return false;
+		}
+
+		if ( $numbered_action ) {
+			return true;
+		}
+
+		return 1 === preg_match(
+			'/\b(?:publish|unpublish|draft|private|schedule|make\s+(?:it|this|that|the\s+\w+)\s+live|put\s+(?:it|this|that|the\s+\w+)\s+live|take\s+(?:it|this|that|the\s+\w+)\s+live|move\s+(?:it|this|that|the\s+\w+)\s+to\s+draft|set\s+(?:it|this|that|the\s+\w+)\s+to\s+(?:publish|published|draft|private))\b/i',
+			$normalized
+		);
+	}
+
+	private function message_looks_like_numbered_action_followup( string $message ): bool {
+		return 1 === preg_match(
+			'/^\s*(?:please\s+)?(?:fix|apply|do|handle|use|run|update|change|make)\s+(?:the\s+)?(?:(?:issue|item|fix)\s+)?(?:#\s*)?(?:\d{1,2}|one|two|three|four|five|first|second|third|fourth|fifth)(?:\s+(?:one|item|issue|fix|result))?\s*$/i',
+			$message
+		) || 1 === preg_match(
+			'/^\s*(?:please\s+)?(?:the\s+)?(?:first|second|third|fourth|fifth)\s+(?:one|item|issue|fix|result)\s*$/i',
+			$message
+		);
+	}
+
+	/**
 	 * Detect financially sensitive WooCommerce writes that should not bypass planning.
 	 */
 	private function is_commerce_critical_write( string $message, array $groups, array $permission_probe, bool $writes_likely ): bool {
@@ -588,6 +670,10 @@ class PressArk_Planning_Policy {
 	 * Basic write-intent heuristic used alongside permission probing.
 	 */
 	private function message_likely_requests_write( string $message ): bool {
+		if ( $this->message_looks_like_numbered_action_followup( strtolower( trim( (string) preg_replace( '/\s+/', ' ', wp_strip_all_tags( $message ) ) ) ) ) ) {
+			return true;
+		}
+
 		return 1 === preg_match(
 			'/^\s*(?:please\s+)?(?:update|change|edit|modify|rewrite|replace|delete|remove|create|add|set|publish|increase|decrease|raise|lower|append|prepend|rename|move|fix|make)\b/i',
 			$message
@@ -652,7 +738,7 @@ class PressArk_Planning_Policy {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 			return true;
 		}
-		$host = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? '' ) );
+		$host = strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ?? '' ) ) );
 		if ( '' === $host ) {
 			return false;
 		}

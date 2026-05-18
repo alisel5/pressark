@@ -4,10 +4,30 @@
 (function () {
 	'use strict';
 
+	var wpI18n = window.wp && window.wp.i18n ? window.wp.i18n : {};
+	var __ = wpI18n.__ || function (text) { return text; };
+	var _n = wpI18n._n || function (single, plural, number) {
+		return Number(number) === 1 ? single : plural;
+	};
+	var sprintf = wpI18n.sprintf || function (format) {
+		var args = Array.prototype.slice.call(arguments, 1);
+		var index = 0;
+		return String(format).replace(/%(?:(\d+)\$)?[sd]/g, function (match, position) {
+			var argIndex = position ? parseInt(position, 10) - 1 : index;
+			var replacement = typeof args[argIndex] !== 'undefined' ? args[argIndex] : '';
+			if (!position) {
+				index++;
+			}
+			return String(replacement);
+		});
+	};
+
 	/* ── Inline SVG Icon Helper ─────────────────────────────────────── */
 	var pwIcons = {
 		zap:       '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.5L3 9h4.5l-.5 5.5L13 7H8.5l.5-5.5z"/></svg>',
 		moon:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8.5a5.5 5.5 0 1 1-6-6 4.5 4.5 0 0 0 6 6z"/></svg>',
+		sun:       '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.25M8 13.25v1.25M1.5 8h1.25M13.25 8h1.25M3.4 3.4l.9.9M11.7 11.7l.9.9M12.6 3.4l-.9.9M4.3 11.7l-.9.9"/></svg>',
+		arrowRight:'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10"/><path d="M9 4l4 4-4 4"/></svg>',
 		pen:       '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.2 2.3a1.6 1.6 0 0 1 2.5 2l-8 8L2.5 13l.7-3.2z"/></svg>',
 		search:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="m13.5 13.5-3-3"/></svg>',
 		shield:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5L2.5 4v3.5c0 3.5 2.3 6 5.5 7 3.2-1 5.5-3.5 5.5-7V4z"/></svg>',
@@ -42,11 +62,13 @@
 	};
 
 	/** Wrap an icon SVG string in a .pw-icon span for inline use. */
-	function pwIcon(name) {
-		return '<span class="pw-icon">' + (pwIcons[name] || '') + '</span>';
+	function pwIcon(name, tone) {
+		var toneClass = tone ? ' pw-icon--' + tone : '';
+		return '<span class="pw-icon' + toneClass + '">' + (pwIcons[name] || '') + '</span>';
 	}
 
 	var PANEL_STATE_KEY = 'pressark_panel_open';
+	var THEME_STATE_KEY = 'pressark_panel_theme';
 
 	var PressArk = {
 		panel: null,
@@ -54,6 +76,8 @@
 		inputEl: null,
 		sendBtn: null,
 		toggleBtn: null,
+		themeBtn: null,
+		themeIconEl: null,
 		quotaBarEl: null,
 		historySidebar: null,
 		conversation: [],
@@ -83,6 +107,23 @@
 		_confirmStreamActive: false,
 		_toolProgressState: {},
 		activePreviewFooterEl: null,
+		planTrackerEl: null,
+		planTrackerHeadEl: null,
+		planTrackerBodyEl: null,
+		planSummaryEl: null,
+		planProgressEl: null,
+		planDotsEl: null,
+		planStepsEl: null,
+		planRestoreEl: null,
+		planRestoreProgressEl: null,
+		planRestoreSummaryEl: null,
+		planTrackerState: {
+			collapsed: false,
+			hidden: false,
+			runId: '',
+			steps: [],
+			summary: ''
+		},
 
 		init: function () {
 			this.panel = document.getElementById('pressark-panel');
@@ -90,10 +131,22 @@
 			this.inputEl = document.getElementById('pressark-input');
 			this.sendBtn = document.getElementById('pressark-send');
 			this.toggleBtn = document.getElementById('pressark-toggle');
+			this.themeBtn = document.getElementById('pressark-theme-btn');
+			this.themeIconEl = this.themeBtn ? this.themeBtn.querySelector('.pressark-theme-icon') : null;
 			this.quotaBarEl = document.getElementById('pressark-quota-bar');
 			this.historySidebar = document.getElementById('pressark-history-panel');
 			this.activityBtn = document.getElementById('pressark-activity-btn');
 			this.activityCountEl = document.getElementById('pressark-activity-count');
+			this.planTrackerEl = document.getElementById('pressark-plan-tracker');
+			this.planTrackerHeadEl = document.getElementById('pressark-plan-head');
+			this.planTrackerBodyEl = document.getElementById('pressark-plan-body');
+			this.planSummaryEl = document.getElementById('pressark-plan-summary');
+			this.planProgressEl = document.getElementById('pressark-plan-progress');
+			this.planDotsEl = document.getElementById('pressark-plan-dots');
+			this.planStepsEl = document.getElementById('pressark-plan-steps');
+			this.planRestoreEl = document.getElementById('pressark-plan-restore');
+			this.planRestoreProgressEl = document.getElementById('pressark-plan-restore-progress');
+			this.planRestoreSummaryEl = document.getElementById('pressark-plan-restore-summary');
 
 			if (!this.panel || !this.toggleBtn) {
 				return;
@@ -113,6 +166,7 @@
 			}
 
 			this.loadBrandImages();
+			this.restoreTheme();
 			this.bindEvents();
 			this.setupScrollObserver();
 			this.restorePanelState();
@@ -131,7 +185,7 @@
 			// Header logo (small, for the panel header on white bg)
 			var headerLogo = document.getElementById('pressark-header-logo');
 			if (headerLogo) {
-				var logoSrc = this.findImage(images, ['WHITE-APP-LOGO', 'icon-dark', 'favicon', 'icon', 'logo-icon', 'app-icon']);
+				var logoSrc = this.findImage(images, ['PNG-LOGO', 'WHITE-APP-LOGO', 'icon-dark', 'favicon', 'icon', 'logo-icon', 'app-icon']);
 				if (logoSrc) {
 					headerLogo.src = logoSrc;
 				} else {
@@ -139,17 +193,6 @@
 				}
 			}
 
-			// Toggle button logo (on blue bg)
-			var toggleLogo = document.getElementById('pressark-toggle-logo');
-			if (toggleLogo) {
-				var toggleSrc = this.findImage(images, ['PNG-LOGO', 'DARK-APP-LOGO', 'icon-light', 'icon-white', 'favicon', 'icon']);
-				if (toggleSrc) {
-					toggleLogo.src = toggleSrc;
-				} else {
-					// Fallback: use SVG sparkle
-					toggleLogo.parentElement.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2L14 9L22 9L16 14L18 22L12 17L6 22L8 14L2 9L10 9Z"/></svg>';
-				}
-			}
 		},
 
 		findImage: function (images, preferredNames) {
@@ -168,6 +211,49 @@
 			// Return first available image as last resort
 			var keys = Object.keys(images);
 			return keys.length > 0 ? images[keys[0]] : null;
+		},
+
+		restoreTheme: function () {
+			var stored = '';
+			try {
+				stored = window.localStorage ? window.localStorage.getItem(THEME_STATE_KEY) : '';
+			} catch (e) {
+				stored = '';
+			}
+
+			var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+			this.setTheme(stored || (prefersDark ? 'dark' : 'light'), false);
+		},
+
+		toggleTheme: function () {
+			var currentTheme = this.panel && this.panel.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+			this.setTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
+		},
+
+		setTheme: function (theme, persist) {
+			var normalized = theme === 'dark' ? 'dark' : 'light';
+			var nextLabel = normalized === 'dark' ? __( 'Use light mode', 'pressark' ) : __( 'Use dark mode', 'pressark' );
+			var isDark = normalized === 'dark';
+
+			if (this.panel) {
+				this.panel.setAttribute('data-theme', normalized);
+			}
+			if (this.themeBtn) {
+				this.themeBtn.classList.toggle('pressark-theme-active', isDark);
+				this.themeBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+				this.themeBtn.setAttribute('aria-label', nextLabel);
+				this.themeBtn.setAttribute('title', nextLabel);
+			}
+			if (this.themeIconEl) {
+				this.themeIconEl.innerHTML = isDark ? pwIcons.sun : pwIcons.moon;
+			}
+			if (persist) {
+				try {
+					if (window.localStorage) {
+						window.localStorage.setItem(THEME_STATE_KEY, normalized);
+					}
+				} catch (e) {}
+			}
 		},
 
 		// ── Event Binding ────────────────────────────────────────────
@@ -191,6 +277,12 @@
 			if (deepModeBtn) {
 				deepModeBtn.addEventListener('click', function () {
 					self.toggleDeepMode();
+				});
+			}
+
+			if (this.themeBtn) {
+				this.themeBtn.addEventListener('click', function () {
+					self.toggleTheme();
 				});
 			}
 
@@ -225,6 +317,47 @@
 					if (self.historySidebar) {
 						self.historySidebar.style.display = 'none';
 					}
+				});
+			}
+
+			if (this.planTrackerHeadEl) {
+				this.planTrackerHeadEl.addEventListener('click', function (e) {
+					if (e.target && e.target.closest && e.target.closest('#pressark-plan-hide')) {
+						return;
+					}
+					self.togglePlanTrackerCollapse();
+				});
+				this.planTrackerHeadEl.addEventListener('keydown', function (e) {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						self.togglePlanTrackerCollapse();
+					}
+				});
+			}
+
+			var planCollapseBtn = document.getElementById('pressark-plan-collapse');
+			if (planCollapseBtn) {
+				planCollapseBtn.addEventListener('click', function (e) {
+					e.preventDefault();
+					e.stopPropagation();
+					self.togglePlanTrackerCollapse();
+				});
+			}
+
+			var planHideBtn = document.getElementById('pressark-plan-hide');
+			if (planHideBtn) {
+				planHideBtn.addEventListener('click', function (e) {
+					e.preventDefault();
+					e.stopPropagation();
+					self.hidePlanTracker();
+				});
+			}
+
+			var planRestoreBtn = document.getElementById('pressark-plan-restore-btn');
+			if (planRestoreBtn) {
+				planRestoreBtn.addEventListener('click', function (e) {
+					e.preventDefault();
+					self.showPlanTracker();
 				});
 			}
 
@@ -301,23 +434,6 @@
 				existingIndicators[i].remove();
 			}
 
-			// Check if user is Pro.
-			if (!data.isPro) {
-				var upgradeUrl = data.upgradeUrl || '#';
-				var upgradeMsg = document.createElement('div');
-				upgradeMsg.className = 'pressark-message pressark-message-system pressark-deep-indicator';
-				upgradeMsg.innerHTML =
-					'<div class="pressark-message-content">' +
-					'<div class="pressark-upgrade-prompt">' +
-					'<strong>' + pwIcon('zap') + ' Deep Mode is a Pro feature</strong>' +
-					'<p>Deep Mode uses premium AI models (Claude Sonnet 4.6, GPT-5.4) with extended context for complex tasks like full-site rewrites, detailed analysis, and bulk content generation.</p>' +
-					'<a href="' + this.escapeHtml(upgradeUrl) + '" target="_blank" class="pressark-upgrade-btn">Upgrade to Pro</a>' +
-					'</div></div>';
-				this.messagesEl.appendChild(upgradeMsg);
-				this.scrollToBottom();
-				return;
-			}
-
 			this.deepModeActive = !this.deepModeActive;
 			var btn = document.getElementById('pressark-deep-mode-btn');
 			if (btn) {
@@ -329,8 +445,8 @@
 			indicator.innerHTML =
 				'<div class="pressark-message-content">' +
 				(this.deepModeActive
-					? pwIcon('zap') + ' <strong>Deep Mode ON</strong> \u2014 Using premium AI with extended context. Best for complex tasks.'
-					: pwIcon('moon') + ' <strong>Deep Mode OFF</strong> \u2014 Back to standard mode.') +
+					? pwIcon('zap') + ' <strong>' + this.escapeHtml(__( 'Deep Mode ON', 'pressark' )) + '</strong> - ' + this.escapeHtml(__( 'Using premium AI with extended context. Best for complex tasks.', 'pressark' ))
+					: pwIcon('moon') + ' <strong>' + this.escapeHtml(__( 'Deep Mode OFF', 'pressark' )) + '</strong> - ' + this.escapeHtml(__( 'Back to standard mode.', 'pressark' ))) +
 				'</div>';
 			this.messagesEl.appendChild(indicator);
 			this.scrollToBottom();
@@ -544,7 +660,7 @@
 			}
 			if (!isIndexRebuilding && PressArk.wasIndexRebuilding) {
 				PressArk.wasIndexRebuilding = false;
-				PressArk.addMessage('ai', 'Content index rebuilt. I can now search your full site content.');
+				PressArk.addMessage('ai', __( 'Content index rebuilt. I can now search your full site content.', 'pressark' ));
 			}
 		},
 
@@ -666,7 +782,7 @@
 			var listEl = document.getElementById('pressark-history-list');
 			if (!listEl) return;
 
-			listEl.innerHTML = '<div class="pressark-history-loading">Loading...</div>';
+			listEl.innerHTML = '<div class="pressark-history-loading">' + this.escapeHtml(__( 'Loading...', 'pressark' )) + '</div>';
 
 			fetch(data.restUrl + 'chats', {
 				headers: { 'X-WP-Nonce': data.nonce }
@@ -674,7 +790,7 @@
 				.then(function (r) { return r.json(); })
 				.then(function (chats) {
 					if (!chats || chats.length === 0) {
-						listEl.innerHTML = '<div class="pressark-history-empty">No saved chats yet</div>';
+						listEl.innerHTML = '<div class="pressark-history-empty">' + self.escapeHtml(__( 'No saved chats yet', 'pressark' )) + '</div>';
 						return;
 					}
 
@@ -685,7 +801,7 @@
 						html += '<div class="pressark-history-item' + (isActive ? ' pressark-history-active' : '') + '" data-chat-id="' + c.id + '">';
 						html += '<span class="pressark-history-title">' + self.escapeHtml(c.title) + '</span>';
 						html += '<span class="pressark-history-time">' + self.formatRelativeTime(c.updated_at) + '</span>';
-						html += '<button class="pressark-history-delete" data-chat-id="' + c.id + '" title="Delete">&times;</button>';
+						html += '<button class="pressark-history-delete" data-chat-id="' + c.id + '" title="' + self.escapeHtml(__( 'Delete', 'pressark' )) + '">&times;</button>';
 						html += '</div>';
 					}
 					listEl.innerHTML = html;
@@ -712,7 +828,7 @@
 					}
 				})
 				.catch(function () {
-					listEl.innerHTML = '<div class="pressark-history-empty">Failed to load chats</div>';
+					listEl.innerHTML = '<div class="pressark-history-empty">' + self.escapeHtml(__( 'Failed to load chats', 'pressark' )) + '</div>';
 				});
 		},
 
@@ -839,6 +955,7 @@
 			this.loadedGroups = [];
 			this.checkpoint = null;
 			this.messagesEl.innerHTML = '';
+			this.resetPlanTracker();
 
 			if (prevConversation.length > 0 && prevChatId) {
 				var data = window.pressarkData;
@@ -858,16 +975,258 @@
 			this.showWelcome();
 		},
 
+		resetPlanTracker: function () {
+			this.planTrackerState = {
+				collapsed: false,
+				hidden: false,
+				runId: '',
+				steps: [],
+				summary: ''
+			};
+			this.renderPlanTracker();
+		},
+
+		showPlanTracker: function () {
+			this.planTrackerState.hidden = false;
+			this.renderPlanTracker();
+		},
+
+		hidePlanTracker: function () {
+			this.planTrackerState.hidden = true;
+			this.renderPlanTracker();
+		},
+
+		togglePlanTrackerCollapse: function () {
+			if (!this.planTrackerState.steps.length) {
+				return;
+			}
+			this.planTrackerState.hidden = false;
+			this.planTrackerState.collapsed = !this.planTrackerState.collapsed;
+			this.renderPlanTracker();
+		},
+
+		escapeHtmlToText: function (text) {
+			var div = document.createElement('div');
+			div.textContent = String(text || '');
+			return div.innerHTML;
+		},
+
+		formatPlanSummaryHtml: function (text) {
+			var clean = String(text || '').trim();
+			if (!clean) {
+				return this.escapeHtmlToText(__( 'Working the plan', 'pressark' ));
+			}
+
+			var parts = clean.split(/\s+/);
+			if (parts.length < 2) {
+				return '<em>' + this.escapeHtmlToText(clean) + '</em>';
+			}
+
+			return '<em>' + this.escapeHtmlToText(parts.shift()) + '</em> ' + this.escapeHtmlToText(parts.join(' '));
+		},
+
+		getPlanTrackerSummaryText: function (steps, fallback) {
+			var activeText = '';
+			for (var i = 0; i < steps.length; i++) {
+				var status = this.normalizeStepStatus(steps[i].status);
+				if (status === 'reading' || status === 'running' || status === 'active') {
+					activeText = steps[i].text;
+					break;
+				}
+			}
+			if (activeText) {
+				return activeText;
+			}
+			for (var j = 0; j < steps.length; j++) {
+				if (this.normalizeStepStatus(steps[j].status) !== 'done' && this.normalizeStepStatus(steps[j].status) !== 'completed') {
+					return steps[j].text;
+				}
+			}
+			return fallback || (steps[steps.length - 1] ? steps[steps.length - 1].text : '');
+		},
+
+		getPlanProgressData: function (steps) {
+			var completed = 0;
+			var activeIndex = -1;
+			for (var i = 0; i < steps.length; i++) {
+				var status = this.normalizeStepStatus(steps[i].status);
+				if (status === 'done' || status === 'completed') {
+					completed++;
+					continue;
+				}
+				if (activeIndex === -1) {
+					activeIndex = i;
+				}
+			}
+			if (activeIndex === -1 && steps.length > 0) {
+				activeIndex = Math.max(steps.length - 1, 0);
+			}
+			return { completed: completed, activeIndex: activeIndex };
+		},
+
+		syncPlanTrackerFromPlan: function (planData) {
+			if (!planData) {
+				return;
+			}
+			var steps = this.normalizePlanSteps(planData);
+			if (!steps.length) {
+				return;
+			}
+			this.planTrackerState.runId = planData.run_id || planData.runId || this.planTrackerState.runId || '';
+			this.planTrackerState.steps = steps;
+			this.planTrackerState.summary = this.getPlanTrackerSummaryText(
+				steps,
+				(planData.request_summary || planData.message || planData.reply || '')
+			);
+			this.planTrackerState.hidden = false;
+			this.renderPlanTracker();
+		},
+
+		syncPlanTrackerFromActivity: function (items) {
+			if (!items || !items.length) {
+				return;
+			}
+			var steps = [];
+			for (var i = 0; i < items.length; i++) {
+				var item = items[i];
+				if (!item) continue;
+				var text = item.content || item.activeForm || item.label || item.tool || '';
+				if (!text) continue;
+				steps.push({
+					status: item.status || 'pending',
+					text: text
+				});
+			}
+			if (!steps.length) {
+				return;
+			}
+			this.planTrackerState.steps = steps;
+			this.planTrackerState.summary = this.getPlanTrackerSummaryText(steps, this.planTrackerState.summary);
+			this.planTrackerState.hidden = false;
+			this.renderPlanTracker();
+		},
+
+		advancePlanTrackerFromStep: function (stepData) {
+			if (!stepData || !this.planTrackerState.steps.length) {
+				return;
+			}
+
+			var text = String(stepData.content || stepData.activeForm || stepData.label || stepData.tool || '').trim().toLowerCase();
+			var nextStatus = stepData.status || 'pending';
+			var steps = this.planTrackerState.steps.slice();
+			var matchIndex = -1;
+
+			for (var i = 0; i < steps.length; i++) {
+				var candidate = String(steps[i].text || '').trim().toLowerCase();
+				if (!candidate) continue;
+				if (text && (candidate === text || candidate.indexOf(text) !== -1 || text.indexOf(candidate) !== -1)) {
+					matchIndex = i;
+					break;
+				}
+			}
+
+			if (matchIndex === -1) {
+				for (var j = 0; j < steps.length; j++) {
+					var status = this.normalizeStepStatus(steps[j].status);
+					if (status !== 'done' && status !== 'completed') {
+						matchIndex = j;
+						break;
+					}
+				}
+			}
+
+			if (matchIndex === -1) {
+				return;
+			}
+
+			steps[matchIndex] = Object.assign({}, steps[matchIndex], { status: nextStatus });
+			this.planTrackerState.steps = steps;
+			this.planTrackerState.summary = this.getPlanTrackerSummaryText(steps, this.planTrackerState.summary);
+			this.planTrackerState.hidden = false;
+			this.renderPlanTracker();
+		},
+
+		renderPlanTracker: function () {
+			if (!this.planTrackerEl || !this.planRestoreEl) {
+				return;
+			}
+
+			var state = this.planTrackerState;
+			var steps = Array.isArray(state.steps) ? state.steps : [];
+			if (!steps.length) {
+				this.planTrackerEl.hidden = true;
+				this.planRestoreEl.hidden = true;
+				return;
+			}
+
+			var progress = this.getPlanProgressData(steps);
+			var total = steps.length;
+			var percent = total > 0 ? Math.max(12, Math.round((progress.completed / total) * 100)) : 0;
+
+			this.planTrackerEl.hidden = !!state.hidden;
+			this.planRestoreEl.hidden = !state.hidden;
+			this.planTrackerEl.classList.toggle('is-collapsed', !!state.collapsed);
+			this.planTrackerEl.style.setProperty('--pressark-plan-progress-pct', percent + '%');
+
+			if (this.planTrackerHeadEl) {
+				this.planTrackerHeadEl.setAttribute('aria-expanded', state.collapsed ? 'false' : 'true');
+			}
+			if (this.planSummaryEl) {
+				this.planSummaryEl.innerHTML = this.formatPlanSummaryHtml(state.summary);
+			}
+			if (this.planProgressEl) {
+				this.planProgressEl.textContent = progress.completed + ' / ' + total;
+			}
+			if (this.planRestoreProgressEl) {
+				this.planRestoreProgressEl.textContent = progress.completed + ' / ' + total;
+			}
+			if (this.planRestoreSummaryEl) {
+				this.planRestoreSummaryEl.innerHTML = this.formatPlanSummaryHtml(state.summary);
+			}
+			if (this.planDotsEl) {
+				this.planDotsEl.innerHTML = '';
+				for (var i = 0; i < total; i++) {
+					var dot = document.createElement('span');
+					var status = this.normalizeStepStatus(steps[i].status);
+					if (status === 'done' || status === 'completed') {
+						dot.className = 'is-done';
+					} else if (i === progress.activeIndex) {
+						dot.className = 'is-active';
+					}
+					this.planDotsEl.appendChild(dot);
+				}
+			}
+			if (this.planStepsEl) {
+				this.planStepsEl.innerHTML = '';
+				for (var j = 0; j < steps.length; j++) {
+					var row = document.createElement('li');
+					var rowStatus = this.normalizeStepStatus(steps[j].status);
+					var className = rowStatus === 'running' ? 'step-active' : ('step-' + rowStatus);
+					if (rowStatus === 'reading') {
+						className = 'step-reading';
+					} else if (rowStatus === 'done') {
+						className = 'step-done';
+					}
+					row.className = className;
+					row.innerHTML = '<span class="pressark-plan-step-text">' + this.escapeHtmlToText(steps[j].text) + '</span>';
+					this.planStepsEl.appendChild(row);
+				}
+			}
+		},
+
 		formatRelativeTime: function (dateStr) {
 			if (!dateStr) return '';
 			var date = new Date(dateStr.replace(' ', 'T') + 'Z');
 			var now = new Date();
 			var diff = Math.floor((now - date) / 1000);
 
-			if (diff < 60) return 'just now';
-			if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-			if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-			if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+			if (diff < 60) return __( 'just now', 'pressark' );
+			/* translators: %d: number of minutes ago. */
+			if (diff < 3600) return sprintf( __( '%dm ago', 'pressark' ), Math.floor(diff / 60) );
+			/* translators: %d: number of hours ago. */
+			if (diff < 86400) return sprintf( __( '%dh ago', 'pressark' ), Math.floor(diff / 3600) );
+			/* translators: %d: number of days ago. */
+			if (diff < 604800) return sprintf( __( '%dd ago', 'pressark' ), Math.floor(diff / 86400) );
 			return date.toLocaleDateString();
 		},
 
@@ -877,26 +1236,46 @@
 
 		// ── Welcome / Onboarding ──────────────────────────────────────
 
+		getSparkMarkup: function () {
+			return '<span class="pressark-spark-mark" aria-hidden="true">' +
+				'<span class="pressark-spark-mark__ray pressark-spark-mark__ray-a">' +
+				'<svg width="30" height="30" viewBox="0 0 24 24" fill="#EAF4FF"><path d="M12 1.5 13.7 9.3 21.5 11l-7.8 1.7L12 22.5 10.3 12.7 2.5 11l7.8-1.7L12 1.5z"/></svg>' +
+				'</span>' +
+				'<span class="pressark-spark-mark__core"></span>' +
+				'</span>';
+		},
+
 		showWelcome: function () {
 			var data = window.pressarkData;
 			var isFirstTime = !data.isOnboarded;
 			var hasWoo = data.hasWooCommerce;
-			var images = (data && data.images) || {};
-			var logoSrc = this.findImage(images, ['WHITE-APP-LOGO', 'icon', 'app-icon', 'logo']);
+			var welcomeTitle = isFirstTime
+				? sprintf(
+					/* translators: %s: emphasized welcome phrase. */
+					this.escapeHtml(__( 'Welcome to PressArk, %s', 'pressark' )),
+					'<em>' + this.escapeHtml(__( 'your WordPress co-pilot.', 'pressark' )) + '</em>'
+				)
+				: sprintf(
+					/* translators: %s: emphasized greeting phrase. */
+					this.escapeHtml(__( 'Good to see you - %s', 'pressark' )),
+					'<em>' + this.escapeHtml(__( 'what shall we ship today?', 'pressark' )) + '</em>'
+				);
 
 			var welcome = document.createElement('div');
 			welcome.className = 'pressark-welcome';
 			welcome.innerHTML =
 				'<div class="pressark-welcome-icon">' +
-				(logoSrc ? '<img src="' + logoSrc + '" alt="PressArk">' : '') +
+				this.getSparkMarkup() +
 				'</div>' +
 				'<div class="pressark-welcome-title">' +
-				(isFirstTime ? 'Welcome to PressArk' : 'Welcome back!') +
+				welcomeTitle +
 				'</div>' +
 				'<div class="pressark-welcome-subtitle">' +
+				this.escapeHtml(
 				(isFirstTime
-					? 'Your AI site manager. Ask me anything about your WordPress site.'
-					: 'What do you need help with?') +
+					? __( 'Ask anything, or start with a focused action built for the page you are on.', 'pressark' )
+					: __( 'I\'m caught up on your site. Pick a useful starting point or ask directly.', 'pressark' ))
+				) +
 				'</div>';
 
 			this.messagesEl.appendChild(welcome);
@@ -912,34 +1291,46 @@
 			var self = this;
 			var container = document.createElement('div');
 			container.className = 'pressark-suggestions';
+			container.innerHTML =
+				'<div class="pressark-suggestions-heading">' + this.escapeHtml(__( 'Made for this page', 'pressark' )) + '</div>' +
+				'<div class="pressark-suggestion-grid"></div>' +
+				'<div class="pressark-suggestions-heading pressark-suggestions-heading--quick">' + this.escapeHtml(__( 'Quick actions', 'pressark' )) + '</div>' +
+				'<div class="pressark-suggestion-list"></div>';
 
 			var allSuggestions = [
-				{ icon: pwIcon('pen'), label: 'Draft Blog Post', message: 'Write a new blog post with SEO-optimized title, meta description, and engaging content that matches my brand voice' },
-				{ icon: pwIcon('search'), label: 'Full SEO Audit', message: 'Run a comprehensive SEO audit on my site \u2014 check meta tags, headings, alt text, and give me a prioritized fix list' },
-				{ icon: pwIcon('shield'), label: 'Security Scan', message: 'Scan my site for security vulnerabilities and outdated components, then suggest fixes' },
-				{ icon: pwIcon('barChart'), label: 'Content Performance', message: 'Analyze my published content and identify which posts need updating, better SEO, or more engagement hooks' },
-				{ icon: pwIcon('sparkles'), label: 'Rewrite & Improve', message: 'Review my homepage content and rewrite it to be more compelling, conversion-focused, and SEO-friendly' },
-				{ icon: pwIcon('refresh'), label: 'Bulk Find & Replace', message: 'Find and replace text, links, or outdated references across all my pages and posts' },
-				{ icon: pwIcon('broom'), label: 'Site Cleanup', message: 'Clean up my database \u2014 remove post revisions, spam comments, orphaned metadata, and transient data' },
-				{ icon: pwIcon('clipboard'), label: 'Content Overview', message: 'Give me a complete overview of all my content \u2014 pages, posts, and their publish status, word count, and last updated date' },
+				{ iconName: 'pen', tone: 'blue', label: __( 'Draft a post brief', 'pressark' ), desc: __( 'Title, outline, SEO angle', 'pressark' ), message: __( 'Write a new blog post with an SEO-optimized title, meta description, outline, and engaging content that matches my brand voice', 'pressark' ) },
+				{ iconName: 'search', tone: 'teal', label: __( 'Audit this page', 'pressark' ), desc: __( 'Headings, metadata, links', 'pressark' ), message: __( 'Run a comprehensive SEO audit on the current page. Check meta tags, headings, internal links, alt text, and give me a prioritized fix list', 'pressark' ) },
+				{ iconName: 'sparkles', tone: 'violet', label: __( 'Rewrite for clarity', 'pressark' ), desc: __( 'Tighter copy, same tone', 'pressark' ), message: __( 'Review the current page content and rewrite it to be clearer, more compelling, conversion-focused, and SEO-friendly while keeping my brand voice', 'pressark' ) },
+				{ iconName: 'barChart', tone: 'amber', label: __( 'Find growth gaps', 'pressark' ), desc: __( 'Content that needs attention', 'pressark' ), message: __( 'Analyze my published content and identify which posts need updating, better SEO, stronger CTAs, or more engagement hooks', 'pressark' ) },
+				{ iconName: 'shield', tone: 'rose', label: __( 'Security scan', 'pressark' ), desc: __( 'Risks and outdated pieces', 'pressark' ), message: __( 'Scan my site for security vulnerabilities and outdated components, then suggest fixes', 'pressark' ) },
+				{ iconName: 'refresh', tone: 'blue', label: __( 'Bulk find & replace', 'pressark' ), desc: __( 'Update stale copy or links', 'pressark' ), message: __( 'Find and replace text, links, or outdated references across all my pages and posts', 'pressark' ) },
+				{ iconName: 'broom', tone: 'teal', label: __( 'Site cleanup', 'pressark' ), desc: __( 'Revisions, spam, transients', 'pressark' ), message: __( 'Clean up my database by removing post revisions, spam comments, orphaned metadata, and transient data', 'pressark' ) },
+				{ iconName: 'clipboard', tone: 'violet', label: __( 'Content overview', 'pressark' ), desc: __( 'Status, word count, freshness', 'pressark' ), message: __( 'Give me a complete overview of all my content: pages, posts, publish status, word count, and last updated date', 'pressark' ) },
 			];
 
 			if (hasWoo) {
 				allSuggestions.splice(2, 0,
-					{ icon: pwIcon('store'), label: 'Store Health Check', message: 'Analyze my WooCommerce store health \u2014 check inventory levels, missing product data, and optimization opportunities' },
-					{ icon: pwIcon('trendUp'), label: 'Product Optimizer', message: 'Review my products and improve titles, descriptions, and SEO metadata for better search visibility and conversions' }
+					{ iconName: 'store', tone: 'amber', label: __( 'Store health check', 'pressark' ), desc: __( 'Inventory, product gaps, fixes', 'pressark' ), message: __( 'Analyze my WooCommerce store health. Check inventory levels, missing product data, and optimization opportunities', 'pressark' ) },
+					{ iconName: 'trendUp', tone: 'teal', label: __( 'Product optimizer', 'pressark' ), desc: __( 'Titles, descriptions, SEO', 'pressark' ), message: __( 'Review my products and improve titles, descriptions, and SEO metadata for better search visibility and conversions', 'pressark' ) }
 				);
 			}
 
-			// Show 6 random suggestions each time for variety.
-			var shuffled = allSuggestions.sort(function () { return 0.5 - Math.random(); });
-			var suggestions = shuffled.slice(0, 6);
+			var grid = container.querySelector('.pressark-suggestion-grid');
+			var list = container.querySelector('.pressark-suggestion-list');
+			var suggestions = allSuggestions.slice(0, 8);
 
 			for (var i = 0; i < suggestions.length; i++) {
 				(function (s) {
 					var btn = document.createElement('button');
-					btn.className = 'pressark-suggestion';
-					btn.innerHTML = s.icon + ' ' + self.escapeHtml(s.label);
+					var isQuick = i >= 4;
+					btn.className = 'pressark-suggestion pressark-suggestion--' + (s.tone || 'blue') + (isQuick ? ' pressark-suggestion--row' : '');
+					btn.innerHTML =
+						pwIcon(s.iconName, s.tone) +
+						'<span class="pressark-suggestion-copy">' +
+						'<span class="pressark-suggestion-title">' + self.escapeHtml(s.label) + '</span>' +
+						'<span class="pressark-suggestion-desc">' + self.escapeHtml(s.desc || '') + '</span>' +
+						'</span>' +
+						(isQuick ? '<span class="pressark-suggestion-arrow" aria-hidden="true">' + pwIcons.arrowRight + '</span>' : '');
 					btn.addEventListener('click', function () {
 						self.inputEl.value = s.message;
 						self.sendMessage();
@@ -948,12 +1339,12 @@
 							sugs[j].remove();
 						}
 					});
-					container.appendChild(btn);
+					(isQuick ? list : grid).appendChild(btn);
 				})(suggestions[i]);
 			}
 
 			this.messagesEl.appendChild(container);
-			this.scrollToBottom();
+			this.messagesEl.scrollTop = 0;
 		},
 
 		renderSuggestionChips: function (suggestions) {
@@ -1136,7 +1527,7 @@
 		renderErrorMessage: function (text) {
 			var html = '<span class="pressark-error-icon">' + pwIcons.warning + '</span>';
 			html += '<span class="pressark-message-content">' + this.escapeHtml(text) + '</span>';
-			html += '<button class="pressark-retry-btn">Retry</button>';
+			html += '<button class="pressark-retry-btn">' + this.escapeHtml(__( 'Retry', 'pressark' )) + '</button>';
 			return html;
 		},
 
@@ -1208,10 +1599,10 @@
 			var responseType = result.type || 'final_response';
 
 			if (responseType === 'permission_required') {
-				var permissionReply = result.reply || result.message || 'This action needs permission before it can run.';
+				var permissionReply = result.reply || result.message || __( 'This action needs permission before it can run.', 'pressark' );
 				if (result.upgrade_prompt) {
 					var permissionUpgradeUrl = (result.upgrade_url || window.pressarkData.upgradeUrl || '#');
-					permissionReply += '\n\n[Upgrade your plan](' + permissionUpgradeUrl + ')';
+					permissionReply += '\n\n[' + __( 'Manage billing', 'pressark' ) + '](' + permissionUpgradeUrl + ')';
 				}
 				if (permissionReply) {
 					this.appendAssistantResultMessage(permissionReply, result);
@@ -1220,7 +1611,7 @@
 			} else if (responseType === 'queued') {
 				this.pendingTaskCount = Math.max(this.pendingTaskCount, 1);
 				this.syncTaskPolling(true);
-				this.appendAssistantResultMessage(result.message || 'Working on that in the background...', result);
+				this.appendAssistantResultMessage(result.message || __( 'Working on that in the background...', 'pressark' ), result);
 				this.conversation.push({ role: 'assistant', content: result.message || '' });
 			} else if (responseType === 'preview') {
 				if (result.reply) {
@@ -1244,14 +1635,16 @@
 					}
 				}
 			} else if (responseType === 'plan_ready') {
-				var planReply = result.reply || result.message || 'Plan ready. Review the checklist below, then approve, revise, or cancel.';
+				var planReply = result.reply || result.message || __( 'Plan ready. Review the checklist below, then approve, revise, or cancel.', 'pressark' );
+				var planHost = null;
 				if (planReply && !silentContinuation) {
-					this.appendAssistantResultMessage(planReply, result);
+					var planMsg = this.appendAssistantResultMessage(planReply, result);
+					planHost = planMsg ? planMsg.querySelector('.pressark-message-content') : null;
 					this.conversation.push({ role: 'assistant', content: planReply });
 				}
-				this.renderPlanReadyCard(result);
+				this.renderPlanReadyCard(result, planHost || undefined);
 			} else {
-				var reply = result.reply || result.message || (result.is_error ? 'Something went wrong.' : '');
+				var reply = result.reply || result.message || (result.is_error ? __( 'Something went wrong.', 'pressark' ) : '');
 				if (reply && !silentContinuation) {
 					this.appendAssistantResultMessage(reply, result);
 					this.conversation.push({ role: 'assistant', content: reply });
@@ -1267,6 +1660,13 @@
 					for (var i = 0; i < result.actions_performed.length; i++) {
 						this.addActionResult(result.actions_performed[i]);
 					}
+				}
+
+				// v5.8.2 (2026-05-13, iter-38): server signals that any earlier
+				// Plan Mode card in this chat is obsolete (model concluded the
+				// requested state is already satisfied — no plan needed).
+				if (result.plan_card_obsolete === true) {
+					this.removeObsoletePlanCards(result.run_id || '');
 				}
 			}
 
@@ -1309,7 +1709,9 @@
 				if (!step || typeof step !== 'object') {
 					continue;
 				}
-				var text = step.text || step.label || step.title || '';
+				// Phase 3b plan-step shape uses TodoWrite-style `content` + `activeForm`.
+				// Fall back to legacy text/label/title for older run snapshots.
+				var text = step.content || step.activeForm || step.text || step.label || step.title || '';
 				if (!text) {
 					continue;
 				}
@@ -1322,11 +1724,63 @@
 			return normalized;
 		},
 
+		// v5.8.2 (2026-05-13, iter-38): server-signaled cleanup of obsolete
+		// Plan Mode cards. When the model concludes a chain with "no action
+		// needed" after a round-1 speculative plan was streamed, the server
+		// sets result.plan_card_obsolete=true. We disable the actionable
+		// buttons on any matching card so the user sees the plan as
+		// "considered but not needed" rather than "click Execute".
+		//
+		// Why disable in place rather than remove: the plan card is part of
+		// the conversation history (operator audit trail). Removing it would
+		// leave the model's "no changes needed" text floating without
+		// context. Disabling preserves the audit trail and removes the
+		// misleading call-to-action.
+		removeObsoletePlanCards: function (runId, hostEl) {
+			var roots = [];
+			if (hostEl) { roots.push(hostEl); }
+			if (this.messagesEl) { roots.push(this.messagesEl); }
+			var seen = {};
+			for (var r = 0; r < roots.length; r++) {
+				var cards = roots[r].querySelectorAll('.pressark-plan-card');
+				for (var i = 0; i < cards.length; i++) {
+					var card = cards[i];
+					if (seen[card.dataset.pressarkObsoleteApplied || '']) {
+						continue;
+					}
+					if (runId && card.dataset.runId && card.dataset.runId !== runId) {
+						continue;
+					}
+					if (card.classList.contains('pressark-plan-card-obsolete')) {
+						continue;
+					}
+					card.classList.add('pressark-plan-card-obsolete');
+					var actions = card.querySelector('.pressark-plan-actions');
+					if (actions) {
+						actions.parentNode.removeChild(actions);
+					}
+					var revisionWrap = card.querySelector('.pressark-plan-revision-wrap');
+					if (revisionWrap) {
+						revisionWrap.parentNode.removeChild(revisionWrap);
+					}
+					var summary = card.querySelector('.pressark-plan-summary');
+					var notNeededLabel = __( 'not needed', 'pressark' );
+					if (summary && summary.textContent.indexOf(notNeededLabel) === -1) {
+						summary.textContent = summary.textContent + ' - ' + notNeededLabel;
+					}
+					card.dataset.pressarkObsoleteApplied = '1';
+				}
+			}
+		},
+
 		renderPlanReadyCard: function (planData, hostEl) {
 			if (!planData) return null;
 
 			var container = hostEl || this.messagesEl;
 			if (!container) return null;
+			if (container.classList && container.classList.contains('pressark-message-content')) {
+				container.classList.add('pressark-message-content--planning');
+			}
 
 			var steps = this.normalizePlanSteps(planData);
 			var runId = planData.run_id || planData.runId || '';
@@ -1342,7 +1796,7 @@
 			var canExecute = !!approveEndpoint && planData.can_execute !== false && steps.length > 0;
 			var isExecutionOnly = planPhase === 'executing' && !canExecute && !reviseEndpoint && !rejectEndpoint;
 			if (!summaryText) {
-				summaryText = isExecutionOnly ? 'Working through the current checklist.' : 'Plan ready.';
+				summaryText = isExecutionOnly ? __( 'Working through the current checklist.', 'pressark' ) : __( 'Plan ready.', 'pressark' );
 			}
 			var existing = null;
 			var cards = container.querySelectorAll('.pressark-plan-card');
@@ -1362,23 +1816,24 @@
 
 			var stepsHtml = '';
 			for (var s = 0; s < steps.length; s++) {
-				stepsHtml += '<li class="step-' + this.escapeHtml(steps[s].status || 'pending') + '">' + this.escapeHtml(steps[s].text) + '</li>';
+				stepsHtml += '<li class="step-' + this.escapeHtml(steps[s].status || 'pending') + '"><span class="pressark-plan-step-text">' + this.escapeHtml(steps[s].text) + '</span></li>';
 			}
 
-			var summary = isExecutionOnly ? 'Execution plan' : 'Plan ready';
+			var summary = isExecutionOnly ? __( 'Execution plan', 'pressark' ) : __( 'Plan ready', 'pressark' );
 			if (steps.length > 0) {
-				summary += ' - ' + steps.length + ' step' + (steps.length === 1 ? '' : 's');
+				/* translators: %d: number of plan steps. */
+				summary += ' - ' + sprintf( _n( '%d step', '%d steps', steps.length, 'pressark' ), steps.length );
 			}
 
 			var phaseLabelMap = {
-				exploring: 'Exploring',
-				planning: 'Planning',
-				ready: 'Ready',
-				executing: 'Executing'
+				exploring: __( 'Exploring', 'pressark' ),
+				planning: __( 'Planning', 'pressark' ),
+				ready: __( 'Ready', 'pressark' ),
+				executing: __( 'Executing', 'pressark' )
 			};
-			var phaseLabel = phaseLabelMap[planPhase] || 'Planning';
-			var approvalLabel = approvalLevel === 'soft' ? 'Soft plan' : (approvalLevel === 'hard' ? 'Hard approval' : '');
-			var approveLabel = approvalLevel === 'soft' ? 'Execute' : 'Approve & Execute';
+			var phaseLabel = phaseLabelMap[planPhase] || __( 'Planning', 'pressark' );
+			var approvalLabel = approvalLevel === 'soft' ? __( 'Soft plan', 'pressark' ) : (approvalLevel === 'hard' ? __( 'Hard approval', 'pressark' ) : '');
+			var approveLabel = approvalLevel === 'soft' ? __( 'Execute', 'pressark' ) : __( 'Approve & Execute', 'pressark' );
 
 			var bodyHtml = '';
 			bodyHtml +=
@@ -1399,18 +1854,22 @@
 			if (runId && (canExecute || reviseEndpoint || rejectEndpoint)) {
 				bodyHtml +=
 					'<div class="pressark-plan-revision-wrap">' +
-					'<textarea class="pressark-plan-revision-note" rows="2" placeholder="Add constraints or revision notes"></textarea>' +
+					'<div class="pressark-plan-refine-row">' +
+					'<button type="button" class="pressark-plan-refine-back" aria-label="' + this.escapeHtml(__( 'Back', 'pressark' )) + '">' + pwIcons.undo + '</button>' +
+					'<textarea class="pressark-plan-revision-note" rows="1" placeholder="' + this.escapeHtml(__( 'What should I adjust?', 'pressark' )) + '"></textarea>' +
+					'<button type="button" class="pressark-plan-refine-send" aria-label="' + this.escapeHtml(__( 'Send refinement', 'pressark' )) + '">' + pwIcons.send + '</button>' +
+					'</div>' +
 					'</div>';
 				bodyHtml +=
 					'<div class="pressark-preview-actions pressark-plan-actions">' +
-					(canExecute
-						? '<button type="button" class="pressark-preview-confirm pressark-plan-approve">' + this.escapeHtml(approveLabel) + '</button>'
+					(rejectEndpoint
+						? '<button type="button" class="pressark-preview-cancel pressark-plan-decline">' + this.escapeHtml(__( 'Decline', 'pressark' )) + '</button>'
 						: '') +
 					(reviseEndpoint
-						? '<button type="button" class="pressark-plan-revise">Revise Plan</button>'
+						? '<button type="button" class="pressark-plan-revise">' + this.escapeHtml(__( 'Refine', 'pressark' )) + '</button>'
 						: '') +
-					(rejectEndpoint
-						? '<button type="button" class="pressark-preview-cancel pressark-plan-reject">Reject / Cancel</button>'
+					(canExecute
+						? '<button type="button" class="pressark-preview-confirm pressark-plan-approve">' + this.escapeHtml(approveLabel) + '</button>'
 						: '') +
 					'</div>';
 				bodyHtml += '<div class="pressark-plan-action-status" aria-live="polite"></div>';
@@ -1421,6 +1880,7 @@
 				'<span class="pressark-plan-summary">' + this.escapeHtml(summary) + '</span>' +
 				'</div>' +
 				bodyHtml;
+			card.dataset.refining = 'false';
 
 			var self = this;
 			var header = card.querySelector('.pressark-plan-header');
@@ -1447,11 +1907,15 @@
 				reviseBtn.addEventListener('click', function (event) {
 					event.preventDefault();
 					event.stopPropagation();
-					self.revisePlan(runId, card, reviseEndpoint);
+					card.dataset.refining = 'true';
+					var input = card.querySelector('.pressark-plan-revision-note');
+					if (input) {
+						setTimeout(function () { input.focus(); }, 40);
+					}
 				});
 			}
 
-			var rejectBtn = card.querySelector('.pressark-plan-reject');
+			var rejectBtn = card.querySelector('.pressark-plan-decline');
 			if (rejectBtn) {
 				rejectBtn.addEventListener('click', function (event) {
 					event.preventDefault();
@@ -1460,10 +1924,33 @@
 				});
 			}
 
+			var refineBackBtn = card.querySelector('.pressark-plan-refine-back');
+			if (refineBackBtn) {
+				refineBackBtn.addEventListener('click', function (event) {
+					event.preventDefault();
+					event.stopPropagation();
+					card.dataset.refining = 'false';
+					var input = card.querySelector('.pressark-plan-revision-note');
+					if (input) {
+						input.value = '';
+					}
+				});
+			}
+
+			var refineSendBtn = card.querySelector('.pressark-plan-refine-send');
+			if (refineSendBtn) {
+				refineSendBtn.addEventListener('click', function (event) {
+					event.preventDefault();
+					event.stopPropagation();
+					self.revisePlan(runId, card, reviseEndpoint);
+				});
+			}
+
 			if (!existing) {
 				container.appendChild(card);
 			}
 
+			this.syncPlanTrackerFromPlan(planData);
 			this.scrollToBottom();
 			return card;
 		},
@@ -1476,7 +1963,10 @@
 
 		setPlanActionState: function (card, state, message, disableControls) {
 			if (!card) return;
-			var controls = card.querySelectorAll('.pressark-plan-approve, .pressark-plan-revise, .pressark-plan-reject, .pressark-plan-revision-note');
+			if (state !== 'pending') {
+				card.dataset.refining = 'false';
+			}
+			var controls = card.querySelectorAll('.pressark-plan-approve, .pressark-plan-revise, .pressark-plan-decline, .pressark-plan-refine-back, .pressark-plan-refine-send, .pressark-plan-revision-note');
 			for (var i = 0; i < controls.length; i++) {
 				controls[i].disabled = !!disableControls;
 			}
@@ -1506,7 +1996,7 @@
 
 		performPlanAction: function (runId, endpoint, payload, card, options) {
 			if (!runId) {
-				return Promise.resolve({ success: false, message: 'Missing plan run ID.' });
+				return Promise.resolve({ success: false, message: __( 'Missing plan run ID.', 'pressark' ) });
 			}
 
 			var self = this;
@@ -1515,7 +2005,7 @@
 			var url = endpoint || (data.restUrl + (requestOptions.path || 'plan/execute'));
 			var body = Object.assign({ run_id: runId }, payload || {});
 
-			this.setPlanActionState(card, 'pending', requestOptions.pendingLabel || 'Working...', true);
+			this.setPlanActionState(card, 'pending', requestOptions.pendingLabel || __( 'Working...', 'pressark' ), true);
 			this.beginPassiveRequest();
 
 			return fetch(url, {
@@ -1531,13 +2021,13 @@
 					self.finishPassiveRequest();
 
 					if (result && !result.error) {
-						self.setPlanActionState(card, 'success', requestOptions.successMessage || 'Action completed.', true);
+						self.setPlanActionState(card, 'success', requestOptions.successMessage || __( 'Action completed.', 'pressark' ), true);
 						self.presentResult(result);
 					} else {
 						self.setPlanActionState(
 							card,
 							'error',
-							(result && (result.message || result.error)) || requestOptions.failureMessage || 'Plan action failed.',
+							(result && (result.message || result.error)) || requestOptions.failureMessage || __( 'Plan action failed.', 'pressark' ),
 							false
 						);
 						if (result && result.message) {
@@ -1549,9 +2039,9 @@
 				})
 				.catch(function () {
 					self.finishPassiveRequest();
-					self.setPlanActionState(card, 'error', 'Network error. Please try again.', false);
-					self.appendRetryableError('Network error. Please try again.', true);
-					return { success: false, message: 'Network error. Please try again.' };
+					self.setPlanActionState(card, 'error', __( 'Network error. Please try again.', 'pressark' ), false);
+					self.appendRetryableError(__( 'Network error. Please try again.', 'pressark' ), true);
+					return { success: false, message: __( 'Network error. Please try again.', 'pressark' ) };
 				});
 		},
 
@@ -1567,19 +2057,19 @@
 				card,
 				{
 					path: 'plan/execute',
-					pendingLabel: 'Running execute phase...',
-					successMessage: 'Execution started. Review the response below.',
-					failureMessage: 'Failed to start execution.'
+					pendingLabel: __( 'Running execute phase...', 'pressark' ),
+					successMessage: __( 'Execution started. Review the response below.', 'pressark' ),
+					failureMessage: __( 'Failed to start execution.', 'pressark' )
 				}
 			);
 		},
 
 		executePlanStream: function (runId, card, executeEndpoint) {
 			if (!runId) {
-				return Promise.resolve({ success: false, message: 'Missing plan run ID.' });
+				return Promise.resolve({ success: false, message: __( 'Missing plan run ID.', 'pressark' ) });
 			}
 			if (this.isSending || this._confirmStreamActive) {
-				return Promise.resolve({ success: false, message: 'Another request is already running.' });
+				return Promise.resolve({ success: false, message: __( 'Another request is already running.', 'pressark' ) });
 			}
 
 			var self = this;
@@ -1590,10 +2080,10 @@
 				streamEndpoint = (data.restUrl || '') + 'plan/approve-stream';
 			}
 
-			this.setPlanActionState(card, 'pending', 'Executing approved plan...', true);
+			this.setPlanActionState(card, 'pending', __( 'Executing approved plan...', 'pressark' ), true);
 
 			var controller = this.beginRequest();
-			this.showTyping('Executing approved plan');
+			this.showTyping(__( 'Executing approved plan', 'pressark' ));
 
 			var bubble = null;
 			var textBuffer = '';
@@ -1618,9 +2108,9 @@
 						card,
 						{
 							path: 'plan/approve',
-							pendingLabel: 'Running execute phase...',
-							successMessage: 'Execution started. Review the response below.',
-							failureMessage: 'Failed to start execution.'
+							pendingLabel: __( 'Running execute phase...', 'pressark' ),
+							successMessage: __( 'Execution started. Review the response below.', 'pressark' ),
+							failureMessage: __( 'Failed to start execution.', 'pressark' )
 						}
 					);
 				}
@@ -1644,8 +2134,8 @@
 						if (result.done) {
 							ensureBubble();
 							self.finalizeStream(bubble, textBuffer);
-							self.setPlanActionState(card, 'error', 'Execution stream ended early. Please review the message below.', false);
-							return { success: false, message: 'Execution stream ended early.' };
+							self.setPlanActionState(card, 'error', __( 'Execution stream ended early. Please review the message below.', 'pressark' ), false);
+							return { success: false, message: __( 'Execution stream ended early.', 'pressark' ) };
 						}
 
 						sseBuffer += decoder.decode(result.value, { stream: true });
@@ -1661,7 +2151,7 @@
 							try {
 								self.handleStreamEvent(evt, bubble);
 							} catch (eventErr) {
-								self.setPlanActionState(card, 'error', eventErr.message || 'Execution failed.', false);
+								self.setPlanActionState(card, 'error', eventErr.message || __( 'Execution failed.', 'pressark' ), false);
 								throw eventErr;
 							}
 
@@ -1669,12 +2159,12 @@
 								textBuffer += evt.data.text;
 							}
 							if (evt.type === 'done') {
-								self.setPlanActionState(card, 'success', 'Execution continued below.', true);
+								self.setPlanActionState(card, 'success', __( 'Execution continued below.', 'pressark' ), true);
 								return evt.data || { success: true };
 							}
 							if (evt.type === 'error') {
-								self.setPlanActionState(card, 'error', (evt.data && evt.data.message) || 'Execution failed.', false);
-								throw new Error((evt.data && evt.data.message) || 'Execution failed.');
+								self.setPlanActionState(card, 'error', (evt.data && evt.data.message) || __( 'Execution failed.', 'pressark' ), false);
+								throw new Error((evt.data && evt.data.message) || __( 'Execution failed.', 'pressark' ));
 							}
 						}
 
@@ -1687,28 +2177,28 @@
 				self.finishRequest();
 
 				if (err && err.name === 'AbortError') {
-					self.setPlanActionState(card, 'error', 'Execution stopped.', false);
-					return { success: false, message: 'Execution stopped.' };
+					self.setPlanActionState(card, 'error', __( 'Execution stopped.', 'pressark' ), false);
+					return { success: false, message: __( 'Execution stopped.', 'pressark' ) };
 				}
 
-				self.setPlanActionState(card, 'error', 'Network error. Please try again.', false);
+				self.setPlanActionState(card, 'error', __( 'Network error. Please try again.', 'pressark' ), false);
 				if (bubble) {
 					self.renderInterruptedStream(
 						bubble,
-						"Couldn't reach PressArk. Check your connection and try again."
+						__( 'Couldn\'t reach PressArk. Check your connection and try again.', 'pressark' )
 					);
 				} else {
-					self.appendRetryableError("Couldn't reach PressArk. Check your connection and try again.");
+					self.appendRetryableError(__( 'Couldn\'t reach PressArk. Check your connection and try again.', 'pressark' ));
 				}
-				return { success: false, message: 'Network error. Please try again.' };
+				return { success: false, message: __( 'Network error. Please try again.', 'pressark' ) };
 			});
 		},
 
 		revisePlan: function (runId, card, reviseEndpoint) {
 			var note = this.getPlanRevisionNote(card);
 			if (!note) {
-				this.setPlanActionState(card, 'error', 'Add a revision note first.', false);
-				return Promise.resolve({ success: false, message: 'Add a revision note first.' });
+				this.setPlanActionState(card, 'error', __( 'Add a revision note first.', 'pressark' ), false);
+				return Promise.resolve({ success: false, message: __( 'Add a revision note first.', 'pressark' ) });
 			}
 
 			return this.performPlanAction(
@@ -1718,9 +2208,9 @@
 				card,
 				{
 					path: 'plan/revise',
-					pendingLabel: 'Revising plan...',
-					successMessage: 'Updated plan requested. Review the response below.',
-					failureMessage: 'Failed to revise the plan.'
+					pendingLabel: __( 'Revising plan...', 'pressark' ),
+					successMessage: __( 'Updated plan requested. Review the response below.', 'pressark' ),
+					failureMessage: __( 'Failed to revise the plan.', 'pressark' )
 				}
 			);
 		},
@@ -1736,9 +2226,9 @@
 				card,
 				{
 					path: 'plan/reject',
-					pendingLabel: 'Cancelling plan...',
-					successMessage: 'Plan cancelled.',
-					failureMessage: 'Failed to cancel the plan.'
+					pendingLabel: __( 'Cancelling plan...', 'pressark' ),
+					successMessage: __( 'Plan cancelled.', 'pressark' ),
+					failureMessage: __( 'Failed to cancel the plan.', 'pressark' )
 				}
 			);
 		},
@@ -1754,11 +2244,11 @@
 
 		formatPreviewValue: function (value) {
 			if (value === null || typeof value === 'undefined') {
-				return '(empty)';
+				return __( '(empty)', 'pressark' );
 			}
 
 			if (typeof value === 'string') {
-				return value === '' ? '(empty)' : value;
+				return value === '' ? __( '(empty)', 'pressark' ) : value;
 			}
 
 			if (typeof value === 'number' || typeof value === 'boolean') {
@@ -1767,9 +2257,9 @@
 
 			try {
 				var json = JSON.stringify(value);
-				return json ? json : '(empty)';
+				return json ? json : __( '(empty)', 'pressark' );
 			} catch (e) {
-				return '[unrenderable value]';
+				return __( '[unrenderable value]', 'pressark' );
 			}
 		},
 
@@ -1781,9 +2271,9 @@
 				msgEl.className = 'pressark-upgrade-prompt';
 				var upgradeUrl = window.pressarkData.upgradeUrl || '#';
 				msgEl.innerHTML =
-					'<strong>Free edit limit reached</strong>' +
-					'<p>You\'ve used all free tool actions this week. Scans and analysis are still unlimited. Resets every Monday.</p>' +
-					'<a href="' + this.escapeHtml(upgradeUrl) + '" target="_blank" class="pressark-upgrade-btn">Upgrade to Pro</a>';
+					'<strong>' + this.escapeHtml(__( 'Credit or runtime limit reached', 'pressark' )) + '</strong>' +
+					'<p>' + this.escapeHtml(__( 'Local plugin tools are available without a plan gate. Remote AI runs need available credits or runtime capacity.', 'pressark' )) + '</p>' +
+					'<a href="' + this.escapeHtml(upgradeUrl) + '" target="_blank" class="pressark-upgrade-btn">' + this.escapeHtml(__( 'Manage billing', 'pressark' )) + '</a>';
 				this.messagesEl.appendChild(msgEl);
 				this.scrollToBottom();
 				return;
@@ -1797,7 +2287,7 @@
 			var contentHtml = '<span>' + icon + ' ' + this.escapeHtml(result.message) + '</span>';
 
 			if (result.success && result.log_id) {
-				contentHtml += '<button class="pressark-undo-btn" data-log-id="' + result.log_id + '">Undo</button>';
+				contentHtml += '<button class="pressark-undo-btn" data-log-id="' + result.log_id + '">' + this.escapeHtml(__( 'Undo', 'pressark' )) + '</button>';
 			}
 
 			msgEl.innerHTML = contentHtml;
@@ -1808,7 +2298,7 @@
 				downloadBtn.href = result.data.download_url;
 				downloadBtn.target = '_blank';
 				downloadBtn.className = 'pressark-download-btn';
-				downloadBtn.innerHTML = pwIcon('fileDown') + ' Download Report';
+				downloadBtn.innerHTML = pwIcon('fileDown') + ' ' + this.escapeHtml(__( 'Download Report', 'pressark' ));
 				downloadBtn.download = result.data.filename || 'report.html';
 				msgEl.appendChild(downloadBtn);
 			}
@@ -1854,11 +2344,11 @@
 						'<div class="pressark-preview-change">' +
 						'<div class="pressark-preview-field">' + this.escapeHtml(change.field) + '</div>' +
 						'<div class="pressark-preview-before">' +
-						'<span class="pressark-preview-label">Before: </span>' +
+						'<span class="pressark-preview-label">' + this.escapeHtml(__( 'Before:', 'pressark' )) + ' </span>' +
 						'<span class="pressark-preview-value">' + this.escapeHtml(beforeValue) + '</span>' +
 						'</div>' +
 						'<div class="pressark-preview-after">' +
-						'<span class="pressark-preview-label">After: </span>' +
+						'<span class="pressark-preview-label">' + this.escapeHtml(__( 'After:', 'pressark' )) + ' </span>' +
 						'<span class="pressark-preview-value">' + this.escapeHtml(afterValue) + '</span>' +
 						'</div>' +
 						'</div>';
@@ -1884,22 +2374,26 @@
 				warningsHTML += '</div>';
 			}
 
-			var title = preview.post_title
-				? 'Proposed changes to "' + this.escapeHtml(preview.post_title) + '"'
-				: 'Proposed changes';
+			var title = '';
+			if (preview.post_title) {
+				/* translators: %s: post title. */
+				title = sprintf( this.escapeHtml(__( 'Proposed changes to "%s"', 'pressark' )), this.escapeHtml(preview.post_title) );
+			} else {
+				title = this.escapeHtml(__( 'Proposed changes', 'pressark' ));
+			}
 			var riskHtml = this.renderRiskReceipt(riskReceipt);
 			var validationHtml = validationError
 				? '<div class="pressark-action-result pressark-action-fail"><span>' + pwIcon('x') + ' ' + this.escapeHtml(validationError) + '</span></div>'
 				: '';
 			var actionsHtml = canApply
 				? '<button type="button" class="pressark-preview-confirm">' +
-					this.getPreviewButtonContent('&#10003;', 'Apply Changes') +
+					this.getPreviewButtonContent(pwIcons.check, __( 'Approve & apply', 'pressark' )) +
 					'</button>' +
 					'<button type="button" class="pressark-preview-cancel">' +
-					this.getPreviewButtonContent('&#10005;', 'Cancel') +
+					this.getPreviewButtonContent(pwIcons.x, __( 'Decline', 'pressark' )) +
 					'</button>'
 				: '<button type="button" class="pressark-preview-cancel">' +
-					this.getPreviewButtonContent('&#10005;', 'Dismiss') +
+					this.getPreviewButtonContent(pwIcons.x, __( 'Dismiss', 'pressark' )) +
 					'</button>';
 
 			card.innerHTML =
@@ -1922,7 +2416,7 @@
 					var actionData = self.pendingActions[actionId];
 					var actionRunId = self.pendingRunIds[actionId] || '';
 					var actionPendingIndex = self.pendingActionIndices[actionId] || 0;
-					btn.textContent = 'Applying...';
+					btn.textContent = __( 'Applying...', 'pressark' );
 					btn.disabled = true;
 					card.querySelector('.pressark-preview-cancel').disabled = true;
 
@@ -1966,7 +2460,7 @@
 				var actionPendingIndex = self.pendingActionIndices[actionId] || 0;
 				var previewData = self.pendingPreviews[actionId];
 				if (cancelBtn) {
-					cancelBtn.textContent = 'Declining...';
+					cancelBtn.textContent = __( 'Declining...', 'pressark' );
 					cancelBtn.disabled = true;
 				}
 				if (confirmBtn) {
@@ -1994,9 +2488,13 @@
 		 * Format: [PRESSARK_CARD:<status>]<title>||<field:before→after>||...
 		 */
 		buildCardSummary: function (preview, status) {
-			var title = preview.post_title
-				? 'Proposed changes to "' + preview.post_title + '"'
-				: 'Proposed changes';
+			var title = '';
+			if (preview.post_title) {
+				/* translators: %s: post title. */
+				title = sprintf( __( 'Proposed changes to "%s"', 'pressark' ), preview.post_title );
+			} else {
+				title = __( 'Proposed changes', 'pressark' );
+			}
 			var parts = [title];
 			if (preview.changes && preview.changes.length > 0) {
 				for (var i = 0; i < preview.changes.length; i++) {
@@ -2052,13 +2550,13 @@
 
 			var rows = [];
 			if (riskReceipt.target) {
-				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">Target</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.target) + '</span></div>');
+				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">' + this.escapeHtml(__( 'Target', 'pressark' )) + '</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.target) + '</span></div>');
 			}
 			if (riskReceipt.blast_radius) {
-				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">Blast radius</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.blast_radius) + '</span></div>');
+				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">' + this.escapeHtml(__( 'Blast radius', 'pressark' )) + '</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.blast_radius) + '</span></div>');
 			}
 			if (riskReceipt.reversibility) {
-				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">Reversibility</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.reversibility) + '</span></div>');
+				rows.push('<div class="pressark-risk-receipt__row"><span class="pressark-risk-receipt__label">' + this.escapeHtml(__( 'Reversibility', 'pressark' )) + '</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.reversibility) + '</span></div>');
 			}
 
 			var effectsHtml = '';
@@ -2071,7 +2569,7 @@
 			}
 
 			var verificationHtml = riskReceipt.verification_plan
-				? '<div class="pressark-risk-receipt__verification"><span class="pressark-risk-receipt__label">Verification</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.verification_plan) + '</span></div>'
+				? '<div class="pressark-risk-receipt__verification"><span class="pressark-risk-receipt__label">' + this.escapeHtml(__( 'Verification', 'pressark' )) + '</span><span class="pressark-risk-receipt__value">' + this.escapeHtml(riskReceipt.verification_plan) + '</span></div>'
 				: '';
 
 			var badges = [];
@@ -2084,7 +2582,7 @@
 
 			return '<div class="pressark-risk-receipt">' +
 				'<div class="pressark-risk-receipt__header">' +
-				'<span class="pressark-risk-receipt__title">' + pwIcon('shield') + '<span>' + this.escapeHtml(riskReceipt.label || 'Change review') + '</span></span>' +
+				'<span class="pressark-risk-receipt__title">' + pwIcon('shield') + '<span>' + this.escapeHtml(riskReceipt.label || __( 'Change review', 'pressark' )) + '</span></span>' +
 				(badges.length ? '<span class="pressark-risk-receipt__badges">' + badges.join('') + '</span>' : '') +
 				'</div>' +
 				(rows.length ? '<div class="pressark-risk-receipt__grid">' + rows.join('') + '</div>' : '') +
@@ -2096,7 +2594,7 @@
 		renderRunSurface: function (runSurface) {
 			if (!runSurface || typeof runSurface !== 'object') return '';
 
-			var summary = runSurface.summary || runSurface.route_label || 'Run details';
+			var summary = runSurface.summary || runSurface.route_label || __( 'Run details', 'pressark' );
 			var badges = [];
 			if (Array.isArray(runSurface.badges)) {
 				for (var i = 0; i < runSurface.badges.length; i++) {
@@ -2142,7 +2640,7 @@
 					notices.push(
 						'<div class="pressark-run-surface__notice pressark-run-surface__notice--' + this.escapeHtml(noticeTone) + '">' +
 							'<div class="pressark-run-surface__notice-top">' +
-								'<span class="pressark-run-surface__notice-title">' + noticeIcon + '<span>' + this.escapeHtml(notice.label || 'Run note') + '</span></span>' +
+								'<span class="pressark-run-surface__notice-title">' + noticeIcon + '<span>' + this.escapeHtml(notice.label || __( 'Run note', 'pressark' )) + '</span></span>' +
 								noticeMeta +
 							'</div>' +
 							noticeText +
@@ -2257,7 +2755,7 @@
 			return '<section class="pressark-run-receipt">' +
 				'<div class="pressark-run-receipt__header">' +
 					'<div class="pressark-run-receipt__title-wrap">' +
-						'<span class="pressark-run-receipt__title">' + this.escapeHtml(receipt.label || 'Per-run receipt') + '</span>' +
+						'<span class="pressark-run-receipt__title">' + this.escapeHtml(receipt.label || __( 'Per-run receipt', 'pressark' )) + '</span>' +
 						(receipt.summary ? '<span class="pressark-run-receipt__summary">' + this.escapeHtml(receipt.summary) + '</span>' : '') +
 					'</div>' +
 					(headerBadges.length ? '<div class="pressark-run-receipt__badges">' + headerBadges.join('') + '</div>' : '') +
@@ -2268,14 +2766,8 @@
 			'</section>';
 		},
 
-		decorateAssistantMessage: function (messageEl, result) {
-			if (!messageEl || !result || typeof result !== 'object') return;
-
-			var contentEl = messageEl.querySelector('.pressark-message-content');
-			if (!contentEl || !result.run_surface) return;
-			if (contentEl.querySelector('.pressark-run-surface')) return;
-
-			contentEl.insertAdjacentHTML('beforeend', this.renderRunSurface(result.run_surface));
+		decorateAssistantMessage: function () {
+			// Run-surface diagnostics (route / transport / model rows) intentionally hidden from chat UI.
 		},
 
 		getPreviewDocumentIconMarkup: function () {
@@ -2303,13 +2795,13 @@
 			if (keepBtn) {
 				keepBtn.disabled = !!isBusy;
 				keepBtn.setAttribute('aria-busy', isBusy && action === 'keep' ? 'true' : 'false');
-				keepBtn.innerHTML = this.getPreviewButtonContent('&#10003;', isBusy && action === 'keep' ? 'Applying...' : 'Keep Changes');
+				keepBtn.innerHTML = this.getPreviewButtonContent(pwIcons.check, isBusy && action === 'keep' ? __( 'Applying...', 'pressark' ) : __( 'Keep Changes', 'pressark' ));
 			}
 
 			if (discardBtn) {
 				discardBtn.disabled = !!isBusy;
 				discardBtn.setAttribute('aria-busy', isBusy && action === 'discard' ? 'true' : 'false');
-				discardBtn.innerHTML = this.getPreviewButtonContent('&#10005;', isBusy && action === 'discard' ? 'Discarding...' : 'Discard');
+				discardBtn.innerHTML = this.getPreviewButtonContent(pwIcons.x, isBusy && action === 'discard' ? __( 'Discarding...', 'pressark' ) : __( 'Discard', 'pressark' ));
 			}
 		},
 
@@ -2321,8 +2813,8 @@
 			var statusClass = isApproved
 				? 'pressark-preview-footer__status--keep'
 				: 'pressark-preview-footer__status--discard';
-			var label = isApproved ? 'Preview approved' : 'Preview discarded';
-			var icon = isApproved ? '&#10003;' : '&#10005;';
+			var label = isApproved ? __( 'Preview approved', 'pressark' ) : __( 'Preview discarded', 'pressark' );
+			var icon = isApproved ? pwIcons.check : pwIcons.x;
 
 			this.activePreviewFooterEl.classList.add('pressark-preview-footer--settled');
 			this.activePreviewFooterEl.innerHTML =
@@ -2342,7 +2834,7 @@
 			var status = match[1];
 			var payload = match[2];
 			var parts = payload.split('||');
-			var title = parts[0] || 'Proposed changes';
+			var title = parts[0] || __( 'Proposed changes', 'pressark' );
 
 			var card = document.createElement('div');
 			card.className = 'pressark-preview-card ' +
@@ -2356,11 +2848,11 @@
 						'<div class="pressark-preview-change">' +
 						'<div class="pressark-preview-field">' + this.escapeHtml(fieldMatch[1]) + '</div>' +
 						'<div class="pressark-preview-before">' +
-						'<span class="pressark-preview-label">Before: </span>' +
+						'<span class="pressark-preview-label">' + this.escapeHtml(__( 'Before:', 'pressark' )) + ' </span>' +
 						'<span class="pressark-preview-value">' + this.escapeHtml(fieldMatch[2]) + '</span>' +
 						'</div>' +
 						'<div class="pressark-preview-after">' +
-						'<span class="pressark-preview-label">After: </span>' +
+						'<span class="pressark-preview-label">' + this.escapeHtml(__( 'After:', 'pressark' )) + ' </span>' +
 						'<span class="pressark-preview-value">' + this.escapeHtml(fieldMatch[3]) + '</span>' +
 						'</div>' +
 						'</div>';
@@ -2368,12 +2860,12 @@
 			}
 
 			var resultHTML = status === 'applied'
-				? '<div class="pressark-action-result pressark-action-success"><span>' + pwIcon('check') + ' Changes applied successfully</span></div>'
+				? '<div class="pressark-action-result pressark-action-success"><span>' + pwIcon('check') + ' ' + this.escapeHtml(__( 'Changes applied successfully', 'pressark' )) + '</span></div>'
 				: status === 'declined'
-					? '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Confirmation declined</span></div>'
+					? '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' ' + this.escapeHtml(__( 'Confirmation declined', 'pressark' )) + '</span></div>'
 					: status === 'discarded'
-						? '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Preview discarded</span></div>'
-						: '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' Changes cancelled</span></div>';
+						? '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' ' + this.escapeHtml(__( 'Preview discarded', 'pressark' )) + '</span></div>'
+						: '<div class="pressark-preview-cancelled"><span>' + pwIcon('x') + ' ' + this.escapeHtml(__( 'Changes cancelled', 'pressark' )) + '</span></div>';
 
 			card.innerHTML =
 				'<div class="pressark-preview-header">' +
@@ -2407,7 +2899,7 @@
 			})
 				.then(function (response) { return response.json(); })
 				.catch(function () {
-					return { success: false, message: 'Network error. Please try again.' };
+					return { success: false, message: __( 'Network error. Please try again.', 'pressark' ) };
 				});
 		},
 
@@ -2441,7 +2933,7 @@
 
 			actionsDiv.innerHTML =
 				'<div class="pressark-confirm-stream">' +
-				'<div class="pressark-confirm-stream__label">Applying changes...</div>' +
+				'<div class="pressark-confirm-stream__label">' + this.escapeHtml(__( 'Applying changes...', 'pressark' )) + '</div>' +
 				'<div class="pressark-confirm-stream__body"></div>' +
 				'</div>';
 
@@ -2461,7 +2953,7 @@
 					this._markPriorTextSegmentsAsStatus(contentEl);
 					this._renderInlineStep(contentEl, {
 						status: 'reading',
-						label: event.data && event.data.name ? event.data.name.replace(/_/g, ' ') : 'Processing',
+						label: event.data && event.data.name ? event.data.name.replace(/_/g, ' ') : __( 'Processing', 'pressark' ),
 						tool: (event.data && (event.data.name || event.data.tool)) || '',
 						toolKey: this.getToolProgressKey(event.data),
 					});
@@ -2481,7 +2973,7 @@
 					var percent = (!isNaN(processed) && !isNaN(total) && total > 0)
 						? Math.round((processed / total) * 100)
 						: null;
-					var toolName = (event.data && (event.data.name || event.data.tool)) || 'Processing';
+					var toolName = (event.data && (event.data.name || event.data.tool)) || __( 'Processing', 'pressark' );
 					var progressLabel = toolName.replace(/_/g, ' ');
 					if (!isNaN(processed) && !isNaN(total) && total > 0) {
 						progressLabel += ' ' + processed + '/' + total;
@@ -2492,10 +2984,12 @@
 						detailParts.push(progressData.message);
 					}
 					if (!isNaN(progressData.updated)) {
-						detailParts.push(progressData.updated + ' updated');
+						/* translators: %d: number of updated items. */
+						detailParts.push(sprintf( __( '%d updated', 'pressark' ), progressData.updated ));
 					}
 					if (!isNaN(progressData.errors) && progressData.errors > 0) {
-						detailParts.push(progressData.errors + ' errors');
+						/* translators: %d: number of errors. */
+						detailParts.push(sprintf( _n( '%d error', '%d errors', progressData.errors, 'pressark' ), progressData.errors ));
 					}
 
 					this._markPriorTextSegmentsAsStatus(contentEl);
@@ -2521,7 +3015,8 @@
 					this._markPriorTextSegmentsAsStatus(contentEl);
 					this._renderInlineStep(contentEl, {
 						status: 'done',
-						label: (doneName || 'Action') + ' complete',
+						/* translators: %s: completed tool or action name. */
+						label: doneName ? sprintf( __( '%s complete', 'pressark' ), doneName ) : __( 'Action complete', 'pressark' ),
 						tool: (event.data && event.data.name) || '',
 						toolKey: doneKey,
 						detail: (event.data && event.data.summary) || '',
@@ -2533,7 +3028,7 @@
 					return event.data || {};
 
 				case 'error':
-					throw new Error((event.data && event.data.message) || 'Unable to finish applying changes.');
+					throw new Error((event.data && event.data.message) || __( 'Unable to finish applying changes.', 'pressark' ));
 			}
 
 			return null;
@@ -2582,7 +3077,7 @@
 						reader.read().then(function (chunk) {
 							if (chunk.done) {
 								self.finishPassiveRequest();
-								reject(new Error('PressArk lost the progress stream before the action finished.'));
+								reject(new Error(__( 'PressArk lost the progress stream before the action finished.', 'pressark' )));
 								return;
 							}
 
@@ -2616,7 +3111,7 @@
 				});
 			}).catch(function () {
 				self.finishPassiveRequest();
-				return { success: false, message: 'Network error. Please try again.' };
+				return { success: false, message: __( 'Network error. Please try again.', 'pressark' ) };
 			});
 		},
 
@@ -2627,7 +3122,7 @@
 			if (result.success && outcomeStatus !== 'declined') {
 				var undoHtml = '';
 				if (result.log_id) {
-					undoHtml = '<button class="pressark-undo-btn" data-log-id="' + result.log_id + '">Undo</button>';
+					undoHtml = '<button class="pressark-undo-btn" data-log-id="' + result.log_id + '">' + this.escapeHtml(__( 'Undo', 'pressark' )) + '</button>';
 				}
 				// v3.1.0: Surface post-apply verification summary.
 				var verifyHtml = '';
@@ -2639,14 +3134,14 @@
 				}
 				actionsDiv.innerHTML =
 					'<div class="pressark-action-result pressark-action-success">' +
-					'<span>' + pwIcon('check') + ' ' + this.escapeHtml(result.message || 'Changes applied successfully') + '</span>' +
+					'<span>' + pwIcon('check') + ' ' + this.escapeHtml(result.message || __( 'Changes applied successfully', 'pressark' )) + '</span>' +
 					undoHtml +
 					'</div>' + verifyHtml;
 				card.classList.add('pressark-preview-applied');
 				// Save card summary for history rendering.
 				var cardContent = previewData
 					? this.buildCardSummary(previewData, 'applied')
-					: (result.message || 'Changes applied successfully.');
+					: (result.message || __( 'Changes applied successfully.', 'pressark' ));
 				this.conversation.push({ role: 'assistant', content: cardContent });
 				if (result.usage) {
 					this.updateUsage(result.usage);
@@ -2657,7 +3152,7 @@
 			} else if (outcomeStatus === 'declined') {
 				actionsDiv.innerHTML =
 					'<div class="pressark-preview-cancelled">' +
-					'<span>' + pwIcon('x') + ' ' + this.escapeHtml(result.message || 'No changes were made.') + '</span>' +
+					'<span>' + pwIcon('x') + ' ' + this.escapeHtml(result.message || __( 'No changes were made.', 'pressark' )) + '</span>' +
 					'</div>';
 				card.classList.add('pressark-preview-dismissed');
 				if (previewData) {
@@ -2667,14 +3162,14 @@
 				var upgradeUrl = window.pressarkData.upgradeUrl || '#';
 				actionsDiv.innerHTML =
 					'<div class="pressark-upgrade-prompt">' +
-					'<strong>Free edit limit reached</strong>' +
-					'<p>You\'ve used all free tool actions this week. Scans are still unlimited. Resets every Monday.</p>' +
-					'<a href="' + this.escapeHtml(upgradeUrl) + '" target="_blank" class="pressark-upgrade-btn">Upgrade to Pro</a>' +
+					'<strong>' + this.escapeHtml(__( 'Credit or runtime limit reached', 'pressark' )) + '</strong>' +
+					'<p>' + this.escapeHtml(__( 'Local plugin tools are available without a plan gate. Remote AI runs need available credits or runtime capacity.', 'pressark' )) + '</p>' +
+					'<a href="' + this.escapeHtml(upgradeUrl) + '" target="_blank" class="pressark-upgrade-btn">' + this.escapeHtml(__( 'Manage billing', 'pressark' )) + '</a>' +
 					'</div>';
 			} else {
 				actionsDiv.innerHTML =
 					'<div class="pressark-action-result pressark-action-fail">' +
-					'<span>' + pwIcon('x') + ' ' + this.escapeHtml(result.message || 'Failed to apply changes') + '</span>' +
+					'<span>' + pwIcon('x') + ' ' + this.escapeHtml(result.message || __( 'Failed to apply changes', 'pressark' )) + '</span>' +
 					'</div>';
 			}
 
@@ -2697,6 +3192,7 @@
 			var postId = '';
 			var url = '';
 			var seoRemainingForTarget = false;
+			var shouldEmitWrap = continuation.should_emit_wrap_round === true || continuation.evaluator_should_emit_wrap === true;
 
 			if (result) {
 				postTitle = result.post_title || '';
@@ -2719,12 +3215,23 @@
 			}
 
 			if (execution && execution.tasks && execution.tasks.length) {
+				// v5.6.4 (2026-05-12): `verified` is the strongest completion state
+				// — PressArk_Verification upgrades `completed` → `verified` after
+				// a successful read-back evidence check. Without including it
+				// here, verified tasks falsely land in `remaining[]` and the
+				// next-round `[Continue]` message tells the model the task is
+				// still pending. Observed on the World Cup t-shirts chain where
+				// `create_post` ("Create the requested blog post or page") was
+				// verified but appeared in the [Continue] Remaining list,
+				// confusing the wrap round.
+				var DONE_STATES = ['done', 'completed', 'verified'];
 				execution.tasks.forEach(function (task) {
 					if (!task || !task.label) return;
-					if (task.key === 'optimize_seo' && task.status !== 'done' && task.status !== 'completed') {
+					var isDone = DONE_STATES.indexOf(task.status) !== -1;
+					if (task.key === 'optimize_seo' && !isDone) {
 						seoRemainingForTarget = true;
 					}
-					if (task.status === 'done' || task.status === 'completed') {
+					if (isDone) {
 						completed.push(task.label);
 					} else {
 						remaining.push(task.label);
@@ -2753,6 +3260,10 @@
 			if (postId) extras.push('post_id=' + postId);
 			if (url) extras.push('url=' + url);
 			if (extras.length) summary += ' [' + extras.join(', ') + ']';
+
+			if (shouldEmitWrap) {
+				return '[Continue] ' + summary + ' Do not repeat completed steps or recreate completed content. The requested work is complete; emit a concise final summary for the user and do not call tools.';
+			}
 
 			return '[Continue] ' + summary + ' Do not repeat completed steps or recreate completed content. Please continue with the remaining steps from my original request.';
 		},
@@ -2794,13 +3305,16 @@
 		},
 
 		normalizeStepStatus: function (status) {
-			return status === 'compressing_context' ? 'reading' : (status || 'done');
+			if (status === 'compressing_context') return 'reading';
+			if (status === 'in_progress') return 'running';
+			if (status === 'approved' || status === 'succeeded' || status === 'kept') return 'done';
+			return status || 'done';
 		},
 
 		getSilentContinuationStep: function () {
 			return {
 				status: 'compressing_context',
-				label: 'Compressing context…',
+				label: __( 'Compressing context...', 'pressark' ),
 				tool: '_context_compaction',
 			};
 		},
@@ -2819,16 +3333,15 @@
 
 		shouldAutoResume: function (result) {
 			var continuation = (result && result.continuation) ? result.continuation : {};
-			var progress = continuation.progress || {};
 
+			// Phase 3b: the server-side continuation evaluator is authoritative.
+			// This boolean may represent either more work or one final wrap round;
+			// the reason_code/evaluator payload names which case it is.
 			if (typeof continuation.should_auto_resume === 'boolean') {
 				return continuation.should_auto_resume;
 			}
-			if (typeof progress.should_auto_resume === 'boolean') {
-				return progress.should_auto_resume;
-			}
-			if (typeof progress.remaining_count === 'number') {
-				return progress.remaining_count > 0;
+			if (typeof continuation.evaluator_should_resume === 'boolean' || typeof continuation.evaluator_should_emit_wrap === 'boolean') {
+				return continuation.evaluator_should_resume === true || continuation.evaluator_should_emit_wrap === true;
 			}
 
 			return false;
@@ -2874,6 +3387,13 @@
 			if (result.plan_info) {
 				window.pressarkData.plan_info = result.plan_info;
 				this.renderQuotaBar();
+			}
+			if (Array.isArray(result.plan_steps) && result.plan_steps.length > 0) {
+				this.syncPlanTrackerFromPlan(result);
+			} else if (result.checkpoint && Array.isArray(result.checkpoint.plan_steps) && result.checkpoint.plan_steps.length > 0) {
+				this.syncPlanTrackerFromPlan(result.checkpoint);
+			} else if (result.activity_strip && Array.isArray(result.activity_strip.items) && result.activity_strip.items.length > 0) {
+				this.syncPlanTrackerFromActivity(result.activity_strip.items);
 			}
 		},
 
@@ -2921,7 +3441,7 @@
 				var logId = parseInt(btn.dataset.logId, 10);
 				if (!logId) return;
 
-				btn.textContent = 'Undoing...';
+				btn.textContent = __( 'Undoing...', 'pressark' );
 				btn.disabled = true;
 
 				var data = window.pressarkData;
@@ -2939,17 +3459,17 @@
 						if (result.success) {
 							var contentEl = parent.querySelector('.pressark-message-content') || parent.querySelector('span');
 							if (contentEl) {
-								contentEl.innerHTML = pwIcon('undo') + ' Undone \u2014 restored previous version';
+								contentEl.innerHTML = pwIcon('undo') + ' ' + self.escapeHtml(__( 'Undone - restored previous version', 'pressark' ));
 							}
 							btn.remove();
 						} else {
-							btn.textContent = result.message || 'Undo failed';
+							btn.textContent = result.message || __( 'Undo failed', 'pressark' );
 							btn.disabled = true;
 						}
 						self.autoSaveChat();
 					})
 					.catch(function () {
-						btn.textContent = 'Undo failed';
+						btn.textContent = __( 'Undo failed', 'pressark' );
 						btn.disabled = true;
 					});
 			});
@@ -2994,20 +3514,45 @@
 			var indicator = document.createElement('div');
 			indicator.className = 'pressark-typing-indicator';
 			indicator.innerHTML =
-				'<div class="pressark-message-content">' +
-				'<div class="pressark-typing-dots">' +
-				'<span></span>' +
-				'<span></span>' +
-				'<span></span>' +
-				'</div>' +
-				'<span>' + this.escapeHtml(text || 'PressArk is thinking') + '</span>' +
+				'<div class="pressark-message-content pressark-thinking-content">' +
+				'<span class="pressark-thinking-mark">' + this.getSparkMarkup() + '</span>' +
+				'<span class="pressark-thinking-copy">' + this.escapeHtml(text || __( 'PressArk is thinking', 'pressark' )) + '</span>' +
 				'</div>';
 
 			this.messagesEl.appendChild(indicator);
 			this.scrollToBottom();
+			this.startThinkingSpark(indicator);
+		},
+
+		startThinkingSpark: function (indicator) {
+			var rayA = indicator.querySelector('.pressark-spark-mark__ray-a');
+			var core = indicator.querySelector('.pressark-spark-mark__core');
+			if (!rayA) return;
+			var start = performance.now();
+			var self = this;
+			function frame(now) {
+				if (!indicator.isConnected) {
+					self._thinkingSparkFrame = null;
+					return;
+				}
+				var t = (now - start) / 1000;
+				var aDeg = (t * 225) % 360;
+				var aScale = 0.88 + 0.16 * Math.sin(t * 3.4);
+				rayA.style.transform = 'rotate(' + aDeg.toFixed(2) + 'deg) scale(' + aScale.toFixed(3) + ')';
+				if (core) {
+					var pulse = 0.85 + 0.25 * (0.5 + 0.5 * Math.sin(t * 4.4));
+					core.style.transform = 'scale(' + pulse.toFixed(3) + ')';
+				}
+				self._thinkingSparkFrame = requestAnimationFrame(frame);
+			}
+			this._thinkingSparkFrame = requestAnimationFrame(frame);
 		},
 
 		removeTypingIndicator: function () {
+			if (this._thinkingSparkFrame) {
+				cancelAnimationFrame(this._thinkingSparkFrame);
+				this._thinkingSparkFrame = null;
+			}
 			var existing = this.messagesEl.querySelector('.pressark-typing-indicator');
 			if (existing) existing.remove();
 		},
@@ -3035,21 +3580,23 @@
 			if (!isoString) return '';
 			var parsed = new Date(isoString);
 			if (isNaN(parsed.getTime())) return '';
-			var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-			return monthNames[parsed.getMonth()] + ' ' + parsed.getDate();
+			return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 		},
 
 		renderCreditPackLinks: function () {
 			var packs = (window.pressarkData || {}).creditPacks || [];
 			if (!packs.length) return '';
 
-			var html = '<div class="pressark-upgrade-prompt"><strong>Your billing-cycle credits are used up.</strong>';
+			var html = '<div class="pressark-upgrade-prompt"><strong>' + this.escapeHtml(__( 'Your billing-cycle credits are used up.', 'pressark' )) + '</strong>';
 			for (var i = 0; i < packs.length; i++) {
 				var pack = packs[i];
 				var dollars = '$' + ((pack.price_cents || 0) / 100).toFixed(0);
-				html += '<p><a href="' + this.escapeHtml(pack.checkoutUrl || (window.pressarkData || {}).creditStoreUrl || '#') + '" target="_blank" class="pressark-upgrade-btn">Buy ' + this.escapeHtml(pack.label || '') + ' - ' + dollars + '</a></p>';
+				html += '<p><a href="' + this.escapeHtml(pack.checkoutUrl || (window.pressarkData || {}).creditStoreUrl || '#') + '" target="_blank" class="pressark-upgrade-btn">' +
+					/* translators: 1: credit pack label, 2: credit pack price. */
+					sprintf( this.escapeHtml(__( 'Buy %1$s - %2$s', 'pressark' )), this.escapeHtml(pack.label || ''), this.escapeHtml(dollars) ) +
+					'</a></p>';
 			}
-			html += '<p>Purchased credits last 12 months.</p></div>';
+			html += '<p>' + this.escapeHtml(__( 'Purchased credits last 12 months.', 'pressark' )) + '</p></div>';
 			return html;
 		},
 
@@ -3083,11 +3630,17 @@
 				handshake_state: handshakeState,
 				service_state: serviceState,
 				spend_source: spendSource,
-				authority_label: state.authority_label || (authorityMode === 'bank_verified' ? 'Bank verified' : (authorityMode === 'byok' ? 'BYOK' : 'Bank provisional')),
-				service_label: state.service_label || (serviceState === 'offline_assisted' ? 'Offline assisted' : (serviceState === 'degraded' ? 'Degraded' : 'Normal')),
-				spend_label: state.spend_label || (spendSource === 'purchased_credits' ? 'Purchased credits' : (spendSource === 'legacy_bonus' ? 'Legacy bonus' : (spendSource === 'mixed' ? 'Mixed sources' : (spendSource === 'depleted' ? 'Depleted' : (spendSource === 'byok' ? 'BYOK' : 'Monthly included'))))),
-				service_notice: state.service_notice || (serviceState === 'offline_assisted' ? 'Using the last bank snapshot locally until the bank is reachable again.' : (serviceState === 'degraded' ? 'Bank truth is still authoritative while a dependency is degraded.' : '')),
-				estimate_notice: state.estimate_notice || (isByok ? 'Provider usage is separate from bundled credits.' : 'Plugin-side token and ICU estimates are advisory until bank settlement.')
+				authority_label: state.authority_label || (authorityMode === 'bank_verified' ? __( 'Bank verified', 'pressark' ) : (authorityMode === 'byok' ? 'BYOK' : __( 'Bank provisional', 'pressark' ))),
+				service_label: state.service_label || (serviceState === 'offline_assisted' ? __( 'Offline assisted', 'pressark' ) : (serviceState === 'degraded' ? __( 'Degraded', 'pressark' ) : __( 'Normal', 'pressark' ))),
+				spend_label: state.spend_label || (function () {
+					if (spendSource === 'purchased_credits') return __( 'Purchased credits', 'pressark' );
+					if (spendSource === 'legacy_bonus') return __( 'Legacy bonus', 'pressark' );
+					if (spendSource === 'mixed') return __( 'Mixed sources', 'pressark' );
+					if (spendSource === 'depleted') return __( 'Depleted', 'pressark' );
+					return spendSource === 'byok' ? 'BYOK' : __( 'Monthly included', 'pressark' );
+				}()),
+				service_notice: state.service_notice || (serviceState === 'offline_assisted' ? __( 'Using the last bank snapshot locally until the bank is reachable again.', 'pressark' ) : (serviceState === 'degraded' ? __( 'Bank truth is still authoritative while a dependency is degraded.', 'pressark' ) : '')),
+				estimate_notice: state.estimate_notice || (isByok ? __( 'Provider usage is separate from bundled credits.', 'pressark' ) : __( 'Plugin-side token and ICU estimates are advisory until bank settlement.', 'pressark' ))
 			};
 		},
 
@@ -3097,83 +3650,64 @@
 			var info = (window.pressarkData || {}).plan_info;
 			if (!info) return;
 
-			var html = '';
 			var billingState = this.getBillingState(info);
-			var billingTag = billingState.authority_label + ' / ' + billingState.service_label + (billingState.spend_label ? ' / ' + billingState.spend_label : '');
+			var settingsUrl = (window.pressarkData || {}).settings_url || '#';
+			var creditStoreUrl = (window.pressarkData || {}).creditStoreUrl || settingsUrl;
+
+			var countLabel = '';
+			var linkHtml = '';
+			var progressPct = 0;
+			var depleted = false;
 
 			if (info.is_byok) {
-				html = 'Using your own API key \u00B7 Bundled credits bypassed';
-			} else if (info.tier === 'free') {
-				// Total actions used across all groups this week.
-				var gu = info.group_usage || {};
-				var actionsUsed = gu.total_used || 0;
-				var actionsLimit = gu.total_limit || 6;
-
-				var monthlyRemaining = this.formatCredits(info.icus_remaining || info.tokens_remaining || 0);
-				var monthlyBudget = this.formatCredits(info.icu_budget || info.token_budget || 0);
-
-				html = actionsUsed + '/' + actionsLimit + ' actions used this week';
-				html += ' \u00B7 ' + monthlyRemaining + '/' + monthlyBudget + ' credits remaining';
-				html += ' \u00B7 ' + this.escapeHtml(billingTag);
-				html += ' \u00B7 <a href="' + this.escapeHtml(info.upgrade_url || '#') + '">Upgrade to Pro \u2192</a>';
-
-				if (actionsUsed >= actionsLimit) {
-					this.quotaBarEl.classList.add('pressark-quota-depleted');
-				} else {
-					this.quotaBarEl.classList.remove('pressark-quota-depleted');
-				}
+				countLabel = __( 'Your API key', 'pressark' );
+				progressPct = 0;
+				linkHtml = '<a href="' + this.escapeHtml(settingsUrl) + '">' + this.escapeHtml(__( 'Manage', 'pressark' )) + '</a>';
 			} else {
-				// Paid tier.
-				var creditsUsed = this.formatCredits(info.icus_used || info.tokens_used || 0);
-				var monthlyBudgetPaid = this.formatCredits(info.icu_budget || info.token_budget || 0);
-				var purchasedRemaining = this.formatCredits(info.purchased_credits_remaining || info.credits_remaining || 0);
-				var legacyRemaining = this.formatCredits(info.legacy_bonus_remaining || 0);
-				var totalRemaining = this.formatCredits(info.total_remaining || info.icus_remaining || info.tokens_remaining || 0);
+				var creditsUsedNum = info.icus_used || info.tokens_used || 0;
+				var monthlyBudgetNum = info.monthly_included_icu_budget || info.monthly_icu_budget || info.icu_budget || info.token_budget || 0;
+				var purchasedRemainingNum = info.purchased_credits_remaining || info.credits_remaining || 0;
+				var legacyRemainingNum = info.legacy_bonus_remaining || 0;
+				var totalRemainingNum = info.total_remaining || info.icus_remaining || info.tokens_remaining || 0;
+				var creditsUsed = this.formatCredits(creditsUsedNum);
+				var monthlyBudget = this.formatCredits(monthlyBudgetNum);
+				countLabel = creditsUsed + ' / ' + monthlyBudget;
+				progressPct = monthlyBudgetNum > 0 ? Math.max(4, Math.min(100, Math.round((creditsUsedNum / monthlyBudgetNum) * 100))) : 0;
 
-				if (info.monthly_exhausted && (info.purchased_credits_remaining || info.credits_remaining || 0) > 0) {
-					html = 'Billing-cycle credits used \u00B7 Using purchased credits (' + purchasedRemaining + ' remaining)';
-				} else if (info.monthly_exhausted && (info.legacy_bonus_remaining || 0) > 0) {
-					html = 'Billing-cycle credits used \u00B7 Using legacy bonus (' + legacyRemaining + ' remaining)';
+				if (info.monthly_exhausted && totalRemainingNum <= 0 && purchasedRemainingNum <= 0 && legacyRemainingNum <= 0) {
+					depleted = true;
+					linkHtml = info.can_buy_credits
+						? '<a href="' + this.escapeHtml(creditStoreUrl) + '">' + this.escapeHtml(__( 'Buy credits', 'pressark' )) + '</a>'
+						: '<a href="' + this.escapeHtml(info.upgrade_url || settingsUrl) + '">' + this.escapeHtml(__( 'Manage billing', 'pressark' )) + '</a>';
+				} else if (info.monthly_exhausted && info.can_buy_credits) {
+					linkHtml = '<a href="' + this.escapeHtml(creditStoreUrl) + '">' + this.escapeHtml(__( 'Buy credits', 'pressark' )) + '</a>';
 				} else {
-					html = creditsUsed + '/' + monthlyBudgetPaid + ' credits used \u00B7 ' + totalRemaining + ' total remaining';
+					linkHtml = '<a href="' + this.escapeHtml(settingsUrl) + '">' + this.escapeHtml(__( 'Usage', 'pressark' )) + '</a>';
 				}
+			}
 
+			this.quotaBarEl.classList.toggle('pressark-quota-depleted', depleted);
+
+			// Tooltip carries the diagnostic detail so it stays accessible without crowding the chrome.
+			var tooltipParts = [];
+			if (!info.is_byok) {
 				var resetLabel = this.formatResetDate(info.next_reset_at || info.billing_period_end || '');
-				if (resetLabel) {
-					html += ' \u00B7 Billing cycle resets ' + resetLabel;
-				}
-				html += ' \u00B7 ' + this.escapeHtml(billingTag);
-				if (billingState.service_state !== 'normal') {
-					html += ' \u00B7 ' + this.escapeHtml(billingState.service_notice);
-				}
-				if (billingState.estimate_notice) {
-					html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
-				}
-
-				var settingsUrl = (window.pressarkData || {}).settings_url || '#';
-				var creditStoreUrl = (window.pressarkData || {}).creditStoreUrl || settingsUrl;
-				if (info.monthly_exhausted && !info.is_byok && info.can_buy_credits) {
-					html += ' \u00B7 <a href="' + this.escapeHtml(creditStoreUrl) + '">Buy credits \u2192</a>';
-				} else {
-					html += ' \u00B7 <a href="' + this.escapeHtml(settingsUrl) + '">View usage \u2192</a>';
-				}
-
-				if (info.monthly_exhausted && (info.credits_remaining || 0) <= 0) {
-					this.quotaBarEl.classList.add('pressark-quota-depleted');
-				} else {
-					this.quotaBarEl.classList.remove('pressark-quota-depleted');
-				}
+				/* translators: %s: credit reset date. */
+				if (resetLabel) tooltipParts.push(sprintf( __( 'Resets %s', 'pressark' ), resetLabel ));
+				if (billingState.spend_label) tooltipParts.push(billingState.spend_label);
+				if (billingState.authority_label) tooltipParts.push(billingState.authority_label);
+				if (billingState.service_state !== 'normal' && billingState.service_notice) tooltipParts.push(billingState.service_notice);
+			} else {
+				tooltipParts.push(__( 'Bundled credits bypassed', 'pressark' ));
 			}
+			var tooltip = tooltipParts.join(' · ');
 
-			if (!info.is_byok && billingState.estimate_notice && html.indexOf(billingState.estimate_notice) === -1) {
-				html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
-			}
-
-			if (info.is_byok && billingState.estimate_notice && html.indexOf(billingState.estimate_notice) === -1) {
-				html += ' \u00B7 ' + this.escapeHtml(billingState.estimate_notice);
-			}
-
-			this.quotaBarEl.innerHTML = html;
+			this.quotaBarEl.innerHTML =
+				'<div class="pressark-quota-shell"' + (tooltip ? ' title="' + this.escapeHtml(tooltip) + '"' : '') + '>' +
+					'<span class="pressark-quota-label">' + this.escapeHtml(countLabel) + '</span>' +
+					'<span class="pressark-quota-track"><i class="pressark-quota-fill" style="width:' + progressPct + '%"></i></span>' +
+					linkHtml +
+				'</div>';
 		},
 
 		updateUsage: function (usage) {
@@ -3236,22 +3770,22 @@
 				var icon = '';
 				switch (status) {
 					case 'reading':
-						icon = '<span class="pressark-step-icon pressark-step-icon--reading">⟳</span>';
+						icon = '<span class="pressark-step-icon pressark-step-icon--reading">' + pwIcons.loader + '</span>';
 						break;
 					case 'done':
-						icon = '<span class="pressark-step-icon pressark-step-icon--done">✓</span>';
+						icon = '<span class="pressark-step-icon pressark-step-icon--done">' + pwIcons.check + '</span>';
 						break;
 					case 'preparing_preview':
-						icon = '<span class="pressark-step-icon pressark-step-icon--preview">◉</span>';
+						icon = '<span class="pressark-step-icon pressark-step-icon--preview">' + pwIcons.dot + '</span>';
 						break;
 					case 'needs_confirm':
-						icon = '<span class="pressark-step-icon pressark-step-icon--confirm">⚠</span>';
+						icon = '<span class="pressark-step-icon pressark-step-icon--confirm">' + pwIcons.warning + '</span>';
 						break;
 					default:
-						icon = '<span class="pressark-step-icon">·</span>';
+						icon = '<span class="pressark-step-icon">' + pwIcons.dot + '</span>';
 				}
 
-				row.innerHTML = icon + '<span class="pressark-step-label">' + this.escapeHtml(step.label || step.tool) + '</span>';
+				row.innerHTML = icon + '<span class="pressark-step-label">' + this.escapeHtml(step.content || step.activeForm || step.label || step.tool || '') + '</span>';
 				strip.appendChild(row);
 			}
 
@@ -3292,7 +3826,7 @@
 						icon = '<span class="pressark-step-icon">\u00B7</span>';
 				}
 
-				row.innerHTML = icon + '<span class="pressark-step-label">' + this.escapeHtml(step.label || step.tool) + '</span>';
+				row.innerHTML = icon + '<span class="pressark-step-label">' + this.escapeHtml(step.content || step.activeForm || step.label || step.tool || '') + '</span>';
 				strip.appendChild(row);
 			}
 
@@ -3399,20 +3933,12 @@
 			return strip.childNodes.length ? strip : null;
 		},
 
-		renderActivityStrip: function (items) {
-			var strip = this.buildActivityStripElement(items);
-			if (!strip) return;
-
-			this.messagesEl.appendChild(strip);
-			this.scrollToBottom();
+		renderActivityStrip: function () {
+			// Activity strip intentionally hidden from chat UI — diagnostics belong elsewhere.
 		},
 
-		renderActivityStripBefore: function (items, beforeEl) {
-			var strip = this.buildActivityStripElement(items);
-			if (!strip || !beforeEl || !beforeEl.parentNode) return;
-
-			beforeEl.parentNode.insertBefore(strip, beforeEl);
-			this.scrollToBottom();
+		renderActivityStripBefore: function () {
+			// Activity strip intentionally hidden from chat UI — diagnostics belong elsewhere.
 		},
 
 		openPreview: function (data) {
@@ -3430,8 +3956,8 @@
 			overlay.className = 'pressark-preview-overlay';
 			overlay.innerHTML =
 				'<div class="pressark-preview-overlay__header">' +
-					'<span class="pressark-preview-overlay__title">Preview Changes</span>' +
-					'<span class="pressark-preview-overlay__badge">Unsaved</span>' +
+					'<span class="pressark-preview-overlay__title">' + this.escapeHtml(__( 'Preview Changes', 'pressark' )) + '</span>' +
+					'<span class="pressark-preview-overlay__badge">' + this.escapeHtml(__( 'Unsaved', 'pressark' )) + '</span>' +
 				'</div>' +
 				'<div class="pressark-preview-body">' +
 					'<div class="pressark-preview-diff">' + diffHTML + '</div>' +
@@ -3448,7 +3974,7 @@
 
 		buildDiffHTML: function (diff) {
 			if (!diff || !diff.length) {
-				return '<p class="pressark-diff-empty">No field-level changes to display.</p>';
+				return '<p class="pressark-diff-empty">' + this.escapeHtml(__( 'No field-level changes to display.', 'pressark' )) + '</p>';
 			}
 
 			// Flatten the nested diff format from PHP.
@@ -3488,11 +4014,11 @@
 			}
 
 			if (!rows.length) {
-				return '<p class="pressark-diff-empty">No field-level changes to display.</p>';
+				return '<p class="pressark-diff-empty">' + this.escapeHtml(__( 'No field-level changes to display.', 'pressark' )) + '</p>';
 			}
 
 			var html = '<table class="pressark-diff-table">';
-			html += '<thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>';
+			html += '<thead><tr><th>' + this.escapeHtml(__( 'Field', 'pressark' )) + '</th><th>' + this.escapeHtml(__( 'Before', 'pressark' )) + '</th><th>' + this.escapeHtml(__( 'After', 'pressark' )) + '</th></tr></thead><tbody>';
 
 			for (var r = 0; r < rows.length; r++) {
 				var row = rows[r];
@@ -3512,7 +4038,7 @@
 		truncateText: function (text, maxLen) {
 			if (typeof text !== 'string') text = String(text);
 			if (text.length <= maxLen) return text;
-			return text.substring(0, maxLen) + '…';
+			return text.substring(0, maxLen) + '...';
 		},
 
 		showPreviewActions: function (previewData) {
@@ -3530,10 +4056,10 @@
 				this.renderRiskReceipt(riskReceipt) +
 				'<div class="pressark-preview-footer__actions">' +
 					'<button type="button" class="pressark-btn pressark-btn--keep" data-session="' + this.escapeHtml(sessionId) + '">' +
-						this.getPreviewButtonContent('&#10003;', 'Keep Changes') +
+						this.getPreviewButtonContent(pwIcons.check, __( 'Keep Changes', 'pressark' )) +
 					'</button>' +
 					'<button type="button" class="pressark-btn pressark-btn--discard" data-session="' + this.escapeHtml(sessionId) + '">' +
-						this.getPreviewButtonContent('&#10005;', 'Discard') +
+						this.getPreviewButtonContent(pwIcons.x, __( 'Discard', 'pressark' )) +
 					'</button>' +
 				'</div>';
 
@@ -3542,7 +4068,7 @@
 				var customizerUrl = window.pressarkData.admin_url + 'customize.php?autofocus[section]=title_tagline';
 				actionsDiv.innerHTML +=
 					'<a href="' + this.escapeHtml(customizerUrl) + '" target="_blank" rel="noopener noreferrer" class="pressark-preview-footer__link">' +
-					'View &amp; fine-tune in Customizer</a>';
+					this.escapeHtml(__( 'View & fine-tune in Customizer', 'pressark' )) + '</a>';
 			}
 
 			this.messagesEl.appendChild(actionsDiv);
@@ -3583,8 +4109,8 @@
 						var outcomeStatus = settlement.status || (action === 'keep' ? 'approved' : 'discarded');
 						self.closePreview(outcomeStatus);
 						var displayMsg = result.message || (outcomeStatus === 'approved'
-							? 'Changes applied successfully.'
-							: 'Preview discarded.');
+							? __( 'Changes applied successfully.', 'pressark' )
+							: __( 'Preview discarded.', 'pressark' ));
 						// v3.1.0: Append verification summary if present.
 						if (outcomeStatus === 'approved' && result.verification && result.verification.message) {
 							displayMsg += '\n\n' + result.verification.message;
@@ -3614,7 +4140,7 @@
 						}
 					} else {
 						self.setPreviewFooterBusy(self.activePreviewFooterEl, false);
-						self.addMessage('error', result.message || 'PressArk did not confirm that the preview was settled. Please try again.');
+						self.addMessage('error', result.message || __( 'PressArk did not confirm that the preview was settled. Please try again.', 'pressark' ));
 					}
 
 					if (result.usage) {
@@ -3623,7 +4149,15 @@
 				})
 				.catch(function (err) {
 					self.setPreviewFooterBusy(self.activePreviewFooterEl, false);
-					self.addMessage('error', 'Failed to ' + action + ' preview: ' + err.message);
+					var failedLabel = '';
+					if (action === 'keep') {
+						/* translators: %s: error message. */
+						failedLabel = __( 'Failed to keep preview: %s', 'pressark' );
+					} else {
+						/* translators: %s: error message. */
+						failedLabel = __( 'Failed to discard preview: %s', 'pressark' );
+					}
+					self.addMessage('error', sprintf( failedLabel, err.message ));
 				});
 		},
 
@@ -3756,7 +4290,7 @@
 			if (!message) return;
 
 			if (!window.pressarkData.hasApiKey) {
-				this.addMessage('error', 'API key not configured. Go to PressArk settings to add your key.');
+				this.addMessage('error', __( 'API key not configured. Go to PressArk settings to add your key.', 'pressark' ));
 				return;
 			}
 
@@ -3772,21 +4306,32 @@
 				this.inputEl.style.height = 'auto';
 			}
 
-			this.conversation.push({ role: 'user', content: message });
+			// v5.7.4 (2026-05-12): Bug 3 in-session JS half — don't push
+			// auto-resume continuation markers ([Continue], [Confirmed]) into
+			// the client-side conversation array. iter-14 stripped them from
+			// server-side persistence; this is the matching client-side fix.
+			// Without this, `conversation.slice(-25)` on the next sendMessage
+			// re-ships these synthetic user turns to the server even within
+			// the same tab session, polluting messages[] with harness control
+			// markers that look like user input. Display already skips them
+			// (no addMessage call when internalMessage is set).
+			if (! /^\[(?:Continue|Confirmed)\]/i.test(message)) {
+				this.conversation.push({ role: 'user', content: message });
+			}
 
-			var typingText = 'PressArk is thinking';
+			var typingText = __( 'PressArk is thinking', 'pressark' );
 			var lowerMsg = message.toLowerCase();
 			if (lowerMsg.indexOf('seo') !== -1 || lowerMsg.indexOf('scan') !== -1) {
-				typingText = 'Running analysis';
+				typingText = __( 'Running analysis', 'pressark' );
 			}
 			if (lowerMsg.indexOf('security') !== -1) {
-				typingText = 'Running security scan';
+				typingText = __( 'Running security scan', 'pressark' );
 			}
 			if (lowerMsg.indexOf('store') !== -1 || lowerMsg.indexOf('woocommerce') !== -1 || lowerMsg.indexOf('products') !== -1) {
-				typingText = 'Analyzing store';
+				typingText = __( 'Analyzing store', 'pressark' );
 			}
 			if (internalMessage) {
-				typingText = 'Continuing';
+				typingText = __( 'Continuing', 'pressark' );
 			}
 
 			var controller = this.beginRequest();
@@ -3826,7 +4371,7 @@
 							var creditStoreUrl = result.credit_store_url || (window.pressarkData || {}).creditStoreUrl || settingsUrl;
 
 							if (planInfo.can_buy_credits && !planInfo.is_byok) {
-								self.addMessage('ai', result.message + '\n\n[Open Credit Store](' + creditStoreUrl + ')\n[Upgrade your plan](' + (result.upgrade_url || '#') + ')');
+								self.addMessage('ai', result.message + '\n\n[' + __( 'Open Credit Store', 'pressark' ) + '](' + creditStoreUrl + ')\n[' + __( 'Manage billing', 'pressark' ) + '](' + (result.upgrade_url || '#') + ')');
 								var creditPrompt = document.createElement('div');
 								creditPrompt.className = 'pressark-message pressark-message-system';
 								creditPrompt.innerHTML = self.renderCreditPackLinks();
@@ -3835,8 +4380,8 @@
 							} else {
 								self.addMessage('ai',
 									result.message + '\n\n' +
-									'[Upgrade your plan](' + (result.upgrade_url || '#') + ')\n' +
-									'[Use your own API key](' + settingsUrl + ')'
+									'[' + __( 'Manage billing', 'pressark' ) + '](' + (result.upgrade_url || '#') + ')\n' +
+									'[' + __( 'Use your own API key', 'pressark' ) + '](' + settingsUrl + ')'
 								);
 							}
 							if (result.usage) {
@@ -3849,7 +4394,8 @@
 						return response.json()
 							.catch(function () { return null; })
 							.then(function (result) {
-								throw new Error('Server error (' + response.status + ')');
+								/* translators: %d: HTTP status code. */
+								throw new Error(sprintf( __( 'Server error (%d)', 'pressark' ), response.status ));
 							});
 					}
 					return response.json();
@@ -3860,19 +4406,19 @@
 
 					try {
 						if (result.is_error) {
-							self.appendRetryableError(result.reply || 'An error occurred.');
+							self.appendRetryableError(result.reply || __( 'An error occurred.', 'pressark' ));
 							return;
 						}
 
 					// v2.8.0: Handle entitlement denied at REST level.
 					if (result.error === 'entitlement_denied') {
 						var upgradeUrl = (result.upgrade_url || window.pressarkData.upgradeUrl || '#');
-						self.addMessage('ai', result.message + '\n\n[Upgrade your plan](' + upgradeUrl + ')');
+						self.addMessage('ai', result.message + '\n\n[' + __( 'Manage billing', 'pressark' ) + '](' + upgradeUrl + ')');
 						return;
 					}
 
 					if (result.success === false && !result.reply) {
-						result.reply = 'Something went wrong. Please try again.';
+						result.reply = __( 'Something went wrong. Please try again.', 'pressark' );
 					}
 
 					var silentContinuation = self.isSilentContinuationResult(result);
@@ -3908,22 +4454,22 @@
 					if (responseResult) {
 						console.error('PressArk response handling failed', err, responseResult);
 						if (responseResult.type === 'preview' && responseResult.preview_session_id) {
-							errorMessage = 'PressArk finished the request, but the panel could not render the preview. Refresh the page or open Activity to continue.';
+							errorMessage = __( 'PressArk finished the request, but the panel could not render the preview. Refresh the page or open Activity to continue.', 'pressark' );
 						} else {
-							errorMessage = 'PressArk received a response, but the panel could not render it. Refresh the page and try again.';
+							errorMessage = __( 'PressArk received a response, but the panel could not render it. Refresh the page and try again.', 'pressark' );
 						}
 					} else {
 						console.error('PressArk request failed', err);
-						errorMessage = "Couldn't reach PressArk. ";
+						errorMessage = __( 'Couldn\'t reach PressArk.', 'pressark' ) + ' ';
 						var errMsg = err.message || '';
 						if (errMsg.indexOf('401') !== -1 || errMsg.indexOf('403') !== -1) {
-							errorMessage += 'Your session may have expired. Try refreshing the page.';
+							errorMessage += __( 'Your session may have expired. Try refreshing the page.', 'pressark' );
 						} else if (errMsg.indexOf('429') !== -1) {
-							errorMessage += 'Too many requests. Please wait a moment and try again.';
+							errorMessage += __( 'Too many requests. Please wait a moment and try again.', 'pressark' );
 						} else if (errMsg.indexOf('500') !== -1) {
-							errorMessage += 'Server error. Check your API key in PressArk settings.';
+							errorMessage += __( 'Server error. Check your API key in PressArk settings.', 'pressark' );
 						} else {
-							errorMessage += 'Check your connection and try again.';
+							errorMessage += __( 'Check your connection and try again.', 'pressark' );
 						}
 					}
 
@@ -3942,22 +4488,28 @@
 				this.inputEl.style.height = 'auto';
 			}
 
-			this.conversation.push({ role: 'user', content: message });
+			// v5.7.4 (2026-05-12): Bug 3 in-session JS half — skip pushing
+			// auto-resume continuation markers ([Continue], [Confirmed]) so
+			// subsequent requests don't re-ship them as synthetic user turns.
+			// Mirrors the matching guard in sendMessage above.
+			if (! /^\[(?:Continue|Confirmed)\]/i.test(message)) {
+				this.conversation.push({ role: 'user', content: message });
+			}
 
 			// Show thinking indicator while waiting for first token.
-			var typingText = 'PressArk is thinking';
+			var typingText = __( 'PressArk is thinking', 'pressark' );
 			var lowerMsg = message.toLowerCase();
 			if (lowerMsg.indexOf('seo') !== -1 || lowerMsg.indexOf('scan') !== -1) {
-				typingText = 'Running analysis';
+				typingText = __( 'Running analysis', 'pressark' );
 			}
 			if (lowerMsg.indexOf('security') !== -1) {
-				typingText = 'Running security scan';
+				typingText = __( 'Running security scan', 'pressark' );
 			}
 			if (lowerMsg.indexOf('store') !== -1 || lowerMsg.indexOf('woocommerce') !== -1 || lowerMsg.indexOf('products') !== -1) {
-				typingText = 'Analyzing store';
+				typingText = __( 'Analyzing store', 'pressark' );
 			}
 			if (internalMessage) {
-				typingText = 'Continuing';
+				typingText = __( 'Continuing', 'pressark' );
 			}
 
 			var controller = this.beginRequest();
@@ -4088,10 +4640,10 @@
 				if (bubble) {
 					self.renderInterruptedStream(
 						bubble,
-						"Couldn't reach PressArk. Check your connection and try again."
+						__( 'Couldn\'t reach PressArk. Check your connection and try again.', 'pressark' )
 					);
 				} else {
-					self.appendRetryableError("Couldn't reach PressArk. Check your connection and try again.");
+					self.appendRetryableError(__( 'Couldn\'t reach PressArk. Check your connection and try again.', 'pressark' ));
 				}
 			});
 		},
@@ -4321,12 +4873,14 @@
 
 				case 'plan':
 					this._renderPlanCard(contentEl, event.data);
+					this.syncPlanTrackerFromPlan(event.data);
 					this._streamSegmentText = '';
 					break;
 
 				case 'step':
 					this._markPriorTextSegmentsAsStatus(contentEl);
 					this._renderInlineStep(contentEl, event.data);
+					this.advancePlanTrackerFromStep(event.data);
 					this._streamSegmentText = ''; // Next tokens go in a new segment.
 					break;
 
@@ -4334,9 +4888,13 @@
 					this._markPriorTextSegmentsAsStatus(contentEl);
 					this._renderInlineStep(contentEl, {
 						status: 'reading',
-						label: event.data.name ? event.data.name.replace(/_/g, ' ') : 'Processing',
+						label: event.data.name ? event.data.name.replace(/_/g, ' ') : __( 'Processing', 'pressark' ),
 						tool: event.data.name || '',
 						toolKey: this.getToolProgressKey(event.data),
+					});
+					this.advancePlanTrackerFromStep({
+						status: 'reading',
+						label: event.data.name ? event.data.name.replace(/_/g, ' ') : __( 'Processing', 'pressark' )
 					});
 					this._streamSegmentText = '';
 					break;
@@ -4355,7 +4913,7 @@
 					var percent = (!isNaN(processed) && !isNaN(total) && total > 0)
 						? Math.round((processed / total) * 100)
 						: null;
-					var toolName = (event.data && (event.data.name || event.data.tool)) || 'Processing';
+					var toolName = (event.data && (event.data.name || event.data.tool)) || __( 'Processing', 'pressark' );
 					var progressLabel = toolName.replace(/_/g, ' ');
 					if (!isNaN(processed) && !isNaN(total) && total > 0) {
 						progressLabel += ' ' + processed + '/' + total;
@@ -4367,10 +4925,12 @@
 					} else {
 						var detailParts = [];
 						if (!isNaN(progressData.updated)) {
-							detailParts.push(progressData.updated + ' updated');
+							/* translators: %d: number of updated items. */
+							detailParts.push(sprintf( __( '%d updated', 'pressark' ), progressData.updated ));
 						}
 						if (!isNaN(progressData.errors) && progressData.errors > 0) {
-							detailParts.push(progressData.errors + ' errors');
+							/* translators: %d: number of errors. */
+							detailParts.push(sprintf( _n( '%d error', '%d errors', progressData.errors, 'pressark' ), progressData.errors ));
 						}
 						progressDetail = detailParts.join(' · ');
 					}
@@ -4387,6 +4947,10 @@
 						progressMax: !isNaN(total) ? total : null,
 						progressText: (!isNaN(processed) && !isNaN(total) && total > 0) ? (processed + '/' + total) : ''
 					});
+					this.advancePlanTrackerFromStep({
+						status: 'reading',
+						label: progressLabel
+					});
 					this._streamSegmentText = '';
 					break;
 
@@ -4399,11 +4963,16 @@
 					this._markPriorTextSegmentsAsStatus(contentEl);
 					this._renderInlineStep(contentEl, {
 						status: 'done',
-						label: (doneName || 'Action') + ' complete',
+						/* translators: %s: completed tool or action name. */
+						label: doneName ? sprintf( __( '%s complete', 'pressark' ), doneName ) : __( 'Action complete', 'pressark' ),
 						tool: event.data.name || '',
 						toolKey: doneKey,
 						detail: event.data.summary || '',
 						progressPercent: 100,
+					});
+					this.advancePlanTrackerFromStep({
+						status: 'done',
+						label: doneName || __( 'Action complete', 'pressark' )
 					});
 					this._streamSegmentText = '';
 					break;
@@ -4414,7 +4983,7 @@
 
 				case 'error':
 					this.finishRequest();
-					var msg = (event.data && event.data.message) || 'An error occurred.';
+					var msg = (event.data && event.data.message) || __( 'An error occurred.', 'pressark' );
 					this.renderInterruptedStream(bubble, msg);
 					break;
 			}
@@ -4468,6 +5037,7 @@
 		 */
 		_renderPlanCard: function (contentEl, planItems) {
 			if (!contentEl) return null;
+			contentEl.classList.add('pressark-message-content--planning');
 			return this.renderPlanReadyCard(planItems, contentEl);
 		},
 
@@ -4488,6 +5058,9 @@
 		 * interleaved with text in the order events arrive.
 		 */
 		_renderInlineStep: function (contentEl, stepData) {
+			if (!contentEl) return;
+			contentEl.classList.add('pressark-message-content--activity');
+
 			var rawStatus = stepData.status || 'done';
 			var status = this.normalizeStepStatus(rawStatus);
 			var label = stepData.label || stepData.tool || '';
@@ -4549,7 +5122,7 @@
 			var summary = document.createElement('div');
 			summary.className = 'pressark-stream-final-result';
 			summary.innerHTML =
-				'<div class="pressark-stream-final-result__label">Final result</div>' +
+				'<div class="pressark-stream-final-result__label">' + this.escapeHtml(__( 'Final result', 'pressark' )) + '</div>' +
 				'<div class="pressark-stream-final-result__body">' + this.renderFormattedMessage(replyText) + '</div>';
 			contentEl.appendChild(summary);
 		},
@@ -4581,7 +5154,7 @@
 			var replyText = result.reply || result.message || '';
 			if (responseType === 'permission_required' && result.upgrade_prompt) {
 				var streamUpgradeUrl = (result.upgrade_url || window.pressarkData.upgradeUrl || '#');
-				replyText += (replyText ? '\n\n' : '') + '[Upgrade your plan](' + streamUpgradeUrl + ')';
+				replyText += (replyText ? '\n\n' : '') + '[' + __( 'Manage billing', 'pressark' ) + '](' + streamUpgradeUrl + ')';
 			}
 			var contentEl = bubble.querySelector('.pressark-message-content');
 			var activityItems = this.getResultActivityItems(result);
@@ -4655,6 +5228,12 @@
 						this.renderPreviewCard(result.pending_actions[p2], result.run_id || '', p2);
 					}
 				}
+
+				// v5.8.2 (2026-05-13, iter-38): server signals that any earlier
+				// Plan Mode card in this chat is obsolete.
+				if (result.plan_card_obsolete === true) {
+					this.removeObsoletePlanCards(result.run_id || '', contentEl);
+				}
 			}
 
 			this.applyResultState(result);
@@ -4673,7 +5252,7 @@
 				this.finishRequest();
 				this.renderInterruptedStream(
 					bubble,
-					'PressArk lost the stream before this response finished. The reply above may be incomplete. Please retry.'
+					__( 'PressArk lost the stream before this response finished. The reply above may be incomplete. Please retry.', 'pressark' )
 				);
 			}
 		},
@@ -4686,9 +5265,13 @@
 			var dot = toggle ? toggle.querySelector('.pressark-notif-dot') : null;
 
 			if (this.activityBtn) {
-				var title = count > 0
-					? 'Open Activity inbox (' + count + ' unread)'
-					: 'Open Activity inbox';
+				var title = '';
+				if (count > 0) {
+					/* translators: %d: number of unread activity items. */
+					title = sprintf( _n( 'Open Activity inbox (%d unread)', 'Open Activity inbox (%d unread)', count, 'pressark' ), count );
+				} else {
+					title = __( 'Open Activity inbox', 'pressark' );
+				}
 				this.activityBtn.setAttribute('title', title);
 				this.activityBtn.setAttribute('aria-label', title);
 			}
@@ -4703,6 +5286,7 @@
 			}
 
 			if (count < 1) {
+				toggle.classList.remove('has-notifications');
 				if (dot) {
 					dot.remove();
 				}
@@ -4716,6 +5300,7 @@
 			}
 
 			dot.textContent = count > 99 ? '99+' : String(count);
+			toggle.classList.add('has-notifications');
 		},
 
 		// ── Customizer Handoff ───────────────────────────────────────

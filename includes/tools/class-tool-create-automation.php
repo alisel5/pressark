@@ -9,7 +9,7 @@ class PressArk_Tool_Create_Automation extends PressArk_Tool_Base {
 	protected function definition(): array {
 		return array(
 			'name'        => 'create_automation',
-			'description' => 'Create a scheduled automation that runs a prompt on a recurring schedule. Pro+ required.',
+			'description' => 'Create a scheduled automation that runs a prompt on a recurring schedule. AI runs use service credits.',
 			'params'      => array(
 				array( 'name' => 'prompt', 'required' => true ),
 				array( 'name' => 'name', 'required' => false ),

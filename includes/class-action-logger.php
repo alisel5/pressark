@@ -6,7 +6,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Logs all PressArk actions and enables undo functionality.
+ *
+ * SQL safety note: every prepare() call uses literal SQL with %s/%d placeholders;
+ * the only interpolated token is {$table} = $wpdb->prefix . 'pressark_log' (a
+ * wpdb-prefixed literal). User data is bound exclusively through prepare() args.
  */
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 class PressArk_Action_Logger {
 
 	/**
@@ -293,3 +298,4 @@ class PressArk_Action_Logger {
 		) ?: array();
 	}
 }
+// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching

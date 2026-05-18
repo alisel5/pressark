@@ -15,6 +15,20 @@ class PressArk_Admin {
 	}
 
 	/**
+	 * Determine whether operator-only diagnostics should be shown.
+	 */
+	private function should_render_debug_section(): bool {
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			return true;
+		}
+
+		$debug_value = filter_input( INPUT_GET, 'pressark_debug', FILTER_UNSAFE_RAW );
+		$debug_value = is_string( $debug_value ) ? sanitize_text_field( $debug_value ) : '';
+
+		return '' !== $debug_value && '0' !== $debug_value;
+	}
+
+	/**
 	 * Add top-level admin menu item.
 	 */
 	public function add_menu(): void {
@@ -415,17 +429,40 @@ class PressArk_Admin {
 				? PressArk_Capability_Health::get_snapshot( $harness_snapshot )
 				: array() );
 		$logo_url = $this->find_brand_image( array( 'WHITE-APP-LOGO', 'logo', 'icon', 'pressark-logo' ) );
+		$license = new PressArk_License();
+		$tier = $license->get_tier();
+		$tier_label = PressArk_Entitlements::tier_label( $tier );
+		$plan_info = PressArk_Entitlements::get_plan_info( $tier );
+		$is_byok = ! empty( $plan_info['is_byok'] );
+		$index_stats = ( new PressArk_Content_Index() )->get_stats();
+		$index_total = (int) ( $index_stats['total_posts_indexed'] ?? 0 );
+		$index_sync = (string) ( $index_stats['last_sync'] ?? __( 'Not indexed yet', 'pressark' ) );
 		?>
-		<div class="wrap">
-			<div class="pressark-settings-header">
-				<?php if ( $logo_url ) : ?>
-					<img src="<?php echo esc_url( $logo_url ); ?>" alt="PressArk">
-				<?php endif; ?>
-				<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+		<div class="wrap pressark-settings-page">
+			<h1 class="screen-reader-text"><?php echo esc_html( get_admin_page_title() ); ?></h1>
+			<div class="pressark-settings-hero">
+				<div class="pressark-settings-hero__row">
+					<div class="pressark-settings-hero__brand">
+						<?php if ( $logo_url ) : ?>
+							<div class="pressark-settings-hero__mark">
+								<img src="<?php echo esc_url( $logo_url ); ?>" alt="PressArk">
+							</div>
+						<?php endif; ?>
+						<div>
+							<div class="pressark-settings-hero__title" role="heading" aria-level="1"><?php echo esc_html( get_admin_page_title() ); ?></div>
+							<p class="pressark-settings-hero__subtitle"><?php esc_html_e( 'AI co-pilot for WordPress. Configure models, safety, billing, indexing, and operating preferences in one place.', 'pressark' ); ?></p>
+							<div class="pressark-settings-hero__meta">
+								<span class="pressark-settings-hero__chip"><span class="d"></span><?php echo esc_html( $tier_label ); ?><?php esc_html_e( ' plan', 'pressark' ); ?></span>
+								<span class="pressark-settings-hero__chip"><?php echo esc_html( $is_byok ? __( 'BYOK connected', 'pressark' ) : __( 'Managed service active', 'pressark' ) ); ?></span>
+								<span class="pressark-settings-hero__chip"><?php echo esc_html( sprintf( _n( '%d item indexed', '%d items indexed', $index_total, 'pressark' ), $index_total ) ); ?></span>
+								<span class="pressark-settings-hero__chip"><?php echo esc_html( sprintf( __( 'Last sync %s', 'pressark' ), $index_sync ) ); ?></span>
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
 
 			<?php $this->render_capability_health_notice( $capability_graph ); ?>
-			<?php $this->render_extension_manifest_notices(); ?>
 			<?php $this->render_usage_stats_box(); ?>
 			<?php $this->render_plan_capabilities_section(); ?>
 
@@ -437,11 +474,7 @@ class PressArk_Admin {
 				?>
 			</form>
 
-			<?php $this->render_harness_readiness_section( $harness_snapshot ); ?>
-			<?php $this->render_extension_manifest_section(); ?>
 			<?php $this->render_site_profile_section(); ?>
-			<?php $this->render_site_playbook_section(); ?>
-			<?php $this->render_content_index_section(); ?>
 			<?php $this->render_permissions_section(); ?>
 		</div>
 		<?php
@@ -483,6 +516,11 @@ class PressArk_Admin {
 	 * @param array<string,mixed>|null $snapshot Optional readiness snapshot.
 	 */
 	private function render_harness_readiness_section( ?array $snapshot = null ): void {
+		// Diagnostics snapshot is gated — it's noise for normal admins. Append ?pressark_debug=1 to view.
+		if ( ! $this->should_render_debug_section() ) {
+			return;
+		}
+
 		$snapshot       = is_array( $snapshot ) ? $snapshot : PressArk_Harness_Readiness::get_snapshot();
 		$facets         = (array) ( $snapshot['facets'] ?? array() );
 		$capability_graph = is_array( $snapshot['capability_graph'] ?? null ) ? (array) $snapshot['capability_graph'] : array();
@@ -806,6 +844,11 @@ class PressArk_Admin {
 			return;
 		}
 
+		// Extension manifests are diagnostic — gated behind ?pressark_debug=1 (or WP_DEBUG).
+		if ( ! $this->should_render_debug_section() ) {
+			return;
+		}
+
 		$reports = PressArk_Extension_Manifests::list_installed();
 		?>
 		<h2><?php esc_html_e( 'Extension Manifests', 'pressark' ); ?></h2>
@@ -969,6 +1012,11 @@ class PressArk_Admin {
 	 * Render Site Playbook section on settings page.
 	 */
 	private function render_site_playbook_section(): void {
+		// Site Playbook is operator/power-user territory — gated behind ?pressark_debug=1 (or WP_DEBUG).
+		if ( ! $this->should_render_debug_section() ) {
+			return;
+		}
+
 		$entries      = PressArk_Site_Playbook::get_all();
 		$task_labels  = PressArk_Site_Playbook::task_labels();
 		$group_labels = PressArk_Site_Playbook::tool_group_labels();
@@ -1004,7 +1052,7 @@ class PressArk_Admin {
 						printf(
 							/* translators: %d: number of entries kept in prompt recall at once. */
 							esc_html__( 'Prompt recall is capped to the most relevant %d entries per run.', 'pressark' ),
-							PressArk_Site_Playbook::MAX_PROMPT_ENTRIES
+							(int) PressArk_Site_Playbook::MAX_PROMPT_ENTRIES
 						);
 						?>
 					</span>
@@ -1167,6 +1215,11 @@ class PressArk_Admin {
 	 * Render content index section on settings page.
 	 */
 	private function render_content_index_section(): void {
+		// Content Index stats + controls are operator territory — gated behind ?pressark_debug=1 (or WP_DEBUG).
+		if ( ! $this->should_render_debug_section() ) {
+			return;
+		}
+
 		$index = new PressArk_Content_Index();
 		$stats = $index->get_stats();
 		?>
@@ -1311,15 +1364,15 @@ class PressArk_Admin {
 		?>
 		<div style="background:#f8fafc;border:1px solid rgba(226,232,240,0.8);border-radius:12px;padding:32px;margin-bottom:20px;box-shadow:0 4px 12px rgba(0,0,0,0.02);">
 			<?php if ( $is_pro ) : ?>
-				<strong style="color:#0f172a;font-size:15px;display:flex;align-items:center;gap:8px;"><span style="color:#10b981;font-size:18px;"><?php echo pressark_icon( 'zap', 18 ); ?></span> <?php
+				<strong style="color:#0f172a;font-size:15px;display:flex;align-items:center;gap:8px;"><span style="color:#10b981;font-size:18px;"><?php echo wp_kses( pressark_icon( 'zap', 18 ), pressark_icon_allowed_html() ); ?></span> <?php
 				/* translators: %s: plan tier label (e.g., Pro, Agency) */
 				printf( esc_html__( '%s Plan Active', 'pressark' ), esc_html( $tier_label ) );
 			?></strong>
-				<p style="margin:12px 0 0;font-size:14px;color:#475569;"><?php esc_html_e( 'Billing, trials, subscription changes, and site activations are managed through Freemius.', 'pressark' ); ?></p>
+				<p style="margin:12px 0 0;font-size:14px;color:#475569;"><?php esc_html_e( 'Billing, subscription changes, credit purchases, and site activations are managed through Freemius.', 'pressark' ); ?></p>
 			<?php else : ?>
 				<strong style="font-size:14px; color:#0f172a;"><?php esc_html_e( 'Plan Pricing', 'pressark' ); ?></strong>
 				<p style="margin:8px 0 4px; color:#64748b;"><?php esc_html_e( 'Free: 100K credits/mo · Pro ($19): 5M · Team ($49): 15M · Agency ($99): 40M · Enterprise ($199): 100M', 'pressark' ); ?></p>
-				<p style="margin:4px 0 0; color:#64748b;"><?php esc_html_e( 'Upgrade in Freemius to unlock premium models, automations, more sites, and more monthly credits.', 'pressark' ); ?></p>
+				<p style="margin:4px 0 0; color:#64748b;"><?php esc_html_e( 'Paid plans add larger included PressArk service-credit allowances. Local plugin tools remain available; bundled AI usage is metered by credits.', 'pressark' ); ?></p>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -1383,9 +1436,9 @@ class PressArk_Admin {
 
 		echo '<p>';
 		if ( $is_healthy ) {
-			echo '<span style="color:#00a32a;">' . pressark_icon( 'statusDot', 10 ) . '</span> ' . esc_html__( 'Connected to PressArk AI service', 'pressark' );
+			echo '<span style="color:#00a32a;">' . wp_kses( pressark_icon( 'statusDot', 10 ), pressark_icon_allowed_html() ) . '</span> ' . esc_html__( 'Connected to PressArk AI service', 'pressark' );
 		} else {
-			echo '<span style="color:#d63638;">' . pressark_icon( 'statusDot', 10 ) . '</span> ' . esc_html__( 'Unable to reach PressArk AI service', 'pressark' );
+			echo '<span style="color:#d63638;">' . wp_kses( pressark_icon( 'statusDot', 10 ), pressark_icon_allowed_html() ) . '</span> ' . esc_html__( 'Unable to reach PressArk AI service', 'pressark' );
 		}
 		echo '</p>';
 		echo '<p class="description">' . esc_html__( 'No API key is stored locally. All AI calls are routed through the secure PressArk service.', 'pressark' ) . '</p>';
@@ -1394,10 +1447,9 @@ class PressArk_Admin {
 	public function render_model_field(): void {
 		$model         = get_option( 'pressark_model', 'auto' );
 		$custom_model  = get_option( 'pressark_custom_model', '' );
-		$tracker       = new PressArk_Usage_Tracker();
-		$is_pro        = $tracker->is_pro();
 		$tier          = ( new PressArk_License() )->get_tier();
-		$is_team       = in_array( $tier, array( 'team', 'agency', 'enterprise' ), true );
+		$is_pro        = true;
+		$is_team       = true;
 		$is_byok       = PressArk_Entitlements::is_byok();
 		$upgrade_url   = pressark_get_upgrade_url();
 
@@ -1433,7 +1485,7 @@ class PressArk_Admin {
 		<select name="pressark_model" id="pressark-model-select">
 			<option value="auto" <?php selected( $model, 'auto' ); ?>><?php esc_html_e( 'Auto (recommended)', 'pressark' ); ?></option>
 
-			<optgroup label="<?php esc_attr_e( 'Free Tier Models', 'pressark' ); ?>">
+			<optgroup label="<?php esc_attr_e( 'Economy Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'free' !== $info['group'] ) continue; ?>
 					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
@@ -1446,30 +1498,30 @@ class PressArk_Admin {
 				<?php endforeach; ?>
 			</optgroup>
 
-			<optgroup label="<?php esc_attr_e( 'Pro Models (License Required)', 'pressark' ); ?>">
+			<optgroup label="<?php esc_attr_e( 'Value and Standard Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'pro' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_pro ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
 						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
 						__( '%1$s models use about %2$s credits.', 'pressark' ),
 						$info['cost_class'],
 						'Value' === $info['cost_class'] ? '3×' : '8×'
 					) : '' ); ?>">
-						<?php echo esc_html( $info['label'] ); ?><?php echo $is_pro ? '' : ' [Pro]'; ?>
+						<?php echo esc_html( $info['label'] ); ?>
 					</option>
 				<?php endforeach; ?>
 			</optgroup>
 
-			<optgroup label="<?php esc_attr_e( 'Team+ Models', 'pressark' ); ?>">
+			<optgroup label="<?php esc_attr_e( 'Premium Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'team' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_team ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
 						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
 						__( '%1$s models use about %2$s credits.', 'pressark' ),
 						$info['cost_class'],
 						'Premium' === $info['cost_class'] ? '15×' : '8×'
 					) : '' ); ?>">
-						<?php echo esc_html( $info['label'] ); ?><?php echo $is_team ? '' : ' [Team+]'; ?>
+						<?php echo esc_html( $info['label'] ); ?>
 					</option>
 				<?php endforeach; ?>
 			</optgroup>
@@ -1490,16 +1542,16 @@ class PressArk_Admin {
 			style="display: <?php echo 'custom' === $model ? 'block' : 'none'; ?>; margin-top: 8px;" />
 
 		<p class="description" id="pressark-model-description">
-			<?php esc_html_e( 'Auto mode uses DeepSeek V3.2 for free users and Claude Sonnet 4.6 for paid plans. Economy models use about 1× credits, Value about 3×, Standard about 8×, Premium about 15×.', 'pressark' ); ?>
+			<?php esc_html_e( 'Auto mode uses DeepSeek V3.2 for standard requests and Claude Sonnet 4.6 in deep mode. Economy models use about 1× credits, Value about 3×, Standard about 8×, Premium about 15×.', 'pressark' ); ?>
 		</p>
 
 		<?php if ( ! $is_pro ) : ?>
 		<p class="description" style="color: #e94560; margin-top: 4px;">
-			<?php echo pressark_icon( 'lock' ); ?> <?php
+			<?php echo wp_kses( pressark_icon( 'lock' ), pressark_icon_allowed_html() ); ?> <?php
 			echo wp_kses(
 				sprintf(
 					/* translators: %s: Freemius upgrade URL. */
-					__( 'Paid models require an active plan. <a href="%s">Upgrade in Freemius</a>', 'pressark' ),
+					__( 'Higher-cost models consume more credits. <a href="%s">Manage billing</a>', 'pressark' ),
 					esc_url( $upgrade_url )
 				),
 				array( 'a' => array( 'href' => array() ) )
@@ -1517,7 +1569,7 @@ class PressArk_Admin {
 				customInput.style.display = this.value === 'custom' ? 'block' : 'none';
 
 				var descriptions = {
-					'auto': '<?php echo esc_js( __( 'Auto mode uses DeepSeek V3.2 for free users and Claude Sonnet 4.6 for paid plans. Economy models use about 1× credits, Value about 3×, Standard about 8×, Premium about 15×.', 'pressark' ) ); ?>',
+					'auto': '<?php echo esc_js( __( 'Auto mode uses DeepSeek V3.2 for standard requests and Claude Sonnet 4.6 in deep mode. Economy models use about 1× credits, Value about 3×, Standard about 8×, Premium about 15×.', 'pressark' ) ); ?>',
 					'deepseek/deepseek-v3.2': '<?php echo esc_js( __( 'Fast and affordable Economy model. Great for most tasks at the lowest credit cost.', 'pressark' ) ); ?>',
 					'minimax/minimax-m2.7': '<?php echo esc_js( __( 'Economy model with strong multilingual support. Great for quick tasks at low credit cost.', 'pressark' ) ); ?>',
 					'anthropic/claude-haiku-4.5': '<?php echo esc_js( __( 'Value class model. Fast and capable at about 3× credits.', 'pressark' ) ); ?>',
@@ -1525,9 +1577,9 @@ class PressArk_Admin {
 					'z-ai/glm-5': '<?php echo esc_js( __( 'Value class model. Balanced performance at about 3× credits.', 'pressark' ) ); ?>',
 					'openai/gpt-5.4-mini': '<?php echo esc_js( __( 'Value class model. Compact and efficient at about 3× credits.', 'pressark' ) ); ?>',
 					'anthropic/claude-sonnet-4.6': '<?php echo esc_js( __( 'Standard class model. Excellent writing and analysis at about 8× credits.', 'pressark' ) ); ?>',
-					'anthropic/claude-opus-4.6': '<?php echo esc_js( __( 'Premium class model. Most capable option at about 15× credits. Requires Team+ plan.', 'pressark' ) ); ?>',
-					'openai/gpt-5.3-codex': '<?php echo esc_js( __( 'Standard class model. Optimized for code generation at about 8× credits. Requires Team+ plan.', 'pressark' ) ); ?>',
-					'openai/gpt-5.4': '<?php echo esc_js( __( "Standard class model. OpenAI\'s flagship at about 8× credits. Requires Team+ plan.", 'pressark' ) ); ?>',
+					'anthropic/claude-opus-4.6': '<?php echo esc_js( __( 'Premium class model. Most capable option at about 15× credits.', 'pressark' ) ); ?>',
+					'openai/gpt-5.3-codex': '<?php echo esc_js( __( 'Standard class model. Optimized for code generation at about 8× credits.', 'pressark' ) ); ?>',
+					'openai/gpt-5.4': '<?php echo esc_js( __( "Standard class model. OpenAI\'s flagship at about 8× credits.", 'pressark' ) ); ?>',
 					'custom': '<?php echo esc_js( __( 'Enter any OpenRouter-compatible model identifier below.', 'pressark' ) ); ?>'
 				};
 
@@ -1542,10 +1594,9 @@ class PressArk_Admin {
 	public function render_summarize_model_field(): void {
 		$model        = get_option( 'pressark_summarize_model', 'auto' );
 		$custom_model = get_option( 'pressark_summarize_custom_model', '' );
-		$tracker      = new PressArk_Usage_Tracker();
-		$is_pro       = $tracker->is_pro();
 		$tier         = ( new PressArk_License() )->get_tier();
-		$is_team      = in_array( $tier, array( 'team', 'agency', 'enterprise' ), true );
+		$is_pro       = true;
+		$is_team      = true;
 		$is_byok      = PressArk_Entitlements::is_byok();
 		$upgrade_url  = pressark_get_upgrade_url();
 		$models       = $this->get_supported_model_options();
@@ -1565,7 +1616,7 @@ class PressArk_Admin {
 		<select name="pressark_summarize_model" id="pressark-summarize-model-select">
 			<option value="auto" <?php selected( $model, 'auto' ); ?>><?php esc_html_e( 'Auto (recommended)', 'pressark' ); ?></option>
 
-			<optgroup label="<?php esc_attr_e( 'Free Tier Models', 'pressark' ); ?>">
+			<optgroup label="<?php esc_attr_e( 'Economy Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'free' !== $info['group'] ) continue; ?>
 					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
@@ -1578,30 +1629,30 @@ class PressArk_Admin {
 				<?php endforeach; ?>
 			</optgroup>
 
-			<optgroup label="<?php esc_attr_e( 'Pro Models (License Required)', 'pressark' ); ?>">
+			<optgroup label="<?php esc_attr_e( 'Value and Standard Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'pro' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_pro ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
 						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
 						__( '%1$s models use about %2$s credits.', 'pressark' ),
 						$info['cost_class'],
 						'Value' === $info['cost_class'] ? '3×' : '8×'
 					) : '' ); ?>">
-						<?php echo esc_html( $info['label'] ); ?><?php echo $is_pro ? '' : ' [Pro]'; ?>
+						<?php echo esc_html( $info['label'] ); ?>
 					</option>
 				<?php endforeach; ?>
 			</optgroup>
 
-			<optgroup label="<?php esc_attr_e( 'Team+ Models', 'pressark' ); ?>">
+			<optgroup label="<?php esc_attr_e( 'Premium Models', 'pressark' ); ?>">
 				<?php foreach ( $models as $value => $info ) : ?>
 					<?php if ( 'team' !== $info['group'] ) continue; ?>
-					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> <?php echo $is_team ? '' : 'disabled'; ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
+					<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $model, $value ); ?> title="<?php echo esc_attr( $info['cost_class'] ? sprintf(
 						/* translators: 1: model cost class label, 2: approximate credit multiplier. */
 						__( '%1$s models use about %2$s credits.', 'pressark' ),
 						$info['cost_class'],
 						'Premium' === $info['cost_class'] ? '15×' : '8×'
 					) : '' ); ?>">
-						<?php echo esc_html( $info['label'] ); ?><?php echo $is_team ? '' : ' [Team+]'; ?>
+						<?php echo esc_html( $info['label'] ); ?>
 					</option>
 				<?php endforeach; ?>
 			</optgroup>
@@ -1630,11 +1681,11 @@ class PressArk_Admin {
 
 		<?php if ( ! $is_pro ) : ?>
 		<p class="description" style="color: #e94560; margin-top: 4px;">
-			<?php echo pressark_icon( 'lock' ); ?> <?php
+			<?php echo wp_kses( pressark_icon( 'lock' ), pressark_icon_allowed_html() ); ?> <?php
 			echo wp_kses(
 				sprintf(
 					/* translators: %s: Freemius upgrade URL. */
-					__( 'Paid models require an active plan. <a href="%s">Upgrade in Freemius</a>', 'pressark' ),
+					__( 'Higher-cost models consume more credits. <a href="%s">Manage billing</a>', 'pressark' ),
 					esc_url( $upgrade_url )
 				),
 				array( 'a' => array( 'href' => array() ) )
@@ -1690,9 +1741,9 @@ class PressArk_Admin {
 			'z-ai/glm-5'                 => __( 'Value class model. Balanced performance at about 3× credits.', 'pressark' ),
 			'openai/gpt-5.4-mini'         => __( 'Value class model. Compact and efficient at about 3× credits.', 'pressark' ),
 			'anthropic/claude-sonnet-4.6' => __( 'Standard class model. Excellent writing and analysis at about 8× credits.', 'pressark' ),
-			'anthropic/claude-opus-4.6'   => __( 'Premium class model. Most capable option at about 15× credits. Requires Team+ plan.', 'pressark' ),
-			'openai/gpt-5.3-codex'        => __( 'Standard class model. Optimized for code generation at about 8× credits. Requires Team+ plan.', 'pressark' ),
-			'openai/gpt-5.4'              => __( "Standard class model. OpenAI's flagship at about 8× credits. Requires Team+ plan.", 'pressark' ),
+			'anthropic/claude-opus-4.6'   => __( 'Premium class model. Most capable option at about 15× credits.', 'pressark' ),
+			'openai/gpt-5.3-codex'        => __( 'Standard class model. Optimized for code generation at about 8× credits.', 'pressark' ),
+			'openai/gpt-5.4'              => __( "Standard class model. OpenAI's flagship at about 8× credits.", 'pressark' ),
 			'custom'                      => __( 'Enter any provider-compatible model identifier below.', 'pressark' ),
 		);
 	}
@@ -1705,20 +1756,20 @@ class PressArk_Admin {
 			$account_url = (string) $fs->get_account_url();
 		}
 
-		echo '<p>' . esc_html__( 'PressArk uses Freemius for billing, subscriptions, trials, and site activations.', 'pressark' ) . '</p>';
+		echo '<p>' . esc_html__( 'PressArk uses Freemius for billing, subscriptions, credit purchases, and site activations.', 'pressark' ) . '</p>';
 		printf(
 			'<p><a class="button button-secondary" href="%s" target="_blank" rel="noopener noreferrer">%s</a></p>',
 			esc_url( $account_url ),
 			esc_html__( 'Open Billing Account', 'pressark' )
 		);
-		echo '<p class="description">' . esc_html__( 'Use your Freemius account to upgrade, manage renewals, and activate PressArk on additional sites within your plan limit.', 'pressark' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Use your Freemius account to manage renewals, credit purchases, and site activations.', 'pressark' ) . '</p>';
 	}
 
 	public function render_credit_store_field(): void {
 		$tier      = ( new PressArk_License() )->get_tier();
 		$plan_info = PressArk_Entitlements::get_plan_info( $tier );
 		$is_byok   = ! empty( $plan_info['is_byok'] );
-		$is_paid   = ! empty( $plan_info['can_buy_credits'] );
+		$can_buy_credits = ! empty( $plan_info['can_buy_credits'] );
 		$bank      = new PressArk_Token_Bank();
 		$credits   = $bank->get_credits();
 		$active    = (array) ( $credits['credits'] ?? array() );
@@ -1733,12 +1784,12 @@ class PressArk_Admin {
 			return;
 		}
 
-		if ( ! $is_paid ) {
+		if ( ! $can_buy_credits ) {
 			printf(
 				'<p>%s <a href="%s">%s</a></p>',
-				esc_html__( 'Credit packs are available on paid plans only.', 'pressark' ),
+				esc_html__( 'Credit packs are temporarily unavailable for this account.', 'pressark' ),
 				esc_url( pressark_get_upgrade_url() ),
-				esc_html__( 'Upgrade to unlock the credit store.', 'pressark' )
+				esc_html__( 'Manage billing', 'pressark' )
 			);
 			echo '</div>';
 			return;
@@ -1775,7 +1826,6 @@ class PressArk_Admin {
 			}
 		}
 		$site_domain = wp_parse_url( home_url(), PHP_URL_HOST ) ?: '';
-		$site_token  = get_option( 'pressark_site_token', '' );
 
 		// Sandbox support for SaaS checkout (Freemius hosted checkout).
 		$sandbox_json = 'null';
@@ -1793,8 +1843,17 @@ class PressArk_Admin {
 				) );
 			}
 		}
+
+		// Register the Freemius Checkout SDK as an enqueued script so WordPress prints it
+		// (in the admin footer) rather than embedding a literal <script src> tag here.
+		wp_enqueue_script(
+			'pressark-freemius-checkout',
+			'https://checkout.freemius.com/js/v1/',
+			array(),
+			'v1',
+			true
+		);
 		?>
-		<script src="https://checkout.freemius.com/js/v1/"></script>
 		<script>
 		(function() {
 			var sandboxParams = <?php echo $sandbox_json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
@@ -1819,34 +1878,53 @@ class PressArk_Admin {
 
 					var handler = new FS.Checkout(checkoutConfig);
 
-					handler.open({
-						name:         <?php echo wp_json_encode( $current_user->display_name ); ?>,
-						email:        <?php echo wp_json_encode( $current_user->user_email ); ?>,
-						pricing_id:   pricingId,
-						billing_cycle: 'lifetime',
-						licenses:     1,
-						title:        'Buy Credits',
-						metadata: {
+					var openCheckout = function(checkoutIntent) {
+						var metadata = {
 							pressark_install_id: <?php echo wp_json_encode( $install_id ); ?>,
-							pressark_site_domain: <?php echo wp_json_encode( $site_domain ); ?>,
-							pressark_site_token: <?php echo wp_json_encode( $site_token ); ?>
-						},
-						purchaseCompleted: function(response) {
-							if (!response || !response.payment) return;
-							jQuery.post(window.ajaxurl || '/wp-admin/admin-ajax.php', {
-								action:       'pressark_confirm_credit_purchase',
-								_ajax_nonce:  <?php echo wp_json_encode( $nonce ); ?>,
-								payment_id:   String(response.payment.id || ''),
-								pricing_id:   pricingId,
-								gross:        String(response.payment.gross || 0),
-								plan_name:    packType,
-								product_name: 'pressark-credits',
-								install_id:   <?php echo wp_json_encode( $install_id ); ?>,
-								site_domain:  <?php echo wp_json_encode( $site_domain ); ?>,
-								site_token:   <?php echo wp_json_encode( $site_token ); ?>
-							}).done(function() { location.reload(); });
-						},
-						success: function() { location.reload(); }
+							pressark_site_domain: <?php echo wp_json_encode( $site_domain ); ?>
+						};
+						if (checkoutIntent) {
+							metadata.pressark_checkout_intent = checkoutIntent;
+						}
+
+						handler.open({
+							name:         <?php echo wp_json_encode( $current_user->display_name ); ?>,
+							email:        <?php echo wp_json_encode( $current_user->user_email ); ?>,
+							pricing_id:   pricingId,
+							billing_cycle: 'lifetime',
+							licenses:     1,
+							title:        'Buy Credits',
+							metadata:     metadata,
+							purchaseCompleted: function(response) {
+								if (!response || !response.payment) return;
+								jQuery.post(window.ajaxurl || '/wp-admin/admin-ajax.php', {
+									action:       'pressark_confirm_credit_purchase',
+									_ajax_nonce:  <?php echo wp_json_encode( $nonce ); ?>,
+									payment_id:   String(response.payment.id || ''),
+									pricing_id:   pricingId,
+									gross:        String(response.payment.gross || 0),
+									plan_name:    packType,
+									product_name: 'pressark-credits',
+									checkout_intent: checkoutIntent || ''
+								}).done(function() { location.reload(); });
+							},
+							success: function() { location.reload(); }
+						});
+					};
+
+					jQuery.post(window.ajaxurl || '/wp-admin/admin-ajax.php', {
+						action:      'pressark_prepare_credit_checkout',
+						_ajax_nonce: <?php echo wp_json_encode( $nonce ); ?>,
+						pack_type:   packType,
+						pricing_id:  pricingId
+					}).done(function(response) {
+						var checkoutIntent = '';
+						if (response && response.success && response.data && response.data.checkout_intent) {
+							checkoutIntent = String(response.data.checkout_intent);
+						}
+						openCheckout(checkoutIntent);
+					}).fail(function() {
+						openCheckout('');
 					});
 				});
 			});
@@ -1938,9 +2016,7 @@ class PressArk_Admin {
 
 	public function render_byok_section(): void {
 		echo '<p>' . esc_html__( 'Use your own API key to bypass bundled credit usage. You pay your API provider directly. AI requests are sent directly to your chosen provider; no bundled usage is metered by PressArk.', 'pressark' ) . '</p>';
-		if ( 'free' === ( new PressArk_License() )->get_tier() ) {
-			echo '<p class="description">' . esc_html__( 'Using your own API key? Great! You will still need to upgrade for unlimited edits, automations, and multi-site support.', 'pressark' ) . '</p>';
-		}
+		echo '<p class="description">' . esc_html__( 'BYOK mode does not change local plugin access; it simply routes AI usage to your provider instead of bundled PressArk credits.', 'pressark' ) . '</p>';
 	}
 
 	public function render_byok_toggle_field(): void {
@@ -2383,10 +2459,10 @@ class PressArk_Admin {
 			<?php endif; ?>
 			<?php if ( $monthly_exhausted && $credits_left > 0 ) : ?>
 				<p style="margin:10px 0 0;color:#2563eb;"><?php esc_html_e( 'Your billing-cycle credits are exhausted. PressArk is now using your purchased credits.', 'pressark' ); ?></p>
-			<?php elseif ( $at_limit && PressArk_Entitlements::is_paid_tier( ( new PressArk_License() )->get_tier() ) ) : ?>
+			<?php elseif ( $at_limit && ! empty( $plan_info['can_buy_credits'] ) ) : ?>
 				<p style="margin:10px 0 0;"><a href="<?php echo esc_url( $store_anchor ); ?>" style="color:#2563EB;text-decoration:none;font-weight:600;"><?php esc_html_e( 'Buy more credits', 'pressark' ); ?></a></p>
 			<?php elseif ( $at_limit ) : ?>
-				<p style="margin:10px 0 0;"><a href="<?php echo esc_url( $upgrade_url ); ?>" style="color:#2563EB;text-decoration:none;font-weight:600;"><?php esc_html_e( 'Upgrade to unlock more billing-cycle credits', 'pressark' ); ?></a></p>
+				<p style="margin:10px 0 0;"><a href="<?php echo esc_url( $upgrade_url ); ?>" style="color:#2563EB;text-decoration:none;font-weight:600;"><?php esc_html_e( 'Manage billing', 'pressark' ); ?></a></p>
 			<?php endif; ?>
 			<details style="margin-top:14px;">
 				<summary style="cursor:pointer;color:#64748b;"><?php esc_html_e( 'Advanced', 'pressark' ); ?></summary>
@@ -2419,87 +2495,19 @@ class PressArk_Admin {
 		?>
 		<div style="background:#fff;border:1px solid rgba(226,232,240,0.8);border-radius:12px;padding:32px;margin:20px 0;box-shadow:0 4px 12px rgba(0,0,0,0.02);">
 			<h2 style="margin-top:0; color:#0f172a;">
-				<?php esc_html_e( 'Plan Capabilities', 'pressark' ); ?>
+				<?php esc_html_e( 'Credits and Local Access', 'pressark' ); ?>
 				<span style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:12px;padding:4px 10px;border-radius:12px;margin-left:12px;font-weight:600;vertical-align:middle;">
 					<?php echo esc_html( $plan_info['tier_label'] ); ?>
 				</span>
 			</h2>
-			<?php if ( 'free' === $tier ) :
-				$total_used      = $plan_info['group_usage']['total_used'] ?? 0;
-				$total_limit     = $plan_info['group_usage']['total_limit'] ?? 6;
-				$total_remaining = $plan_info['group_usage']['total_remaining'] ?? $total_limit;
-				$exhausted       = $total_used >= $total_limit;
-				$per_group       = $plan_info['group_usage']['per_group'] ?? array();
-			?>
-				<p style="color:#64748b;margin-bottom:24px;font-size:14px;max-width:600px;line-height:1.6;">
-					<?php
-					printf(
-						/* translators: %d: weekly tool action limit */
-						esc_html__( 'Free plan: read tools are unlimited. You get %d tool actions per week across all tools. Resets every Monday.', 'pressark' ),
-						intval( $total_limit )
-					);
-					?>
-				</p>
-				<div style="max-width:600px;margin-bottom:20px;">
-					<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
-						<span style="font-size:14px;font-weight:600;color:<?php echo esc_attr( $exhausted ? '#ef4444' : '#0f172a' ); ?>;">
-							<?php
-							printf(
-								/* translators: 1: used count 2: weekly limit */
-								esc_html__( '%1$d / %2$d actions used this week', 'pressark' ),
-								intval( $total_used ),
-								intval( $total_limit )
-							);
-							?>
-						</span>
-						<span style="font-size:13px;color:#94a3b8;">
-							<?php
-							printf(
-								/* translators: %d: remaining actions */
-								esc_html__( '%d remaining', 'pressark' ),
-								intval( $total_remaining )
-							);
-							?>
-						</span>
-					</div>
-					<div style="background:#e2e8f0;border-radius:6px;height:8px;overflow:hidden;">
-						<div style="background:<?php echo esc_attr( $exhausted ? '#ef4444' : '#3b82f6' ); ?>;height:100%;border-radius:6px;width:<?php echo esc_attr( (string) ( $total_limit > 0 ? min( 100, round( $total_used / $total_limit * 100 ) ) : 0 ) ); ?>%;"></div>
-					</div>
-				</div>
-				<?php if ( ! empty( $per_group ) ) : ?>
-				<details style="margin-top:12px;">
-					<summary style="cursor:pointer;color:#64748b;font-size:13px;"><?php esc_html_e( 'Usage breakdown by group', 'pressark' ); ?></summary>
-					<table style="max-width:600px; width:100%; border-collapse:collapse; margin-top:8px;">
-						<thead>
-							<tr>
-								<th style="text-align:left; padding:8px 0; border-bottom:2px solid #e2e8f0; color:#64748b; font-weight:500; font-size:13px;"><?php esc_html_e( 'Tool Group', 'pressark' ); ?></th>
-								<th style="text-align:center; padding:8px 0; border-bottom:2px solid #e2e8f0; color:#64748b; font-weight:500; font-size:13px;"><?php esc_html_e( 'Used', 'pressark' ); ?></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php foreach ( $per_group as $group => $count ) :
-								if ( $count <= 0 ) continue;
-								$label = ucwords( str_replace( '_', ' ', $group ) );
-							?>
-							<tr style="color:#0f172a;">
-								<td style="padding:10px 0; border-bottom:1px solid #f1f5f9; font-size:13px;"><?php echo esc_html( $label ); ?></td>
-								<td style="text-align:center; padding:10px 0; border-bottom:1px solid #f1f5f9; font-weight:600; font-size:13px;"><?php echo intval( $count ); ?></td>
-							</tr>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
-				</details>
-				<?php endif; ?>
-				<p style="margin-top:24px;">
-					<a href="<?php echo esc_url( $plan_info['upgrade_url'] ); ?>" class="button button-primary">
-						<?php esc_html_e( 'Upgrade to Pro for Unlimited Access', 'pressark' ); ?>
-					</a>
-				</p>
-			<?php else : ?>
-				<p style="color:#10b981;font-weight:600;margin-top:16px;">
-					<?php esc_html_e( 'All tools unlimited — no per-group limits on your plan.', 'pressark' ); ?>
-				</p>
-			<?php endif; ?>
+			<p style="color:#10b981;font-weight:600;margin-top:16px;">
+				<?php esc_html_e( 'Local plugin tools are available without per-group local limits. Bundled AI usage is governed by your service-credit balance.', 'pressark' ); ?>
+			</p>
+			<p style="margin-top:24px;">
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=pressark#pressark-credit-store' ) ); ?>" class="button button-primary">
+					<?php esc_html_e( 'Manage Credits', 'pressark' ); ?>
+				</a>
+			</p>
 		</div>
 		<?php
 	}

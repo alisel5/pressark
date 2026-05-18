@@ -52,14 +52,6 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 		$user_id = get_current_user_id();
 		$tier    = ( new PressArk_License() )->get_tier();
 
-		// Entitlement check.
-		if ( ! PressArk_Entitlements::can_use_feature( $tier, 'automations' ) ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Scheduled automations require a Pro or higher plan.', 'pressark' ),
-			);
-		}
-
 		// Active automation limit.
 		$store = new PressArk_Automation_Store();
 		$max_automations = PressArk_Entitlements::tier_value( $tier, 'max_automations' ) ?? 3;
@@ -69,8 +61,8 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 			return array(
 				'success' => false,
 				'message' => sprintf(
-					/* translators: 1: current number of active automations, 2: plan limit */
-					__( 'You have %1$d active automations (limit: %2$d for your plan). Pause or delete an existing one.', 'pressark' ),
+					/* translators: 1: current number of active automations, 2: local limit */
+					__( 'You have %1$d active automations (local limit: %2$d). Pause or delete an existing one.', 'pressark' ),
 					$current_count,
 					$max_automations
 				),
@@ -84,7 +76,7 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 			return array( 'success' => false, 'message' => __( 'Invalid cadence type.', 'pressark' ) );
 		}
 
-		// Enforce minimum automation interval for the tier.
+		// Enforce any configured minimum automation interval.
 		$min_interval    = PressArk_Entitlements::tier_value( $tier, 'min_automation_interval' ) ?? 0;
 		$cadence_seconds = PressArk_Automation_Recurrence::cadence_seconds( $cadence_type, $cadence_value );
 		if ( $min_interval > 0 && $cadence_seconds < $min_interval ) {
@@ -92,7 +84,7 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 				'success' => false,
 				'message' => sprintf(
 					/* translators: %s: minimum required time interval between automation runs */
-					__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
+					__( 'This site requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 					human_time_diff( 0, $min_interval )
 				),
 			);
@@ -164,7 +156,7 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 			$cv = $update['cadence_value'] ?? $automation['cadence_value'];
 			$tz = $update['timezone'] ?? $automation['timezone'];
 
-			// Enforce minimum automation interval for the tier.
+			// Enforce any configured minimum automation interval.
 			$tier            = ( new PressArk_License() )->get_tier();
 			$min_interval    = PressArk_Entitlements::tier_value( $tier, 'min_automation_interval' ) ?? 0;
 			$cadence_seconds = PressArk_Automation_Recurrence::cadence_seconds( $ct, $cv );
@@ -173,7 +165,7 @@ class PressArk_Handler_Automation extends PressArk_Handler_Base {
 					'success' => false,
 					'message' => sprintf(
 						/* translators: %s: minimum required time interval between automation runs */
-						__( 'Your plan requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
+						__( 'This site requires at least %s between automation runs. Choose a longer interval.', 'pressark' ),
 						human_time_diff( 0, $min_interval )
 					),
 				);

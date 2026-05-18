@@ -65,7 +65,7 @@ class PressArk_Privacy {
 
 		$content .= '<p>' . __( 'Chat messages, screen context, and content excerpts are sent to the configured AI provider (OpenRouter, OpenAI, Anthropic, DeepSeek, or Google Gemini) to generate responses.', 'pressark' ) . '</p>';
 
-		$content .= '<p>' . __( 'In bundled billing mode, Freemius handles billing, subscriptions, trials, and site activations. The PressArk token-bank service receives your site domain, a numeric user identifier, plan tier, and credit-usage totals to enforce plan limits and purchased credit balances.', 'pressark' ) . '</p>';
+		$content .= '<p>' . __( 'In bundled billing mode, Freemius handles billing, subscriptions, credit purchases, and site activations. The PressArk token-bank service receives your site domain, a numeric user identifier, plan tier, and credit-usage totals to enforce included and purchased credit balances.', 'pressark' ) . '</p>';
 
 		$content .= '<p>' . __( 'In BYOK (Bring Your Own Key) mode, AI requests are sent directly to your chosen provider. No bundled credits are consumed and no data is sent to PressArk services for AI billing.', 'pressark' ) . '</p>';
 

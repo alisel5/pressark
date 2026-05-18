@@ -144,6 +144,8 @@ class PressArk_Plan_Mode {
 				'If you need more context, keep exploring with read tools only.',
 				'Do not output the checklist until you have first used the relevant read-only tools and incorporated those read results into the plan.',
 				'When you are ready, output a numbered checklist plan and stop so the user can explicitly approve execution.',
+				'When you submit the plan, call the `update_plan` tool with EXACTLY this shape: { "steps": [ { "content": "<imperative step text>", "activeForm": "<present-progress rendering>", "status": "pending" | "in_progress" | "completed" } ] }.',
+				'Use the field name "steps" (not "tasks", "todos", "items"). Use "content" (not "title" or "description"). Keep exactly one step with status "in_progress" at a time. Submit the full ordered list on the first call.',
 			)
 		);
 	}

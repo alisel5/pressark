@@ -92,7 +92,7 @@ class PressArk_Context_Collector {
 			return array();
 		}
 
-		error_log( "PressArk: Using volatile context – {$reason}" );
+		$this->debug_log( "PressArk: Using volatile context – {$reason}" );
 
 		// Only allow specific volatile data with justification.
 		return array(
@@ -226,6 +226,7 @@ class PressArk_Context_Collector {
 		if ( ( defined( 'PRESSARK_DEBUG' ) && PRESSARK_DEBUG )
 			|| ( defined( 'WP_DEBUG' ) && WP_DEBUG && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG )
 		) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- This is the gated debug logger; the surrounding `if` already requires WP_DEBUG/WP_DEBUG_LOG or PRESSARK_DEBUG.
 			error_log( $message );
 		}
 	}

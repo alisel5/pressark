@@ -7,7 +7,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Database-backed chat history: CRUD for conversations.
  * Table: {prefix}pressark_chats
+ *
+ * SQL safety note: every prepare() call uses literal SQL with %s/%d placeholders;
+ * the only interpolated token is {$table} from $this->table() (a wpdb-prefixed
+ * literal). User data is bound exclusively through prepare() args.
  */
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 class PressArk_Chat_History {
 
 	/**
@@ -190,6 +195,28 @@ class PressArk_Chat_History {
 				continue;
 			}
 
+			// v5.6.5 (2026-05-12): Drop client-synthesized [Continue]/[Confirmed]
+			// user messages before persisting to chat history. These are control-
+			// plane markers built by buildContinuationMessage() to trigger wrap
+			// rounds after preview-keep / confirm-apply. They bake a ledger
+			// snapshot captured at a specific moment into their body
+			// ("Completed: …; Remaining: …"). Persisting them poisons every
+			// future round on this chat with frozen, point-in-time state that
+			// no longer matches the live ledger. The LLM still sees the live
+			// [Continue] body for the wrap round it was generated for — that
+			// flows through the request payload's `message` field, not via
+			// stored history. Strip at persistence boundary so subsequent
+			// resumes (and history-render) only see real user turns.
+			// Companion to iter-13 Bug 1/Bug 2 fixes which addressed the
+			// stale-content sources; this iter closes the persistence layer
+			// so multi-step chains can't bleed stale state across rounds.
+			if ( 'user' === $role ) {
+				$trimmed = ltrim( $content );
+				if ( 1 === preg_match( '/^\[(?:Continue|Confirmed)\]/i', $trimmed ) ) {
+					continue;
+				}
+			}
+
 			$clean[] = array(
 				'role'    => $role,
 				'content' => sanitize_text_field( $content ),
@@ -206,7 +233,16 @@ class PressArk_Chat_History {
 	 * @return string
 	 */
 	public static function generate_title( string $message ): string {
-		$title = wp_strip_all_tags( $message );
+		// v5.6.5 (2026-05-12): Strip [Continue]/[Confirmed] control-plane prefix
+		// (and the trailing harness boilerplate) before generating the title.
+		// When the chat is created during a plan-execute round, $message is the
+		// raw `[Continue] <original prompt>` string, which would otherwise
+		// surface as the chat title. Users see "[Continue] Create a short..."
+		// in the history sidebar instead of the actual request.
+		$normalized = preg_replace( '/^\s*\[(?:Continue|Confirmed)\]\s*/i', '', $message );
+		$normalized = preg_replace( '/\s*Do not repeat completed steps or recreate completed content\.?/i', '', (string) $normalized );
+		$normalized = preg_replace( '/\s*Please continue with the remaining steps from my original request\.?\s*$/i', '', (string) $normalized );
+		$title = wp_strip_all_tags( (string) $normalized );
 		$title = preg_replace( '/\s+/', ' ', $title );
 		$title = trim( $title );
 
@@ -217,3 +253,4 @@ class PressArk_Chat_History {
 		return $title ?: __( 'New Chat', 'pressark' );
 	}
 }
+// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching

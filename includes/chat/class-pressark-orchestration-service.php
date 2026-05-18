@@ -1152,11 +1152,92 @@ class PressArk_Orchestration_Service {
 	}
 
 	private function should_clear_plan_state_after_execution( PressArk_Checkpoint $checkpoint ): bool {
+		if ( class_exists( 'PressArk_Continuation_Service' ) ) {
+			$execution = method_exists( $checkpoint, 'get_execution' )
+				? (array) $checkpoint->get_execution()
+				: array();
+			$decision  = PressArk_Continuation_Service::evaluate( $checkpoint, $execution );
+			return ! empty( $decision['should_clear_plan'] );
+		}
+
 		if ( ! class_exists( 'PressArk_Execution_Ledger' ) ) {
 			return true;
 		}
 
-		return ! PressArk_Execution_Ledger::has_remaining_tasks( $checkpoint->get_execution() );
+		// Don't clear if the ledger still has remaining tasks.
+		if ( PressArk_Execution_Ledger::has_remaining_tasks( $checkpoint->get_execution() ) ) {
+			return false;
+		}
+
+		// v5.6.6 (2026-05-12): Also don't clear if the model's plan_artifact has
+		// unfinished steps. The ledger may be empty of remaining tasks while the
+		// plan still has steps the model hasn't emitted tool_calls for yet —
+		// e.g., a 2-page request where round-1 emitted update_plan + create_post
+		// for page A, leaving page B as a `pending` step in the plan but with
+		// no corresponding dynamic ledger task. iter-13's `update_plan` tracker
+		// skip exposed this gap (the orphan `dynamic_update_plan_N` had been
+		// silently keeping plan_state alive). The model's plan is the
+		// authoritative truth — honor it.
+		$artifact = method_exists( $checkpoint, 'get_plan_artifact' )
+			? (array) $checkpoint->get_plan_artifact()
+			: array();
+		$steps = is_array( $artifact['steps'] ?? null ) ? $artifact['steps'] : array();
+		foreach ( $steps as $step ) {
+			$status = sanitize_key( (string) ( $step['status'] ?? 'pending' ) );
+			if ( ! in_array( $status, array( 'completed', 'verified', 'skipped' ), true ) ) {
+				return false;
+			}
+		}
+
+		// v5.7.6 (2026-05-12): Also check plan_steps (model-emitted update_plan
+		// storage when no Plan Mode pre-seeded an artifact). Mirrors the
+		// attach_continuation_context dual-source check — without this site,
+		// clear_plan_state would wipe plan_steps after step N's Keep even when
+		// step N+1 is still pending in the model's own emitted plan.
+		if ( method_exists( $checkpoint, 'get_plan_steps' ) ) {
+			$plan_steps = (array) $checkpoint->get_plan_steps();
+			foreach ( $plan_steps as $step ) {
+				if ( ! is_array( $step ) ) {
+					continue;
+				}
+				$status = sanitize_key( (string) ( $step['status'] ?? 'pending' ) );
+				if ( ! in_array( $status, array( 'completed', 'verified', 'skipped' ), true ) ) {
+					$this->log_continuation_evaluator_decision( $checkpoint, 'should_clear_plan_state_after_execution', false );
+					return false;
+				}
+			}
+		}
+
+		$this->log_continuation_evaluator_decision( $checkpoint, 'should_clear_plan_state_after_execution', true );
+		return true;
+	}
+
+	/**
+	 * v5.7.13 (2026-05-13): Phase 3a forensic — log when the evaluator's
+	 * should_clear_plan decision diverges from the legacy decision. Cheap
+	 * (one error_log line on divergence only). Removed in Phase 3b once
+	 * call sites consume evaluator-as-truth.
+	 */
+	private function log_continuation_evaluator_decision( PressArk_Checkpoint $checkpoint, string $site, bool $legacy_should_clear ): void {
+		if ( ! class_exists( 'PressArk_Continuation_Service' ) ) {
+			return;
+		}
+		$execution = method_exists( $checkpoint, 'get_execution' ) ? (array) $checkpoint->get_execution() : array();
+		$decision  = PressArk_Continuation_Service::evaluate( $checkpoint, $execution );
+		if ( $decision['should_clear_plan'] !== $legacy_should_clear ) {
+			if ( class_exists( 'PressArk_Error_Tracker' ) ) {
+				PressArk_Error_Tracker::warning(
+					'Continuation',
+					'Continuation evaluator divergence',
+					array(
+						'site'                   => $site,
+						'legacy_should_clear'    => $legacy_should_clear,
+						'evaluator_should_clear' => (bool) $decision['should_clear_plan'],
+						'reason_code'            => (string) $decision['reason_code'],
+					)
+				);
+			}
+		}
 	}
 
 	private function maybe_complete_plan_execution( array $run, PressArk_Checkpoint $checkpoint ): void {
@@ -1389,6 +1470,7 @@ class PressArk_Orchestration_Service {
 				fastcgi_finish_request();
 			}
 			ignore_user_abort( true );
+			// phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Intentional: this code runs in a post-response shutdown handler (fastcgi_finish_request above closes the client connection); extending the time limit is required to drain stuck Action Scheduler tasks without aborting mid-process.
 			set_time_limit( 300 );
 
 			// Kick AS runner to process stuck pressark actions.
@@ -1415,6 +1497,7 @@ class PressArk_Orchestration_Service {
 			return false;
 		}
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- $table is the wpdb-prefixed literal 'actionscheduler_actions'; user data bound via %s placeholders. Real-time queue-health probe; caching would defeat its purpose.
 		global $wpdb;
 		$table = $wpdb->prefix . 'actionscheduler_actions';
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
@@ -1429,6 +1512,7 @@ class PressArk_Orchestration_Service {
 			'pressark%',
 			'pending'
 		) ) > 0;
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -1543,13 +1627,12 @@ class PressArk_Orchestration_Service {
 	 * @return WP_REST_Response|null Null = allowed, response = blocked.
 	 */
 	private function quick_write_check( string $tier, string $message, PressArk_Usage_Tracker $tracker ): ?WP_REST_Response {
-		// Paid tiers and users with remaining writes always pass.
+		// Local write access is open; this remains as a defensive compatibility path.
 		if ( PressArk_Entitlements::can_write( $tier ) ) {
 			return null;
 		}
 
-		// Free tier with exhausted writes: block obvious write-intent messages
-		// to save token budget. Reads still pass through.
+		// Legacy fallback if a downstream filter disables writes.
 		$write_patterns = '/\b(edit|update|change|modify|delete|fix|create|add|remove|publish|replace|rewrite|apply|set|enable|disable|install|activate|deactivate|send|moderate|assign|switch|toggle|cleanup|optimize|rebuild|clear)\b/i';
 
 		if ( preg_match( $write_patterns, $message ) ) {
@@ -1559,10 +1642,9 @@ class PressArk_Orchestration_Service {
 				'behavior'    => 'ask',
 				'reason'      => $limit_msg,
 				'message'     => $limit_msg,
-				'ui_action'   => 'upgrade_modal',
+				'ui_action'   => 'none',
 				'error'       => 'entitlement_denied',
-				'basis'       => 'group_limit_exhausted',
-				'upgrade_url' => pressark_get_upgrade_url(),
+				'basis'       => 'local_write_unavailable',
 			);
 
 			return new WP_REST_Response(
@@ -1593,7 +1675,7 @@ class PressArk_Orchestration_Service {
 				$log_path,
 				sprintf(
 					"[%s] INVOKE handle_chat route=%s referer=%s msg=%.60s\n",
-					date( 'H:i:s' ),
+					gmdate( 'H:i:s' ),
 					(string) $request->get_route(),
 					(string) ( $request->get_header( 'referer' ) ?: '' ),
 					preg_replace( '/\s+/', ' ', (string) $request->get_param( 'message' ) )
@@ -1651,7 +1733,7 @@ class PressArk_Orchestration_Service {
 			$log_path,
 			sprintf(
 				"[%s] INVOKE %s route=%s run_id=%s referer=%s\n",
-				date( 'H:i:s' ),
+				gmdate( 'H:i:s' ),
 				$tag,
 				(string) $request->get_route(),
 				(string) $request->get_param( 'run_id' ),
@@ -1914,7 +1996,7 @@ class PressArk_Orchestration_Service {
 
 		$this->chat_lock_name = $lock_key;
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- MySQL advisory lock acquisition; side-effecting operation that cannot be cached.
 		$acquired = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 2)', $lock_key ) );
 
 		return (int) $acquired === 1;
@@ -1929,7 +2011,7 @@ class PressArk_Orchestration_Service {
 		}
 
 		global $wpdb;
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- MySQL advisory lock release; side-effecting operation that cannot be cached.
 		$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $this->chat_lock_name ) );
 		$this->chat_lock_name = '';
 	}
@@ -2109,6 +2191,9 @@ class PressArk_Orchestration_Service {
 		}
 
 		$post_id           = $this->resolve_effective_post_id( $execution_message, $post_id, $checkpoint_data );
+		// v5.8.13 (2026-05-14): mirror compiler scoping for streaming preflight.
+		$loaded_groups     = $this->request_compiler->scope_loaded_groups_for_contextual_followup( $execution_message, $checkpoint_data, $loaded_groups, $post_id );
+		$loaded_groups     = $this->request_compiler->load_groups_for_numbered_read_followup( $execution_message, $checkpoint_data, $loaded_groups, $post_id );
 		$continuation_mode = $this->resolve_continuation_mode( $execution_message, $checkpoint_data, $plan_execute );
 
 		// ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ [1b] Chat-level mutex ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
@@ -2786,9 +2871,32 @@ class PressArk_Orchestration_Service {
 
 			// Determine run outcome ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cancelled beats settled.
 			$user_cancelled = ! empty( $result['cancelled'] );
+			// v5.8.12 (2026-05-16): broaden the connection_aborted exemption to
+			// cover post-Keep wrap rounds. Symptom: panel shows the yellow
+			// "PressArk lost the stream" warning at the end of a successful
+			// Plan Mode chain — both pages 162/163 had landed in wp_posts, but
+			// the wrap round's terminal `done` event was suppressed and the JS
+			// finalizeStream() handler interpreted the clean byte-stream EOF as
+			// a dropped connection. Root cause: under wp-now / php-wasm,
+			// `connection_aborted()` can mis-report after `PHP.rotateRuntime`
+			// hot-swaps the underlying WASM instance during a long SSE request
+			// (recurring `ENOENT` from rotateRuntime in playground-server.err.log
+			// confirms the runtime cycles mid-stream). plan_ready was already
+			// exempt; the wrap round emits `final_response` and was not. Post-
+			// Keep wrap rounds (1) carry only the model's summary text, not new
+			// tool work, (2) follow a `[Continue]` envelope from the panel-side
+			// auto-resume at pressark-chat.js:2421, and (3) the actual writes
+			// landed in earlier rounds via /confirm-stream — losing the wrap
+			// `done` to a false-positive disconnect detector trades a real
+			// "stream lost" warning for nothing. The cancel_check inside the
+			// agent loop already kills long-running rounds early if the panel
+			// is genuinely gone, so this exemption only affects the final emit.
+			$is_post_keep_wrap = is_string( $ctx['message'] ?? null )
+				&& preg_match( '/^\s*\[Continue\]/', (string) $ctx['message'] ) === 1;
 			$client_aborted = ! $user_cancelled
 				&& connection_aborted()
-				&& 'plan_ready' !== $result_type;
+				&& 'plan_ready' !== $result_type
+				&& ! $is_post_keep_wrap;
 			$cancelled      = $user_cancelled || $client_aborted;
 
 			if ( $user_cancelled ) {
@@ -2816,6 +2924,17 @@ class PressArk_Orchestration_Service {
 						)
 					)
 				);
+			} elseif ( ! empty( $result['is_error'] ) ) {
+				if ( $is_plan_run ) {
+					PressArk_Plan_Mode::abort( (string) $ctx['run_id'] );
+				}
+				$failure_message = sanitize_text_field(
+					(string) ( $result['message'] ?? $result['reply'] ?? __( 'The assistant response failed before completion.', 'pressark' ) )
+				);
+				if ( '' === $failure_message ) {
+					$failure_message = __( 'The assistant response failed before completion.', 'pressark' );
+				}
+				$run_store->fail( $ctx['run_id'], $failure_message, $result );
 			} elseif ( ! in_array( $result_type, array( 'preview', 'confirm_card' ), true ) ) {
 				$run_store->settle( $ctx['run_id'], $result );
 			}
@@ -3041,6 +3160,17 @@ class PressArk_Orchestration_Service {
 				}
 				$run_store->mark_cancelled( $run_id );
 				$run_store->persist_detail_snapshot( $run_id, null, $result );
+			} elseif ( ! empty( $result['is_error'] ) ) {
+				if ( $is_plan_run ) {
+					PressArk_Plan_Mode::abort( $run_id );
+				}
+				$failure_message = sanitize_text_field(
+					(string) ( $result['message'] ?? $result['reply'] ?? __( 'The assistant response failed before completion.', 'pressark' ) )
+				);
+				if ( '' === $failure_message ) {
+					$failure_message = __( 'The assistant response failed before completion.', 'pressark' );
+				}
+				$run_store->fail( $run_id, $failure_message, $result );
 			} elseif ( ! in_array( $result_type, array( 'preview', 'confirm_card' ), true ) ) {
 				$run_store->settle( $run_id, $result );
 			}
@@ -3467,7 +3597,7 @@ class PressArk_Orchestration_Service {
 				array(
 					'success'        => false,
 					'message'        => PressArk_Entitlements::limit_message( 'write_limit', $tier ),
-					'upgrade_prompt' => true,
+					'upgrade_prompt' => false,
 					'plan_info'      => PressArk_Entitlements::get_plan_info( $tier ),
 				),
 				403
@@ -3716,7 +3846,7 @@ class PressArk_Orchestration_Service {
 				return rest_ensure_response( array(
 					'success'        => false,
 					'message'        => PressArk_Entitlements::limit_message( 'write_limit', $tier ),
-					'upgrade_prompt' => true,
+					'upgrade_prompt' => false,
 					'plan_info'      => PressArk_Entitlements::get_plan_info( $tier ),
 				) );
 			}
@@ -4793,10 +4923,10 @@ class PressArk_Orchestration_Service {
 			$checkpoint = PressArk_Checkpoint::from_array( array() );
 		}
 
-		$checkpoint->sync_execution_goal( (string) ( $run['message'] ?? '' ) );
 		if ( ! empty( $run['workflow_state'] ) && is_array( $run['workflow_state'] ) ) {
 			$checkpoint->absorb_run_snapshot( $run['workflow_state'] );
 		}
+		$checkpoint->sync_execution_goal( (string) ( $run['message'] ?? '' ) );
 		return $checkpoint;
 	}
 
@@ -4857,10 +4987,61 @@ class PressArk_Orchestration_Service {
 			$blockers  = $checkpoint->get_blockers();
 			$replay    = $checkpoint->get_replay_sidecar();
 
+			// v5.6.6 (2026-05-12): Auto-resume also fires when the model's plan
+			// artifact has unfinished steps, even if the ledger is currently
+			// task-empty. Multi-step plans (e.g., "create page A then page B")
+			// have one create_post tool_call per round, so the ledger only
+			// reflects the step currently being executed — the remaining steps
+			// live in plan_artifact. Without this check, two-step chains break
+			// after the first preview-keep: ledger says done, auto-resume
+			// returns false, and step 2 never runs. The model's plan is the
+			// authoritative source of "are we done with the user's request?".
+			//
+			// v5.7.6 (2026-05-12): ALSO check `plan_steps` — the storage location
+			// for model-emitted update_plan steps when no Plan Mode pre-seeded a
+			// structured artifact. Observed on "Create About + Shipping Policy
+			// pages, add both to main menu" chain: model emitted update_plan with
+			// 5 steps via the executor path (Soft Plan). Those steps populated
+			// `plan_steps` (sanitize_plan_steps), NOT `plan_artifact.steps` (which
+			// only carries Plan-Mode-seeded structured steps + dynamically-inserted
+			// ones from actual tool_calls). After step 3 Keep, plan_artifact had
+			// only one auto-generated `dynamic_create_post_2` step (completed) →
+			// has_remaining_plan_steps=false → no auto-resume → steps 4-5 silently
+			// skipped. plan_steps had the canonical pending list; reading from
+			// both sources closes the gap. The artifact remains primary; plan_steps
+			// is the fallback when no artifact exists or its steps are exhausted
+			// but the model's plan is not.
+			$has_remaining_plan_steps = false;
+			if ( method_exists( $checkpoint, 'get_plan_artifact' ) ) {
+				$artifact = (array) $checkpoint->get_plan_artifact();
+				$steps    = is_array( $artifact['steps'] ?? null ) ? $artifact['steps'] : array();
+				foreach ( $steps as $step ) {
+					$status = sanitize_key( (string) ( $step['status'] ?? 'pending' ) );
+					if ( ! in_array( $status, array( 'completed', 'verified', 'skipped' ), true ) ) {
+						$has_remaining_plan_steps = true;
+						break;
+					}
+				}
+			}
+			if ( ! $has_remaining_plan_steps && method_exists( $checkpoint, 'get_plan_steps' ) ) {
+				$plan_steps = (array) $checkpoint->get_plan_steps();
+				foreach ( $plan_steps as $step ) {
+					if ( ! is_array( $step ) ) {
+						continue;
+					}
+					$status = sanitize_key( (string) ( $step['status'] ?? 'pending' ) );
+					if ( ! in_array( $status, array( 'completed', 'verified', 'skipped' ), true ) ) {
+						$has_remaining_plan_steps = true;
+						break;
+					}
+				}
+			}
+
 			$result['continuation']['execution']          = $execution;
 			$result['continuation']['progress']           = $progress;
 			$result['continuation']['blockers']           = $blockers;
-			$result['continuation']['should_auto_resume'] = ! empty( $progress['should_auto_resume'] ) && empty( $blockers );
+			$result['continuation']['should_auto_resume'] = empty( $blockers )
+				&& ( ! empty( $progress['should_auto_resume'] ) || $has_remaining_plan_steps );
 			if ( ! empty( $replay ) ) {
 				$result['continuation']['replay'] = $replay;
 				$result['replay']                 = $replay;
@@ -4887,6 +5068,15 @@ class PressArk_Orchestration_Service {
 					$execution
 				);
 			}
+		}
+
+		// v5.7.13 (2026-05-13): Phase 3a — read-only continuation-evaluator
+		// adapter. Attaches a typed decision struct under
+		// result.continuation.evaluator for A/B against the legacy fields above.
+		// Phase 3b: attach_to_result now overwrites canonical continuation
+		// fields from the evaluator; evaluator_* mirrors remain for debugging.
+		if ( class_exists( 'PressArk_Continuation_Service' ) ) {
+			$result = PressArk_Continuation_Service::attach_to_result( $result, $checkpoint );
 		}
 
 		return $result;

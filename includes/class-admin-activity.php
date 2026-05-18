@@ -74,12 +74,13 @@ class PressArk_Admin_Activity {
 			wp_die( esc_html__( 'You are not allowed to access PressArk Activity.', 'pressark' ) );
 		}
 
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- $_GET reads in this method are read-only display filters (search, pagination, view tabs, detail target IDs); no state is mutated. Capability check above gates access.
 		$viewer_user_id = get_current_user_id();
 		$support_mode   = $this->is_support_mode();
 		$activity_user  = $support_mode ? 0 : $viewer_user_id;
 		$status_filter  = sanitize_key( wp_unslash( $_GET['status'] ?? '' ) );
 		$search_query   = sanitize_text_field( wp_unslash( $_GET['q'] ?? '' ) );
-		$page_num       = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
+		$page_num       = max( 1, absint( wp_unslash( $_GET['paged'] ?? 1 ) ) );
 		$per_page       = 25;
 		$offset         = ( $page_num - 1 ) * $per_page;
 		$task_store     = new PressArk_Task_Store();
@@ -104,6 +105,7 @@ class PressArk_Admin_Activity {
 			$this->render_run_detail( $detail_run_id, $viewer_user_id, $support_mode );
 			return;
 		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
 		echo '<div class="wrap pressark-activity">';
 		echo '<h1>' . esc_html__( 'Activity', 'pressark' ) . '</h1>';
@@ -1321,6 +1323,7 @@ class PressArk_Admin_Activity {
 		foreach ( array(
 			array(
 				'label' => __( 'Lookback', 'pressark' ),
+				/* translators: %d: number of days in the lookback window. */
 				'value' => sprintf( __( '%d days', 'pressark' ), (int) ( $report['lookback_days'] ?? 14 ) ),
 			),
 			array(
@@ -1510,6 +1513,7 @@ class PressArk_Admin_Activity {
 	}
 
 	private function is_support_mode(): bool {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only display filter (scope toggle); capability checked via can_support_all().
 		return $this->can_support_all() && self::SCOPE_ALL === sanitize_key( wp_unslash( $_GET['scope'] ?? '' ) );
 	}
 

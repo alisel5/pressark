@@ -57,7 +57,9 @@ class PressArk_Tool_Preload_Planner {
 
 		$existing_mode = sanitize_key( (string) ( $planning_decision['mode'] ?? '' ) );
 		$preserve_direct_execution = in_array( 'continuation_execute_resume', $reason_codes, true )
-			|| in_array( 'approved_plan_execution', $reason_codes, true );
+			|| in_array( 'approved_plan_execution', $reason_codes, true )
+			// v5.8.13 (2026-05-14): preload advisory must not re-escalate resolved single-target status writes.
+			|| in_array( 'resolved_single_target_write', $reason_codes, true );
 		$escalated     = false;
 		if ( ! $preserve_direct_execution && ( '' === $existing_mode || 'none' === $existing_mode ) ) {
 			$planning_decision['mode']              = 'hard_plan';
@@ -76,7 +78,7 @@ class PressArk_Tool_Preload_Planner {
 				$log_path,
 				sprintf(
 					"[%s] ADVISORY prior=%s final=%s escalated=%d task=%s groups=%s\n",
-					date( 'H:i:s' ),
+					gmdate( 'H:i:s' ),
 					'' === $existing_mode ? 'none' : $existing_mode,
 					$planning_decision['mode'],
 					$escalated ? 1 : 0,

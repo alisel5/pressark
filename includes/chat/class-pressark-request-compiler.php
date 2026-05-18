@@ -131,6 +131,8 @@ class PressArk_Request_Compiler {
 		}
 
 		$post_id           = $this->resolve_effective_post_id( $execution_message, $post_id, $checkpoint_data );
+		$loaded_groups     = $this->scope_loaded_groups_for_contextual_followup( $execution_message, $checkpoint_data, $loaded_groups, $post_id );
+		$loaded_groups     = $this->load_groups_for_numbered_read_followup( $execution_message, $checkpoint_data, $loaded_groups, $post_id );
 		$continuation_mode = $this->resolve_continuation_mode( $execution_message, $checkpoint_data, $plan_execute );
 
 		return array(
@@ -366,23 +368,102 @@ class PressArk_Request_Compiler {
 	 * Resolve the effective target post when continuing a saved execution.
 	 */
 	public function resolve_effective_post_id( string $message, int $post_id, array $checkpoint_data ): int {
-		if ( ! $this->is_continuation_message( $message ) ) {
+		$explicit_post_id = $this->extract_explicit_post_id_from_message( $message );
+		if ( $explicit_post_id > 0 ) {
+			return $explicit_post_id;
+		}
+
+		if ( $post_id > 0 ) {
 			return $post_id;
 		}
 
-		$execution = is_array( $checkpoint_data['execution'] ?? null )
-			? $checkpoint_data['execution']
-			: array();
-		$target_id = PressArk_Execution_Ledger::current_target_post_id( $execution );
+		if (
+			! $this->is_continuation_message( $message )
+			&& ! $this->message_looks_like_contextual_target_followup( $message )
+		) {
+			return $post_id;
+		}
+
+		$target_id = $this->checkpoint_current_target_post_id( $checkpoint_data );
 		if ( $target_id > 0 ) {
 			return $target_id;
 		}
 
-		if ( preg_match( '/\bpost_id\s*=\s*(\d+)\b/i', $message, $match ) ) {
-			return absint( $match[1] );
+		return $post_id;
+	}
+
+	/**
+	 * Drop stale broad groups for tiny same-target status follow-ups.
+	 *
+	 * This keeps "publish it" attached to the latest page/product without
+	 * dragging a previous multi-domain generation surface into the next turn.
+	 *
+	 * @param string[] $loaded_groups Existing conversation-scoped groups.
+	 * @return string[]
+	 */
+	public function scope_loaded_groups_for_contextual_followup( string $message, array $checkpoint_data, array $loaded_groups, int $post_id ): array {
+		if (
+			$post_id <= 0
+			|| ! $this->message_looks_like_contextual_status_followup( $message )
+			|| $post_id !== $this->checkpoint_current_target_post_id( $checkpoint_data )
+		) {
+			return $loaded_groups;
 		}
 
-		return $post_id;
+		$target    = $this->checkpoint_current_target( $checkpoint_data );
+		$post_type = sanitize_key( (string) ( $target['post_type'] ?? '' ) );
+		if ( '' === $post_type && function_exists( 'get_post_type' ) ) {
+			$post_type = sanitize_key( (string) get_post_type( $post_id ) );
+		}
+
+		return in_array( $post_type, array( 'product', 'product_variation' ), true )
+			? array( 'woocommerce' )
+			: array( 'core' );
+	}
+
+	/**
+	 * Carry the prior read domain into short numbered follow-ups.
+	 *
+	 * @param string[] $loaded_groups Existing conversation-scoped groups.
+	 * @return string[]
+	 */
+	public function load_groups_for_numbered_read_followup( string $message, array $checkpoint_data, array $loaded_groups, int $post_id ): array {
+		if ( $post_id <= 0 || ! $this->message_looks_like_numbered_action_followup( $message ) ) {
+			return $loaded_groups;
+		}
+
+		$read_state = is_array( $checkpoint_data['read_state'] ?? null ) ? (array) $checkpoint_data['read_state'] : array();
+		if ( empty( $read_state ) ) {
+			return $loaded_groups;
+		}
+
+		$groups = $loaded_groups;
+		foreach ( array_reverse( $read_state ) as $snapshot ) {
+			if ( ! is_array( $snapshot ) ) {
+				continue;
+			}
+
+			$target_ids = array_values( array_filter( array_map( 'absint', (array) ( $snapshot['target_post_ids'] ?? array() ) ) ) );
+			if ( ! in_array( $post_id, $target_ids, true ) ) {
+				continue;
+			}
+
+			$tool_name = sanitize_key( (string) ( $snapshot['tool_name'] ?? '' ) );
+			if ( 'analyze_seo' === $tool_name ) {
+				$groups = array_merge( $groups, array( 'seo', 'core' ) );
+				break;
+			}
+			if ( in_array( $tool_name, array( 'page_audit', 'elementor_audit_page', 'elementor_read_page' ), true ) ) {
+				$groups = array_merge( $groups, array( 'elementor', 'core' ) );
+				break;
+			}
+			if ( in_array( $tool_name, array( 'read_content', 'read_blocks' ), true ) ) {
+				$groups[] = 'core';
+				break;
+			}
+		}
+
+		return array_values( array_unique( array_filter( array_map( 'sanitize_text_field', $groups ) ) ) );
 	}
 
 	/**
@@ -520,6 +601,110 @@ class PressArk_Request_Compiler {
 	 */
 	public function is_continuation_message( string $message ): bool {
 		return 1 === preg_match( '/^\[(?:Continue|Confirmed)\]/i', trim( $message ) );
+	}
+
+	private function extract_explicit_post_id_from_message( string $message ): int {
+		if ( preg_match( '/\bpost_id\s*=\s*(\d+)\b/i', $message, $match ) ) {
+			return absint( $match[1] );
+		}
+
+		if ( preg_match( '/\b(?:post|page|product)\s*#\s*(\d+)\b/i', $message, $match ) ) {
+			return absint( $match[1] );
+		}
+
+		return 0;
+	}
+
+	private function checkpoint_current_target_post_id( array $checkpoint_data ): int {
+		$execution = is_array( $checkpoint_data['execution'] ?? null )
+			? $checkpoint_data['execution']
+			: array();
+
+		if ( class_exists( 'PressArk_Execution_Ledger' ) ) {
+			return PressArk_Execution_Ledger::current_target_post_id( $execution );
+		}
+
+		return absint( $execution['current_target']['post_id'] ?? 0 );
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private function checkpoint_current_target( array $checkpoint_data ): array {
+		$execution = is_array( $checkpoint_data['execution'] ?? null )
+			? $checkpoint_data['execution']
+			: array();
+
+		return is_array( $execution['current_target'] ?? null )
+			? (array) $execution['current_target']
+			: array();
+	}
+
+	private function message_looks_like_contextual_target_followup( string $message ): bool {
+		$normalized = $this->normalize_followup_message( $message );
+		if ( '' === $normalized || mb_strlen( $normalized ) > 160 ) {
+			return false;
+		}
+
+		$word_count = str_word_count( preg_replace( '/[^\p{L}\p{N}\s%+\-]/u', ' ', $normalized ) );
+		if ( $word_count > 14 ) {
+			return false;
+		}
+
+		if ( $this->message_looks_like_numbered_action_followup( $normalized ) ) {
+			return true;
+		}
+
+		$has_contextual_target = 1 === preg_match(
+			// v5.8.13 (2026-05-14): only inherit ledger targets for singular same-chat follow-ups.
+			'/\b(?:it|this|that|the\s+(?:draft|page|post|product|item|content|landing\s+page))\b/i',
+			$normalized
+		);
+		if ( ! $has_contextual_target ) {
+			return false;
+		}
+
+		return 1 === preg_match(
+			'/\b(?:publish|unpublish|draft|move|set|make|put|take|trash|delete|restore|rename|update|change|edit|fix|add|remove|schedule|private|live)\b/i',
+			$normalized
+		);
+	}
+
+	private function message_looks_like_contextual_status_followup( string $message ): bool {
+		$normalized = $this->normalize_followup_message( $message );
+		if ( ! $this->message_looks_like_contextual_target_followup( $normalized ) ) {
+			return false;
+		}
+
+		return 1 === preg_match(
+			'/\b(?:publish|unpublish|draft|private|schedule|make\s+(?:it|this|that|the\s+\w+)\s+live|put\s+(?:it|this|that|the\s+\w+)\s+live|take\s+(?:it|this|that|the\s+\w+)\s+live|move\s+(?:it|this|that|the\s+\w+)\s+to\s+draft|set\s+(?:it|this|that|the\s+\w+)\s+to\s+(?:publish|published|draft|private))\b/i',
+			$normalized
+		);
+	}
+
+	private function message_looks_like_numbered_action_followup( string $message ): bool {
+		$normalized = $this->normalize_followup_message( $message );
+		if ( '' === $normalized || mb_strlen( $normalized ) > 80 ) {
+			return false;
+		}
+
+		// v5.8.15 (2026-05-14): allow terse "fix 3" / "do the third one"
+		// follow-ups to inherit the latest structured target from the ledger.
+		return 1 === preg_match(
+			'/^\s*(?:please\s+)?(?:fix|apply|do|handle|use|run|update|change|make)\s+(?:the\s+)?(?:(?:issue|item|fix)\s+)?(?:#\s*)?(?:\d{1,2}|one|two|three|four|five|first|second|third|fourth|fifth)(?:\s+(?:one|item|issue|fix|result))?\s*$/i',
+			$normalized
+		) || 1 === preg_match(
+			'/^\s*(?:please\s+)?(?:the\s+)?(?:first|second|third|fourth|fifth)\s+(?:one|item|issue|fix|result)\s*$/i',
+			$normalized
+		);
+	}
+
+	private function normalize_followup_message( string $message ): string {
+		$message = wp_strip_all_tags( (string) $message );
+		$message = preg_replace( '/^\s*["\']|["\']\s*$/', '', (string) $message );
+		$message = preg_replace( '/\s+/', ' ', (string) $message );
+
+		return strtolower( trim( (string) $message ) );
 	}
 
 	/**

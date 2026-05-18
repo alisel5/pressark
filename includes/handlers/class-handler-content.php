@@ -617,8 +617,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 
 		// Defense-in-depth: Elementor content guard.
 		// Primary guard is now PressArk_Preflight::rule_elementor_content_edit (v5.5.0).
-		$changes = $params['changes'] ?? $params;
-		if ( ! empty( get_post_meta( $post_id, '_elementor_data', true ) ) && isset( $changes['content'] ) ) {
+		$changes        = $params['changes'] ?? $params;
+		$touches_body   = isset( $changes['content'] )
+			|| isset( $changes['append_content'] ) || isset( $changes['content_append'] ) || isset( $changes['append'] )
+			|| isset( $changes['prepend_content'] ) || isset( $changes['content_prepend'] ) || isset( $changes['prepend'] );
+		if ( $touches_body && ! empty( get_post_meta( $post_id, '_elementor_data', true ) ) ) {
 			return array(
 				'success' => false,
 				'message' => __( 'This page uses Elementor. Use elementor_edit_widget to modify widget content, or elementor_find_replace for text changes. Editing post_content directly has no visible effect on Elementor pages.', 'pressark' ),
@@ -635,6 +638,12 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		if ( ! $post ) {
 			return array( 'success' => false, 'message' => __( 'Post not found.', 'pressark' ) );
 		}
+
+		// v5.6.1: Resolve append_content / prepend_content into a single
+		// canonical $changes['content'] so the rest of the handler stays
+		// shape-agnostic. Mirrors PressArk_Preview::stage_post_edit so the
+		// preview diff and the apply step produce identical post_content.
+		$changes = PressArk_Preview::normalize_append_prepend_changes( $changes, (string) $post->post_content );
 
 		// Create a pre-edit revision checkpoint for undo support.
 		$pre_rev_id = $this->create_checkpoint( $post_id, 'edit_content' );
@@ -1644,12 +1653,18 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		$current_content = $post->post_content;
 		$word_count      = str_word_count( wp_strip_all_tags( $current_content ) );
 
+		// v5.8.4 (2026-05-13, iter-40): tool result now carries an explicit
+		// next_step hint AND a structured `next_action` payload so the model
+		// can see at a glance what to call next. The description alone was
+		// not enough — observed chain showed the model receiving the result
+		// and emitting empty reply because it didn't synthesize the two-step
+		// contract from the description alone. Belt-and-suspenders.
 		return array(
 			'success'  => true,
 			'generate' => true,
 			'message'  => sprintf(
 				/* translators: 1: post title 2: word count */
-				__( 'Reading content from "%1$s" (%2$d words)...', 'pressark' ),
+				__( 'Read content from "%1$s" (%2$d words). Next: compose the rewritten markup based on the instructions below, then call edit_content with the new content to stage a preview.', 'pressark' ),
 				$post->post_title,
 				$word_count
 			),
@@ -1661,6 +1676,11 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 				'tone'               => $params['tone'] ?? '',
 				'keywords'           => $params['keywords'] ?? array(),
 				'preserve_structure' => $params['preserve_structure'] ?? true,
+			),
+			'next_action' => array(
+				'tool'         => 'edit_content',
+				'required_args' => array( 'post_id' => $post_id, 'changes' => array( 'content' => '<your-rewritten-markup>' ) ),
+				'why'           => 'rewrite_content only reads the source; edit_content is what stages the preview that the user approves.',
 			),
 		);
 	}

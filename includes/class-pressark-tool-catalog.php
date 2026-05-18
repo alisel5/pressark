@@ -47,7 +47,7 @@ class PressArk_Tool_Catalog {
 		'profile'       => array( 'site profile', 'brand profile', 'voice', 'tone' ),
 		'logs'          => array( 'log', 'error log', 'debug log', 'activity log' ),
 		'index'         => array( 'content index', 'search index', 'knowledge base', 'rebuild index' ),
-		'plugins'       => array( 'plugin', 'extension', 'activate plugin', 'deactivate plugin', 'install plugin' ),
+		'plugins'       => array( 'plugin', 'plugins', 'extension', 'installed plugin', 'plugin status', 'plugin update' ),
 		'themes'        => array( 'theme', 'appearance', 'customizer', 'style', 'layout', 'design system' ),
 		'database'      => array( 'database', 'table', 'optimize database', 'cleanup database', 'db' ),
 		'woocommerce'   => array( 'product', 'order', 'cart', 'checkout', 'shop', 'store', 'woocommerce', 'woo', 'coupon', 'shipping', 'payment', 'customer', 'inventory', 'variation', 'refund', 'revenue', 'sales' ),
@@ -371,7 +371,7 @@ class PressArk_Tool_Catalog {
 			'profile'       => 'view_site_profile, refresh_site_profile → brand voice, tone analysis',
 			'logs'          => 'list_logs, read_log, analyze_logs → debug.log, error analysis',
 			'index'         => 'search_knowledge, index_status, rebuild_index → content search index',
-			'plugins'       => 'list_plugins, toggle_plugin → activate/deactivate plugins',
+			'plugins'       => 'list_plugins -> installed plugin inventory',
 			'themes'        => 'list_themes, get_theme_settings, switch_theme → theme management, customizer',
 			'database'      => 'database_stats, cleanup_database, optimize_database → DB maintenance',
 			'woocommerce'   => 'edit_product, list_orders, analyze_store, inventory_report → full store management',
@@ -455,7 +455,7 @@ class PressArk_Tool_Catalog {
 			'profile'       => 'brand profile and tone',
 			'logs'          => 'debug and error logs',
 			'index'         => 'knowledge index search',
-			'plugins'       => 'plugin activation',
+			'plugins'       => 'installed plugin inventory',
 			'themes'        => 'theme management',
 			'database'      => 'database cleanup',
 			'woocommerce'   => 'store management',
@@ -1206,28 +1206,28 @@ class PressArk_Tool_Catalog {
 	 * @return array[] Two OpenAI function schemas.
 	 */
 	public function get_meta_tools_schemas(): array {
-		$update_plan_description = 'Update the todo list for the current session. To be used proactively and often to track progress and pending tasks. The FIRST update_plan call in plan mode may list all steps as "pending" — this submits the plan for user approval. On every subsequent call the plan MUST keep exactly one step with status="in_progress" at a time. Always provide both content (imperative) and activeForm (present continuous) for each task.';
+		$update_plan_description = 'Update the step list for the current session. To be used proactively and often to track progress and pending steps. The FIRST update_plan call in plan mode should use the canonical `steps` array and may list all steps as "pending" — this submits the plan for user approval. On every subsequent call the plan MUST keep exactly one step with status="in_progress" at a time. Prefer the canonical `steps` array of {content, activeForm, status, preview_required, tool_name?}. When a plan already exists, patch-style `updates` are also accepted, e.g. {step:3,status:"in_progress",activeForm:"Publishing page #144",tool_name:"edit_content"}.';
 		$update_plan_prompt      = <<<'PROMPT'
-Use this tool to create and manage a structured task list for your current WordPress session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+Use this tool to create and manage a structured step list for your current WordPress session. This helps you track progress, organize complex work, and demonstrate thoroughness to the user.
 
 ## When to Use This Tool
 Use this tool proactively in these scenarios:
-1. Complex multi-step tasks - When a task requires 3 or more distinct steps
+1. Complex multi-step work - When a request requires 3 or more distinct steps
 2. User provides multiple items - "update header, footer, and style.css"
-3. After receiving new instructions - Immediately capture requirements as todos
-4. When you start working on a task - Mark it as in_progress BEFORE beginning work. Ideally you should only have one todo as in_progress at a time
-5. After completing a task - Mark it as completed and add any new follow-up tasks
+3. After receiving new instructions - Immediately capture requirements as steps
+4. When you start working on a step - Mark it as in_progress BEFORE beginning work. Ideally you should only have one step as in_progress at a time
+5. After completing a step - Mark it as completed and add any new follow-up steps
 
 ## Multi-Step Efficiency
-- If the task clearly needs tracked steps, emit update_plan in the SAME response as the first grounding read(s) whenever possible
-- Do not spend a round on standalone exploratory tool calls first when you already know the task will need a tracked plan
+- If the request clearly needs tracked steps, emit update_plan in the SAME response as the first grounding read(s) whenever possible
+- Do not spend a round on standalone exploratory tool calls first when you already know the request will need a tracked plan
 
-## Task States
-- pending: Task not yet started
-- in_progress: Currently working on (limit to ONE task at a time)
-- completed: Task finished successfully
+## Step States
+- pending: Step not yet started
+- in_progress: Currently working on (limit to ONE step at a time)
+- completed: Step finished successfully
 
-IMPORTANT: Task descriptions must have two forms:
+IMPORTANT: Each step has two text forms:
 - content: "Edit header.php"
 - activeForm: "Editing header.php"
 
@@ -1245,7 +1245,7 @@ Assistant: *Calls update_plan with:*
 4. Running build (pending)
 *Then edits header.php*
 
-When in doubt, use this tool. Being proactive with task management demonstrates attentiveness.
+When in doubt, use this tool. Being proactive with step tracking demonstrates attentiveness.
 PROMPT;
 
 		return array(
@@ -1298,13 +1298,21 @@ PROMPT;
 						'properties' => array(
 							'steps' => array(
 								'type'        => 'array',
-								'description' => $update_plan_prompt,
+								'description' => $update_plan_prompt . "\n\nCanonical full-plan shape. Use this for the first update_plan call or whenever re-emitting the whole plan.",
 								'items'       => array(
 									'type'       => 'object',
 									'properties' => array(
+										'id' => array(
+											'type'        => 'string',
+											'description' => 'Optional stable step id.',
+										),
 										'content' => array(
 											'type'        => 'string',
 											'description' => 'Canonical step text in base form, for example "Edit the homepage hero copy".',
+										),
+										'description' => array(
+											'type'        => 'string',
+											'description' => 'Compatibility alias for content.',
 										),
 										'activeForm' => array(
 											'type'        => 'string',
@@ -1312,7 +1320,7 @@ PROMPT;
 										),
 										'status' => array(
 											'type'        => 'string',
-											'enum'        => array( 'pending', 'in_progress', 'completed' ),
+											'enum'        => array( 'pending', 'in_progress', 'completed', 'blocked' ),
 											'description' => 'Current state of the step.',
 										),
 										'post_id' => array(
@@ -1328,11 +1336,62 @@ PROMPT;
 											'description' => 'Whether this step requires preview/confirm apply before it can be considered complete.',
 										),
 									),
-									'required' => array( 'content', 'activeForm', 'status', 'preview_required' ),
+									'required' => array( 'status' ),
+								),
+							),
+							'updates' => array(
+								'type'        => 'array',
+								'description' => 'Patch existing plan steps by 1-based step number or id. Use only after a plan already exists. The server merges these patches into the full checkpoint plan before applying the same guard checks.',
+								'items'       => array(
+									'type'       => 'object',
+									'properties' => array(
+										'step' => array(
+											'type'        => 'integer',
+											'description' => '1-based step number to update.',
+										),
+										'step_number' => array(
+											'type'        => 'integer',
+											'description' => '1-based step number alias.',
+										),
+										'id' => array(
+											'type'        => 'string',
+											'description' => 'Existing step id to update.',
+										),
+										'content' => array(
+											'type'        => 'string',
+											'description' => 'Optional replacement step text.',
+										),
+										'description' => array(
+											'type'        => 'string',
+											'description' => 'Compatibility alias for content.',
+										),
+										'activeForm' => array(
+											'type'        => 'string',
+											'description' => 'Present-progress rendering for the updated step.',
+										),
+										'status' => array(
+											'type'        => 'string',
+											'enum'        => array( 'pending', 'in_progress', 'completed', 'blocked' ),
+											'description' => 'New state of the step.',
+										),
+										'post_id' => array(
+											'type'        => 'integer',
+											'description' => 'Optional post/product ID this step targets.',
+										),
+										'tool_name' => array(
+											'type'        => 'string',
+											'description' => 'Optional canonical tool name expected for this step.',
+										),
+										'preview_required' => array(
+											'type'        => 'boolean',
+											'description' => 'Whether this step requires preview/confirm apply before it can be considered complete.',
+										),
+									),
+									'required' => array( 'status' ),
 								),
 							),
 						),
-						'required' => array( 'steps' ),
+						'required' => array(),
 					),
 				),
 			),

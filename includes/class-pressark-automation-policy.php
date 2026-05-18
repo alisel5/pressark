@@ -100,7 +100,6 @@ class PressArk_Automation_Policy {
 	 */
 	private const NEVER_AUTO_APPROVE = array(
 		// Plugin/theme infrastructure.
-		'toggle_plugin',
 		'switch_theme',
 		// System settings.
 		'update_site_settings',

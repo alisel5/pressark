@@ -108,6 +108,8 @@ class PressArk_Execution_Ledger {
 				'post_id'   => absint( $receipt['post_id'] ?? 0 ),
 				'post_title'=> sanitize_text_field( $receipt['post_title'] ?? '' ),
 				'url'       => esc_url_raw( $receipt['url'] ?? '' ),
+				// v5.7.10: preserve slug across serialize/deserialize round-trips.
+				'slug'      => sanitize_title( (string) ( $receipt['slug'] ?? '' ) ),
 			);
 
 			// v5.4.0: Preserve verification evidence attached by record_verification().
@@ -306,8 +308,20 @@ class PressArk_Execution_Ledger {
 	 */
 	public static function record_read( array $ledger, string $tool_name, array $args, array $result ): array {
 		$ledger = self::sanitize( $ledger );
+		$tool_name = sanitize_key( $tool_name );
+
+		// v5.8.15 (2026-05-14): target-bearing reads are also target-selection events.
+		// A diagnostic follow-up like "fix 3" depends on the latest analyze_seo
+		// target surviving in structured state, not only in model prose.
+		if ( self::read_tool_updates_current_target( $tool_name ) ) {
+			$target = self::extract_target( $result, $args );
+			if ( ! empty( $target['post_id'] ) ) {
+				$ledger['current_target'] = self::merge_current_target( $ledger['current_target'] ?? array(), $target );
+			}
+		}
 
 		if ( empty( $ledger['tasks'] ) ) {
+			$ledger['updated_at'] = gmdate( 'c' );
 			return $ledger;
 		}
 
@@ -365,65 +379,67 @@ class PressArk_Execution_Ledger {
 			$ledger['current_target'] = $target;
 		}
 
-		switch ( $tool_name ) {
-			case 'create_post':
-			case 'elementor_create_page':
-				$ledger = self::ensure_task( $ledger, 'create_post', 'Create the requested blog post or page' );
-				$ledger = self::mark_task_done(
-					$ledger,
-					'select_source',
-					'Selected source was used to create'
-					. ( ! empty( $target['post_title'] ) ? ' "' . $target['post_title'] . '"' : ' the requested content' )
-					. ( ! empty( $target['post_id'] ) ? ' (#' . (int) $target['post_id'] . ')' : '' )
-				);
-				$ledger = self::mark_task_done( $ledger, 'create_post', $receipt );
+		if ( ! self::has_model_plan_tasks( $ledger ) ) {
+			switch ( $tool_name ) {
+				case 'create_post':
+				case 'elementor_create_page':
+					$ledger = self::ensure_task( $ledger, 'create_post', 'Create the requested blog post or page' );
+					$ledger = self::mark_task_done(
+						$ledger,
+						'select_source',
+						'Selected source was used to create'
+						. ( ! empty( $target['post_title'] ) ? ' "' . $target['post_title'] . '"' : ' the requested content' )
+						. ( ! empty( $target['post_id'] ) ? ' (#' . (int) $target['post_id'] . ')' : '' )
+					);
+					$ledger = self::mark_task_done( $ledger, 'create_post', $receipt );
 
-				if ( self::content_has_cta( $args['content'] ?? '' ) ) {
-					$ledger = self::ensure_task( $ledger, 'add_cta', 'Add a call to action with the requested link' );
-					$ledger = self::mark_task_done( $ledger, 'add_cta', 'CTA and link were included in the drafted content.' );
-				}
-
-				if ( in_array( $args['status'] ?? '', array( 'publish', 'future' ), true )
-					|| 'publish' === ( $target['post_status'] ?? '' ) ) {
-					$ledger = self::ensure_task( $ledger, 'publish_content', 'Publish the content' );
-					$ledger = self::mark_task_done( $ledger, 'publish_content', 'Content status is set to ' . ( $target['post_status'] ?? ( $args['status'] ?? 'publish' ) ) . '.' );
-				}
-
-				if ( self::has_inline_seo_payload( $args ) ) {
-					$ledger = self::ensure_task( $ledger, 'optimize_seo', 'Optimize the content for SEO' );
-
-					$seo_verified = self::inline_seo_write_verified( $result );
-					if ( false !== $seo_verified ) {
-						$ledger = self::mark_task_done(
-							$ledger,
-							'optimize_seo',
-							true === $seo_verified
-								? 'SEO metadata was verified during content creation.'
-								: 'SEO metadata was included in the content creation payload.'
-						);
+					if ( self::content_has_cta( $args['content'] ?? '' ) ) {
+						$ledger = self::ensure_task( $ledger, 'add_cta', 'Add a call to action with the requested link' );
+						$ledger = self::mark_task_done( $ledger, 'add_cta', 'CTA and link were included in the drafted content.' );
 					}
-				}
-				break;
 
-			case 'edit_content':
-				if ( self::content_has_cta( $args['changes']['content'] ?? '' ) || self::content_has_cta( $args['content'] ?? '' ) ) {
-					$ledger = self::ensure_task( $ledger, 'add_cta', 'Add a call to action with the requested link' );
-					$ledger = self::mark_task_done( $ledger, 'add_cta', 'CTA and link were added to the content.' );
-				}
+					if ( in_array( $args['status'] ?? '', array( 'publish', 'future' ), true )
+						|| 'publish' === ( $target['post_status'] ?? '' ) ) {
+						$ledger = self::ensure_task( $ledger, 'publish_content', 'Publish the content' );
+						$ledger = self::mark_task_done( $ledger, 'publish_content', 'Content status is set to ' . ( $target['post_status'] ?? ( $args['status'] ?? 'publish' ) ) . '.' );
+					}
 
-				if ( ! empty( $args['changes']['status'] ) && 'publish' === $args['changes']['status'] ) {
-					$ledger = self::ensure_task( $ledger, 'publish_content', 'Publish the content' );
-					$ledger = self::mark_task_done( $ledger, 'publish_content', 'Content status updated to publish.' );
-				}
-				break;
+					if ( self::has_inline_seo_payload( $args ) ) {
+						$ledger = self::ensure_task( $ledger, 'optimize_seo', 'Optimize the content for SEO' );
 
-			case 'update_meta':
-			case 'fix_seo':
-				if ( self::looks_like_seo_write( $args ) ) {
-					$ledger = self::ensure_task( $ledger, 'optimize_seo', 'Optimize the content for SEO' );
-					$ledger = self::mark_task_done( $ledger, 'optimize_seo', $receipt );
-				}
-				break;
+						$seo_verified = self::inline_seo_write_verified( $result );
+						if ( false !== $seo_verified ) {
+							$ledger = self::mark_task_done(
+								$ledger,
+								'optimize_seo',
+								true === $seo_verified
+									? 'SEO metadata was verified during content creation.'
+									: 'SEO metadata was included in the content creation payload.'
+							);
+						}
+					}
+					break;
+
+				case 'edit_content':
+					if ( self::content_has_cta( $args['changes']['content'] ?? '' ) || self::content_has_cta( $args['content'] ?? '' ) ) {
+						$ledger = self::ensure_task( $ledger, 'add_cta', 'Add a call to action with the requested link' );
+						$ledger = self::mark_task_done( $ledger, 'add_cta', 'CTA and link were added to the content.' );
+					}
+
+					if ( ! empty( $args['changes']['status'] ) && 'publish' === $args['changes']['status'] ) {
+						$ledger = self::ensure_task( $ledger, 'publish_content', 'Publish the content' );
+						$ledger = self::mark_task_done( $ledger, 'publish_content', 'Content status updated to publish.' );
+					}
+					break;
+
+				case 'update_meta':
+				case 'fix_seo':
+					if ( self::looks_like_seo_write( $args ) ) {
+						$ledger = self::ensure_task( $ledger, 'optimize_seo', 'Optimize the content for SEO' );
+						$ledger = self::mark_task_done( $ledger, 'optimize_seo', $receipt );
+					}
+					break;
+			}
 		}
 
 		// Generic single-step edit requests fall back to fulfill_request. Once a
@@ -432,6 +448,12 @@ class PressArk_Execution_Ledger {
 		if ( self::has_pending_task( $ledger, 'fulfill_request' ) ) {
 			$ledger = self::mark_task_done( $ledger, 'fulfill_request', $receipt );
 		}
+
+		// v5.6.3: Also mark any dynamic execution task whose metadata.tool_name
+		// matches this write. Closes the O-2 stale-Remaining gap: model-supplied
+		// step labels ("Edit Content", "Update Meta") were lingering as pending
+		// even after their write succeeded, polluting the [Continue] envelope.
+		$ledger = self::mark_dynamic_task_done_by_tool( $ledger, $tool_name, $receipt );
 
 		$ledger = self::append_receipt( $ledger, $tool_name, $receipt, $context );
 		$ledger['updated_at'] = gmdate( 'c' );
@@ -719,6 +741,13 @@ class PressArk_Execution_Ledger {
 				continue;
 			}
 
+			// v5.8.6 (2026-05-13, post-iter-41): model-authored blocked
+			// means "this branch cannot proceed" (for example a speed redirect
+			// loop), not dependency-waiting. Preserve it across ledger sync.
+			if ( 'blocked' === $task['status'] && ! empty( $task['metadata']['explicit_blocked'] ) ) {
+				continue;
+			}
+
 			$deps = $task['depends_on'] ?? array();
 			if ( empty( $deps ) ) {
 				// No deps â€” should be pending, not blocked.
@@ -832,6 +861,145 @@ class PressArk_Execution_Ledger {
 				is_array( $task['metadata'] ?? null ) ? (array) $task['metadata'] : array()
 			);
 		}
+
+		return self::resolve_blocked( $ledger );
+	}
+
+	/**
+	 * Replace extractor-derived task labels with model-authored update_plan steps.
+	 *
+	 * The regex extractor is still useful before the model has committed to a
+	 * plan. Once update_plan exists, the model's labels are the user-facing
+	 * contract for continuation and wrap-round state.
+	 *
+	 * @param array<int,array<string,mixed>> $steps Normalized plan rows.
+	 */
+	public static function adopt_plan_steps( array $ledger, array $steps ): array {
+		$ledger = self::sanitize( $ledger );
+		if ( empty( $steps ) ) {
+			return $ledger;
+		}
+
+		$prior_by_key   = array();
+		$prior_by_label = array();
+		foreach ( $ledger['tasks'] as $task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$key = sanitize_key( (string) ( $task['key'] ?? '' ) );
+			if ( '' !== $key ) {
+				$prior_by_key[ $key ] = $task;
+			}
+			$label = sanitize_text_field( (string) ( $task['label'] ?? '' ) );
+			if ( '' !== $label ) {
+				$prior_by_label[ strtolower( $label ) ] = $task;
+			}
+		}
+
+		$tasks        = array();
+		$used_keys    = array();
+		$previous_key = '';
+
+		foreach ( array_slice( $steps, 0, self::MAX_TASKS ) as $index => $step ) {
+			if ( ! is_array( $step ) ) {
+				continue;
+			}
+
+			$label = sanitize_text_field( (string) (
+				$step['content']
+				?? $step['title']
+				?? $step['description']
+				?? $step['activeForm']
+				?? ''
+			) );
+			if ( '' === $label ) {
+				continue;
+			}
+
+			$tool_name = sanitize_key( (string) ( $step['tool_name'] ?? '' ) );
+			$key       = sanitize_key( (string) ( $step['id'] ?? '' ) );
+			if ( '' === $key ) {
+				$key = '' !== $tool_name ? $tool_name . '_' . ( $index + 1 ) : 'plan_step_' . ( $index + 1 );
+			}
+			$key_base = $key;
+			$suffix   = 2;
+			while ( isset( $used_keys[ $key ] ) ) {
+				$key = $key_base . '_' . $suffix;
+				$suffix++;
+			}
+			$used_keys[ $key ] = true;
+
+			$status = sanitize_key( (string) ( $step['status'] ?? 'pending' ) );
+			if ( 'active' === $status ) {
+				$status = 'in_progress';
+			} elseif ( in_array( $status, array( 'done', 'verified' ), true ) ) {
+				$status = 'completed';
+			}
+			if ( ! in_array( $status, self::VALID_STATUSES, true ) ) {
+				$status = 'pending';
+			}
+
+			$kind = sanitize_key( (string) ( $step['kind'] ?? '' ) );
+			if ( '' === $kind ) {
+				$kind = self::infer_plan_step_kind( $tool_name, ! empty( $step['preview_required'] ) );
+			}
+
+			$group = sanitize_key( (string) ( $step['group'] ?? '' ) );
+			if ( '' === $group ) {
+				$group = 'system';
+			}
+
+			$depends_on = array();
+			foreach ( (array) ( $step['depends_on'] ?? array() ) as $dep ) {
+				$dep = sanitize_key( (string) $dep );
+				if ( '' !== $dep ) {
+					$depends_on[] = $dep;
+				}
+			}
+			if ( empty( $depends_on ) && '' !== $previous_key ) {
+				$depends_on[] = $previous_key;
+			}
+
+			$prior    = $prior_by_key[ $key ] ?? ( $prior_by_label[ strtolower( $label ) ] ?? array() );
+			$evidence = sanitize_text_field( (string) ( $prior['evidence'] ?? '' ) );
+			if ( '' === $evidence && ! empty( $step['evidence'] ) ) {
+				$evidence = sanitize_text_field( (string) $step['evidence'] );
+			}
+
+			$metadata = is_array( $step['metadata'] ?? null ) ? (array) $step['metadata'] : array();
+			$metadata = array_merge(
+				$metadata,
+				array(
+					'kind'      => $kind,
+					'group'     => $group,
+					'tool_name' => $tool_name,
+					'origin'    => 'model_plan',
+				)
+			);
+
+			if ( ! empty( $step['post_id'] ) ) {
+				$metadata['post_id'] = absint( $step['post_id'] );
+			}
+			if ( array_key_exists( 'preview_required', $step ) ) {
+				$metadata['preview_required'] = ! empty( $step['preview_required'] );
+			}
+			if ( 'blocked' === $status ) {
+				$metadata['explicit_blocked'] = true;
+			}
+
+			$tasks[]      = self::task( $key, $label, array_values( array_unique( $depends_on ) ), $metadata );
+			$last_index   = count( $tasks ) - 1;
+			$tasks[ $last_index ]['status']   = $status;
+			$tasks[ $last_index ]['evidence'] = $evidence;
+			$previous_key = $key;
+		}
+
+		if ( empty( $tasks ) ) {
+			return $ledger;
+		}
+
+		$ledger['tasks']      = array_slice( self::dedupe_tasks( $tasks ), 0, self::MAX_TASKS );
+		$ledger['updated_at'] = gmdate( 'c' );
 
 		return self::resolve_blocked( $ledger );
 	}
@@ -979,13 +1147,27 @@ class PressArk_Execution_Ledger {
 
 	/**
 	 * Decide whether a proposed tool call should be skipped as a duplicate.
+	 *
+	 * v5.4.0: update_meta is intentionally NOT guarded by is_seo_task_complete()
+	 * anymore. The "SEO task complete" flag means the model finished the planned
+	 * SEO step — it does not mean every meta field on the target is now locked.
+	 * A model following up with og_title / og_description / og_image / custom
+	 * meta keys after the SEO step is a legitimate, common path, not a duplicate.
+	 * Observed bug 2026-05-12: a follow-up update_meta with two new OG fields and
+	 * one duplicate focus_keyword was silently dropped wholesale, and the user
+	 * was told (via the model) that the changes had been applied at create-time.
+	 * If we ever re-introduce a duplicate check for update_meta, it MUST diff at
+	 * the field level against the ledger's known applied meta — not target-level.
+	 *
+	 * fix_seo remains guarded because it's an aggregate operation that re-runs
+	 * the entire SEO task; a second invocation after completion is genuinely a
+	 * loop, not new work.
 	 */
 	public static function should_skip_duplicate( array $ledger, string $tool_name, array $args = array() ): bool {
 		$ledger = self::sanitize( $ledger );
 		$tool_name = sanitize_key( $tool_name );
 
-		if ( in_array( $tool_name, array( 'fix_seo', 'update_meta' ), true )
-			&& self::is_seo_task_complete( $ledger ) ) {
+		if ( 'fix_seo' === $tool_name && self::is_seo_task_complete( $ledger ) ) {
 			return true;
 		}
 
@@ -999,10 +1181,47 @@ class PressArk_Execution_Ledger {
 				return false;
 			}
 
+			// v5.7.7 (2026-05-12): Diff at the field level, not the tool level.
+			// Observed 2026-05-12 on "Create Shipping Policy page and Returns
+			// Policy page, then add both to the main menu" chain: the request
+			// extractor counted request_counts['create_post']=1 (it parsed "a
+			// Returns Policy page" weakly), so when the model created Shipping
+			// Policy first, the guard fired on the second create_post for
+			// Returns Policy — even though title/slug were obviously different.
+			// The model got back skipped_duplicate=true and built a wrap message
+			// saying "only Shipping Policy exists", asking the user to confirm
+			// retry — a real UX gap.
+			//
+			// Fix: only treat as duplicate when the NEW args' title or slug match
+			// an existing receipt's recorded values. If either differ, this is a
+			// new creation — allow it. iter-19's "diff at field level, not
+			// target level" principle, applied to the create_post guard.
+			//
+			// v5.7.10 (2026-05-13): Also check slug, not just title. Receipts now
+			// store slug (iter-30 extension). When the model auto-derives title
+			// from slug or vice-versa and one happens to collide with a prior
+			// receipt's title, the slug diff still catches the distinct intent.
+			$new_title = sanitize_text_field( (string) ( $args['title'] ?? '' ) );
+			$new_slug  = sanitize_title( (string) ( $args['slug'] ?? '' ) );
 			foreach ( $ledger['receipts'] as $receipt ) {
-				if ( 'create_post' === ( $receipt['tool'] ?? '' ) ) {
-					return true;
+				if ( 'create_post' !== ( $receipt['tool'] ?? '' ) ) {
+					continue;
 				}
+				$receipt_title = sanitize_text_field( (string) ( $receipt['post_title'] ?? '' ) );
+				$receipt_slug  = sanitize_title( (string) ( $receipt['slug'] ?? '' ) );
+
+				// New title differs from a prior create's title → new creation, allow.
+				if ( '' !== $new_title && '' !== $receipt_title && $new_title !== $receipt_title ) {
+					continue;
+				}
+				// New slug differs from a prior create's slug → new creation, allow.
+				if ( '' !== $new_slug && '' !== $receipt_slug && $new_slug !== $receipt_slug ) {
+					continue;
+				}
+
+				// Both title and slug effectively match (or aren't supplied to
+				// disambiguate). Treat as genuine duplicate.
+				return true;
 			}
 		}
 
@@ -1011,14 +1230,29 @@ class PressArk_Execution_Ledger {
 
 	/**
 	 * Build the synthetic tool result used when a duplicate write is skipped.
+	 *
+	 * v5.4.0: The message now names the actual trigger (which guard fired) instead
+	 * of hard-coding "already created a target" — the previous wording was wrong
+	 * whenever the trigger wasn't a create_post duplicate (e.g. a fix_seo skip
+	 * after the SEO task completed), and the model can only report accurately to
+	 * the user if the receipt tells the truth.
 	 */
 	public static function duplicate_skip_result( array $ledger, string $tool_name ): array {
-		$ledger = self::sanitize( $ledger );
-		$target = $ledger['current_target'];
-		$title  = $target['post_title'] ?? '';
-		$post_id = (int) ( $target['post_id'] ?? 0 );
+		$ledger     = self::sanitize( $ledger );
+		$target     = $ledger['current_target'];
+		$title      = $target['post_title'] ?? '';
+		$post_id    = (int) ( $target['post_id'] ?? 0 );
+		$tool_name  = sanitize_key( $tool_name );
 
-		$message = 'Skipped duplicate ' . sanitize_key( $tool_name ) . ' because this request already created a target';
+		if ( 'fix_seo' === $tool_name ) {
+			$reason = 'because the SEO task for this run is already marked complete';
+		} elseif ( 'create_post' === $tool_name ) {
+			$reason = 'because this request already created a target';
+		} else {
+			$reason = 'because this request already recorded an equivalent write';
+		}
+
+		$message = 'Skipped duplicate ' . $tool_name . ' ' . $reason;
 		if ( $title ) {
 			$message .= ' ("' . $title . '")';
 		}
@@ -1389,6 +1623,28 @@ class PressArk_Execution_Ledger {
 			return array( 'create_post' => $map[ $m[1] ] ?? null );
 		}
 
+		// v5.7.9 (2026-05-13): Count "create A page and B page" / "create a post,
+		// another post, and a third post" patterns. Pre-iter-29, these parsed as
+		// 1 (the regex below matched "a ... page" but didn't count repeats),
+		// which caused iter-27's create_post duplicate guard to fire on the
+		// second create. iter-27 made the guard tolerant of extractor mismatches;
+		// iter-29 makes the extractor honest so the count itself reflects intent.
+		//
+		// Heuristic: when the message contains "create" and the tail (text after
+		// the first "create" mention) has multiple singular noun mentions
+		// (page/post/article/blog post), count them. Cap at 10 to avoid runaway
+		// cases. Excludes plural forms (the explicit-numeric regex above handles
+		// "two pages" / "3 articles" cleanly).
+		$create_pos = stripos( $msg, 'create' );
+		if ( false !== $create_pos ) {
+			$tail = substr( $msg, $create_pos );
+			// Match singular only — \b boundaries + (?!s\b) to exclude trailing s.
+			$count = preg_match_all( '/\b(blog post|post|article|page)(?!s)\b/i', $tail, $matches );
+			if ( $count >= 2 ) {
+				return array( 'create_post' => min( $count, 10 ) );
+			}
+		}
+
 		if ( preg_match( '/\b(a|an|one)\s+(blog post|post|article|page)\b/', $msg )
 			|| preg_match( '/\bcreate\b.*\b(blog post|article|page)\b/', $msg ) ) {
 			if ( ! preg_match( '/\b(blog posts|posts|articles|pages)\b/', $msg ) ) {
@@ -1414,12 +1670,17 @@ class PressArk_Execution_Ledger {
 			return array();
 		}
 
+		// v5.7.10 (2026-05-13): Preserve `slug` so iter-27's create_post duplicate
+		// guard can diff on slug too (not only post_title). For models that
+		// auto-derive title from slug (or vice versa), slug-level disambiguation
+		// is the stronger signal.
 		return array(
 			'post_id'     => absint( $raw['post_id'] ?? 0 ),
 			'post_title'  => sanitize_text_field( $raw['post_title'] ?? '' ),
 			'post_type'   => sanitize_key( $raw['post_type'] ?? '' ),
 			'post_status' => sanitize_key( $raw['post_status'] ?? '' ),
 			'url'         => esc_url_raw( $raw['url'] ?? '' ),
+			'slug'        => sanitize_title( (string) ( $raw['slug'] ?? $raw['post_name'] ?? '' ) ),
 		);
 	}
 
@@ -1441,6 +1702,44 @@ class PressArk_Execution_Ledger {
 			&& empty( $target['url'] ?? '' );
 	}
 
+	private static function read_tool_updates_current_target( string $tool_name ): bool {
+		return in_array(
+			sanitize_key( $tool_name ),
+			array(
+				'read_content',
+				'read_blocks',
+				'get_product',
+				'get_custom_fields',
+				'get_revision_history',
+				'analyze_seo',
+				'page_audit',
+				'elementor_audit_page',
+				'elementor_read_page',
+			),
+			true
+		);
+	}
+
+	private static function merge_current_target( $existing, array $target ): array {
+		$existing = self::sanitize_target( $existing );
+		$target   = self::sanitize_target( $target );
+
+		if ( empty( $target['post_id'] ) ) {
+			return $existing;
+		}
+
+		if ( ! empty( $existing['post_id'] ) && (int) $existing['post_id'] === (int) $target['post_id'] ) {
+			foreach ( $target as $key => $value ) {
+				if ( '' !== (string) $value && 0 !== $value ) {
+					$existing[ $key ] = $value;
+				}
+			}
+			return self::sanitize_target( $existing );
+		}
+
+		return $target;
+	}
+
 	private static function task( string $key, string $label, array $depends_on = array(), array $metadata = array() ): array {
 		return array(
 			'key'        => sanitize_key( $key ),
@@ -1450,6 +1749,35 @@ class PressArk_Execution_Ledger {
 			'depends_on' => $depends_on,
 			'metadata'   => $metadata,
 		);
+	}
+
+	private static function infer_plan_step_kind( string $tool_name, bool $preview_required ): string {
+		if ( $preview_required ) {
+			return 'preview';
+		}
+
+		$tool_name = sanitize_key( $tool_name );
+		if ( '' === $tool_name ) {
+			return 'write';
+		}
+
+		if ( class_exists( 'PressArk_Operation_Registry' ) ) {
+			$operation = PressArk_Operation_Registry::resolve( $tool_name );
+			if ( $operation ) {
+				if ( method_exists( $operation, 'is_read' ) && $operation->is_read() ) {
+					return 'read';
+				}
+				if ( 'preview' === (string) ( $operation->capability ?? '' ) ) {
+					return 'preview';
+				}
+			}
+		}
+
+		if ( preg_match( '/^(get|list|read|search|analyze|inspect|measure|discover|load)_/', $tool_name ) ) {
+			return 'read';
+		}
+
+		return 'write';
 	}
 
 	private static function dedupe_tasks( array $tasks ): array {
@@ -1464,6 +1792,20 @@ class PressArk_Execution_Ledger {
 		return array_values( $deduped );
 	}
 
+	private static function has_model_plan_tasks( array $ledger ): bool {
+		foreach ( (array) ( $ledger['tasks'] ?? array() ) as $task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$metadata = is_array( $task['metadata'] ?? null ) ? $task['metadata'] : array();
+			if ( 'model_plan' === sanitize_key( (string) ( $metadata['origin'] ?? '' ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private static function ensure_task( array $ledger, string $key, string $label ): array {
 		foreach ( $ledger['tasks'] as $task ) {
 			if ( $key === ( $task['key'] ?? '' ) ) {
@@ -1474,6 +1816,54 @@ class PressArk_Execution_Ledger {
 		$ledger['tasks'][] = self::task( $key, $label );
 		$ledger['tasks']   = array_slice( self::dedupe_tasks( $ledger['tasks'] ), 0, self::MAX_TASKS );
 		return $ledger;
+	}
+
+	/**
+	 * Mark every dynamic-execution task whose metadata.tool_name matches $tool_name as completed.
+	 *
+	 * @since 5.6.3
+	 *
+	 * Dynamic tasks are inserted by PressArk_Agent::maybe_insert_dynamic_plan_steps
+	 * with metadata.tool_name set to the actual tool the model called. Without this
+	 * sync, those tasks stay `pending` forever, polluting the [Continue] envelope's
+	 * "Remaining: …" list with steps that just completed (O-2). Observed 2026-05-12
+	 * on every preview-keep wrap round: Continue listed "Edit Content; Read Content;
+	 * Search Knowledge; Update Plan" as remaining even after those tools had run.
+	 *
+	 * Safe to call multiple times — already-completed tasks are skipped.
+	 *
+	 * @param array  $ledger    Sanitized execution ledger.
+	 * @param string $tool_name Tool that just succeeded (e.g. 'edit_content').
+	 * @param string $evidence  Short receipt for the evidence field.
+	 * @return array Mutated ledger.
+	 */
+	public static function mark_dynamic_task_done_by_tool( array $ledger, string $tool_name, string $evidence ): array {
+		$tool_name = sanitize_key( $tool_name );
+		if ( '' === $tool_name ) {
+			return $ledger;
+		}
+		$mutated = false;
+		foreach ( $ledger['tasks'] as &$task ) {
+			if ( ! is_array( $task ) ) {
+				continue;
+			}
+			$status = $task['status'] ?? '';
+			if ( in_array( $status, array( 'completed', 'verified' ), true ) ) {
+				continue;
+			}
+			$meta = is_array( $task['metadata'] ?? null ) ? $task['metadata'] : array();
+			if ( ( $meta['origin'] ?? '' ) !== 'dynamic_execution' ) {
+				continue;
+			}
+			if ( sanitize_key( (string) ( $meta['tool_name'] ?? '' ) ) !== $tool_name ) {
+				continue;
+			}
+			$task['status']   = 'completed';
+			$task['evidence'] = sanitize_text_field( $evidence );
+			$mutated          = true;
+		}
+		unset( $task );
+		return $mutated ? self::resolve_blocked( $ledger ) : $ledger;
 	}
 
 	private static function mark_task_done( array $ledger, string $key, string $evidence ): array {
@@ -1571,6 +1961,8 @@ class PressArk_Execution_Ledger {
 			'post_id'    => absint( $target['post_id'] ?? 0 ),
 			'post_title' => sanitize_text_field( $target['post_title'] ?? '' ),
 			'url'        => esc_url_raw( $target['url'] ?? '' ),
+			// v5.7.10: store slug for iter-27 guard's slug-level diff fallback.
+			'slug'       => sanitize_title( (string) ( $target['slug'] ?? '' ) ),
 		);
 		if ( ! empty( $retry_guard ) ) {
 			$ledger['receipts'][ count( $ledger['receipts'] ) - 1 ]['retry_guard'] = $retry_guard;
@@ -1598,6 +1990,59 @@ class PressArk_Execution_Ledger {
 
 	private static function extract_target( array $result, array $args ): array {
 		$target = self::sanitize_target( $result['current_target'] ?? array() );
+		$data   = is_array( $result['data'] ?? null ) ? $result['data'] : array();
+		$nested_sources = array();
+
+		if ( is_array( $data['preview']['fields'] ?? null ) ) {
+			$nested_sources[] = (array) $data['preview']['fields'];
+		}
+		if ( is_array( $result['preview']['fields'] ?? null ) ) {
+			$nested_sources[] = (array) $result['preview']['fields'];
+		}
+		if ( ! empty( $data ) ) {
+			$nested_sources[] = $data;
+		}
+
+		foreach ( $nested_sources as $source ) {
+			if ( empty( $target['post_id'] ) ) {
+				foreach ( array( 'post_id', 'id', 'page_id', 'product_id' ) as $key ) {
+					if ( ! empty( $source[ $key ] ) ) {
+						$target['post_id'] = absint( $source[ $key ] );
+						break;
+					}
+				}
+			}
+			if ( empty( $target['post_title'] ) ) {
+				foreach ( array( 'post_title', 'title', 'name' ) as $key ) {
+					if ( ! empty( $source[ $key ] ) ) {
+						$target['post_title'] = sanitize_text_field( $source[ $key ] );
+						break;
+					}
+				}
+			}
+			if ( empty( $target['post_type'] ) && ! empty( $source['post_type'] ) ) {
+				$target['post_type'] = sanitize_key( $source['post_type'] );
+			}
+			if ( empty( $target['post_status'] ) && ! empty( $source['post_status'] ) ) {
+				$target['post_status'] = sanitize_key( $source['post_status'] );
+			}
+			if ( empty( $target['url'] ) ) {
+				foreach ( array( 'url', 'permalink' ) as $key ) {
+					if ( ! empty( $source[ $key ] ) ) {
+						$target['url'] = esc_url_raw( $source[ $key ] );
+						break;
+					}
+				}
+			}
+			if ( empty( $target['slug'] ) ) {
+				foreach ( array( 'slug', 'post_name' ) as $key ) {
+					if ( ! empty( $source[ $key ] ) ) {
+						$target['slug'] = sanitize_title( (string) $source[ $key ] );
+						break;
+					}
+				}
+			}
+		}
 
 		if ( empty( $target['post_id'] ) && ! empty( $result['post_id'] ) ) {
 			$target['post_id'] = absint( $result['post_id'] );
@@ -1614,9 +2059,19 @@ class PressArk_Execution_Ledger {
 		if ( empty( $target['url'] ) && ! empty( $result['url'] ) ) {
 			$target['url'] = esc_url_raw( $result['url'] );
 		}
+		// v5.7.10: capture slug from result (post_name is WP's term) or from args.
+		if ( empty( $target['slug'] ) && ! empty( $result['post_name'] ) ) {
+			$target['slug'] = sanitize_title( (string) $result['post_name'] );
+		}
+		if ( empty( $target['slug'] ) && ! empty( $result['slug'] ) ) {
+			$target['slug'] = sanitize_title( (string) $result['slug'] );
+		}
 
 		if ( empty( $target['post_title'] ) && ! empty( $args['title'] ) ) {
 			$target['post_title'] = sanitize_text_field( $args['title'] );
+		}
+		if ( empty( $target['slug'] ) && ! empty( $args['slug'] ) ) {
+			$target['slug'] = sanitize_title( (string) $args['slug'] );
 		}
 		if ( empty( $target['post_type'] ) && ! empty( $args['post_type'] ) ) {
 			$target['post_type'] = sanitize_key( $args['post_type'] );
@@ -1639,6 +2094,34 @@ class PressArk_Execution_Ledger {
 				if ( $product_id > 0 ) {
 					$target['post_id'] = $product_id;
 					break;
+				}
+			}
+		}
+
+		if ( empty( $target['post_id'] ) && ! empty( $result['read_meta']['target_post_ids'] ) && is_array( $result['read_meta']['target_post_ids'] ) ) {
+			$target_ids = array_values( array_filter( array_map( 'absint', $result['read_meta']['target_post_ids'] ) ) );
+			if ( 1 === count( $target_ids ) ) {
+				$target['post_id'] = (int) $target_ids[0];
+			}
+		}
+
+		if ( ! empty( $target['post_id'] ) && function_exists( 'get_post' ) ) {
+			$post = get_post( (int) $target['post_id'] );
+			if ( $post ) {
+				if ( empty( $target['post_title'] ) ) {
+					$target['post_title'] = (string) $post->post_title;
+				}
+				if ( empty( $target['post_type'] ) ) {
+					$target['post_type'] = (string) $post->post_type;
+				}
+				if ( empty( $target['post_status'] ) ) {
+					$target['post_status'] = (string) $post->post_status;
+				}
+				if ( empty( $target['url'] ) && function_exists( 'get_permalink' ) ) {
+					$target['url'] = (string) get_permalink( $post );
+				}
+				if ( empty( $target['slug'] ) ) {
+					$target['slug'] = (string) $post->post_name;
 				}
 			}
 		}

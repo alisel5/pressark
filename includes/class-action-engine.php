@@ -293,6 +293,7 @@ class PressArk_Action_Engine {
 			// v5.3.0: Fire per-operation pre_execute policy hooks.
 			$pre_hooks = PressArk_Operation_Registry::get_policy_hooks( $type, 'pre_execute' );
 			foreach ( $pre_hooks as $hook_name ) {
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- $hook_name comes from PressArk_Operation_Registry's hardcoded policy_hooks registry; all values are pressark_* prefixed by construction.
 				$params = apply_filters( $hook_name, $params, $type );
 			}
 
@@ -303,6 +304,7 @@ class PressArk_Action_Engine {
 			// v5.3.0: Fire per-operation post_execute policy hooks.
 			$post_hooks = PressArk_Operation_Registry::get_policy_hooks( $type, 'post_execute' );
 			foreach ( $post_hooks as $hook_name ) {
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- $hook_name comes from PressArk_Operation_Registry's hardcoded policy_hooks registry; all values are pressark_* prefixed by construction.
 				$result = apply_filters( $hook_name, $result, $type, $params );
 			}
 

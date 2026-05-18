@@ -187,6 +187,7 @@ class PressArk_Elementor {
 		$plain = implode( "\n\n", array_filter( $texts ) );
 
 		if ( true ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Elementor stores post content separately; we sync the plain-text mirror to wp_posts.post_content. wp_update_post() would re-trigger Elementor's content filters and undo the strip; clean_post_cache() below handles cache invalidation.
 			$wpdb->update(
 				$wpdb->posts,
 				array( 'post_content' => wp_strip_all_tags( $plain ) ),
@@ -1901,7 +1902,7 @@ class PressArk_Elementor {
 
 		$query .= ' ORDER BY p.post_modified DESC LIMIT 200';
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $query built with $wpdb->prepare() above.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- $query built entirely from $wpdb->prepare() fragments above; on-demand admin scan to discover Elementor pages; caching would mask freshly-edited pages.
 	$rows  = $wpdb->get_results( $query );
 		$pages = array();
 
@@ -2148,14 +2149,21 @@ class PressArk_Elementor {
 	public function list_templates(): array {
 		$kit_id = (int) get_option( 'elementor_active_kit' );
 
+		// Fetch one extra so we can drop the kit (excluded in PHP — post__not_in is slow per WPCS,
+		// and we're only excluding a single ID).
 		$templates = get_posts( array(
 			'post_type'      => 'elementor_library',
 			'post_status'    => 'publish',
-			'posts_per_page' => 50,
-			'post__not_in'   => $kit_id ? array( $kit_id ) : array(),
+			'posts_per_page' => $kit_id ? 51 : 50,
 			'update_post_meta_cache' => true,
 			'update_post_term_cache' => false,
 		) );
+		if ( $kit_id ) {
+			$templates = array_values( array_filter( $templates, static function ( $t ) use ( $kit_id ) {
+				return (int) $t->ID !== $kit_id;
+			} ) );
+			$templates = array_slice( $templates, 0, 50 );
+		}
 
 		$result = array();
 		foreach ( $templates as $t ) {
@@ -2262,6 +2270,7 @@ class PressArk_Elementor {
 
 		$kit_id = (int) get_option( 'elementor_active_kit' );
 
+		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_key, WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Admin-only on-demand find-replace tool; no alternative without maintaining a custom index of Elementor-enabled posts.
 		$args = array(
 			'post_type'      => array( 'page', 'post', 'elementor_library' ), // FIX: includes headers, footers, templates
 			'post_status'    => array( 'publish', 'draft', 'private' ),        // FIX: includes drafts
@@ -2271,17 +2280,20 @@ class PressArk_Elementor {
 			'update_post_meta_cache' => true,
 			'update_post_term_cache' => false,
 		);
+		// phpcs:enable WordPress.DB.SlowDBQuery.slow_db_query_meta_key, WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 
 		if ( $post_id ) {
 			$args['post__in'] = array( absint( $post_id ) );
 		}
 
-		// Exclude the kit post — it has no elements
+		// Exclude the kit post — it has no elements. Filtered in PHP because
+		// post__not_in is slow per WPCS, and we're only excluding a single ID.
+		$pages = get_posts( $args );
 		if ( $kit_id ) {
-			$args['post__not_in'] = array( $kit_id );
+			$pages = array_values( array_filter( $pages, static function ( $p ) use ( $kit_id ) {
+				return (int) $p->ID !== $kit_id;
+			} ) );
 		}
-
-		$pages       = get_posts( $args );
 		$updated     = 0;
 		$updated_ids = array();
 		$skipped     = 0;
@@ -2399,6 +2411,7 @@ class PressArk_Elementor {
 	 * Count Elementor pages and get summary stats.
 	 */
 	public function get_stats(): array {
+		// phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_key, WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Admin-only stats query; no alternative without maintaining a custom index of Elementor-enabled posts.
 		$elementor_pages = get_posts( array(
 			'post_type'      => array( 'page', 'post' ),
 			'post_status'    => 'publish',
@@ -2407,6 +2420,7 @@ class PressArk_Elementor {
 			'meta_value'     => 'builder',
 			'fields'         => 'ids',
 		) );
+		// phpcs:enable WordPress.DB.SlowDBQuery.slow_db_query_meta_key, WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 
 		$templates = get_posts( array(
 			'post_type'      => 'elementor_library',

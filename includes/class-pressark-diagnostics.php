@@ -8,7 +8,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  * PressArk Diagnostics
  * Real evidence-based site analysis using WordPress internals.
  * These methods power the new diagnostic AI tools.
+ *
+ * DB-access note: every method is a real-time diagnostic snapshot. Caching is
+ * deliberately not used because stale diagnostic data would mask the very
+ * conditions the user is asking about. Direct $wpdb queries hit core tables
+ * (posts, options) and the ActionScheduler table for which no higher-level
+ * cached API exists at the granularity we need.
  */
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 class PressArk_Diagnostics {
 
 	/**
@@ -135,7 +142,7 @@ class PressArk_Diagnostics {
 
 	/**
 	 * Real-time homepage performance measurement.
-	 * Measures actual TTFB and load time from the server's perspective.
+	 * Measures actual load time from the server's perspective.
 	 *
 	 * Restricted to same-host URLs to prevent SSRF.
 	 * Results are cached for 15 minutes (site_brief reads this transient).
@@ -162,11 +169,14 @@ class PressArk_Diagnostics {
 		$fetch          = array();
 		$transport_url  = $url;
 		$canonical_url  = $url;
+		$reported_url   = $url;
 		$transport_note = '';
+		$transport_headers = array();
 		$attempted_urls = array();
 		foreach ( $plans as $plan ) {
 			$attempted_urls[] = $plan['transport_url'];
-			$fetch            = $this->timed_fetch( $plan['transport_url'], $plan['headers'] ?? array() );
+			$transport_headers = $plan['headers'] ?? array();
+			$fetch            = $this->timed_fetch( $plan['transport_url'], $transport_headers );
 			if ( ! isset( $fetch['error'] ) ) {
 				$transport_url  = $plan['transport_url'];
 				$canonical_url  = $plan['canonical_url'] ?? $url;
@@ -195,15 +205,128 @@ class PressArk_Diagnostics {
 		$body    = $fetch['body'];
 		$h       = $fetch['headers']; // all keys lowercase
 
-		// Report redirects without following them (SSRF: redirect chain could escape same-host check).
+		// v5.8.5 (2026-05-14, iter-41): trailing-slash canonical redirects
+		// tripped a misleading 0ms success; follow one same-host hop only.
 		if ( $code >= 300 && $code < 400 ) {
-			$location = $h['location'] ?? '';
-			return array(
+			$location = trim( (string) ( $h['location'] ?? '' ) );
+			$redirect_url = '';
+			$base_parts = wp_parse_url( $transport_url );
+			$location_parts = wp_parse_url( $location );
+			if ( '' !== $location && is_array( $base_parts ) && ! empty( $base_parts['host'] ) ) {
+				if ( is_array( $location_parts ) && ! empty( $location_parts['host'] ) ) {
+					if ( empty( $location_parts['scheme'] ) ) {
+						$location_parts['scheme'] = $base_parts['scheme'] ?? 'http';
+					}
+					$redirect_url = $this->build_url_from_parts( $location_parts );
+				} elseif ( is_array( $location_parts ) ) {
+					$target_parts = $base_parts;
+					unset( $target_parts['user'], $target_parts['pass'] );
+					if ( isset( $location_parts['path'] ) && '' !== $location_parts['path'] ) {
+						if ( str_starts_with( $location_parts['path'], '/' ) ) {
+							$target_path = $location_parts['path'];
+						} else {
+							$base_path   = (string) ( $base_parts['path'] ?? '/' );
+							$base_dir    = preg_replace( '#/[^/]*$#', '/', $base_path );
+							$target_path = ( $base_dir ?: '/' ) . $location_parts['path'];
+						}
+						$path_segments = array();
+						foreach ( explode( '/', $target_path ) as $segment ) {
+							if ( '' === $segment || '.' === $segment ) {
+								continue;
+							}
+							if ( '..' === $segment ) {
+								array_pop( $path_segments );
+								continue;
+							}
+							$path_segments[] = $segment;
+						}
+						$target_parts['path'] = '/' . implode( '/', $path_segments );
+					}
+					if ( array_key_exists( 'query', $location_parts ) ) {
+						$target_parts['query'] = $location_parts['query'];
+					} else {
+						unset( $target_parts['query'] );
+					}
+					if ( array_key_exists( 'fragment', $location_parts ) ) {
+						$target_parts['fragment'] = $location_parts['fragment'];
+					} else {
+						unset( $target_parts['fragment'] );
+					}
+					$redirect_url = $this->build_url_from_parts( $target_parts );
+				}
+			}
+
+			$redirect_target = '' !== $redirect_url ? $redirect_url : $location;
+			$redirect_info = array(
 				'url'       => $url,
-				'redirect'  => $location,
+				'redirect'  => $redirect_target,
 				'http_code' => $code,
-				'note'      => 'Page redirects. Speed test measures the redirect response, not the destination.',
+				'note'      => sprintf(
+					'Page returned HTTP %1$d to %2$s. The speed tool stopped because it could not verify a same-host redirect target. Ask the user to retry against the explicit destination URL.',
+					$code,
+					'' !== $redirect_target ? $redirect_target : 'an empty Location header'
+				),
 			);
+
+			$redirect_host = '' !== $redirect_url ? wp_parse_url( $redirect_url, PHP_URL_HOST ) : '';
+			if ( ! $redirect_host || strcasecmp( (string) $redirect_host, (string) $site_host ) !== 0 ) {
+				$redirect_info['note'] = sprintf(
+					'Page returned HTTP %1$d to %2$s. The redirect target is on a different host so the speed tool stopped to avoid SSRF. Ask the user to retry against the explicit destination URL.',
+					$code,
+					'' !== $redirect_target ? $redirect_target : 'an empty Location header'
+				);
+				return $redirect_info;
+			}
+
+			// v5.8.6 (2026-05-13, post-iter-41): wp-playground auto-login
+			// redirects require cookies on the single same-host follow.
+			$follow_headers = $transport_headers;
+			$cookie_header  = $this->build_cookie_header_from_fetch( $fetch );
+			if ( '' !== $cookie_header && empty( $follow_headers['Cookie'] ) && empty( $follow_headers['cookie'] ) ) {
+				$follow_headers['Cookie'] = $cookie_header;
+			}
+			$follow_fetch = $this->timed_fetch( $redirect_url, $follow_headers );
+			if ( isset( $follow_fetch['error'] ) ) {
+				$redirect_info['note'] = sprintf(
+					'Page returned HTTP %1$d to %2$s. The speed tool stopped because the redirect target could not be fetched: %3$s',
+					$code,
+					$redirect_target,
+					$follow_fetch['error']
+				);
+				return $redirect_info;
+			}
+
+			$follow_code = (int) ( $follow_fetch['http_code'] ?? 0 );
+			if ( $follow_code >= 300 && $follow_code < 400 ) {
+				$redirect_info['redirect_chain_too_deep'] = true;
+				$redirect_info['note'] = sprintf(
+					'Page returned HTTP %1$d to %2$s, then the destination returned HTTP %3$d. The speed tool stopped after one redirect to avoid an unbounded chain. Ask the user to retry against the explicit destination URL.',
+					$code,
+					$redirect_target,
+					$follow_code
+				);
+				return $redirect_info;
+			}
+
+			if ( $follow_code < 200 || $follow_code >= 300 ) {
+				$redirect_info['note'] = sprintf(
+					'Page returned HTTP %1$d to %2$s, then the destination returned HTTP %3$d. The speed tool stopped instead of reporting that failed second hop as page speed. Ask the user to retry against the explicit destination URL.',
+					$code,
+					$redirect_target,
+					$follow_code
+				);
+				return $redirect_info;
+			}
+
+			$fetch          = $follow_fetch;
+			$elapsed        = $fetch['total_ms'];
+			$ttfb_ms        = $fetch['ttfb_ms'];
+			$code           = $fetch['http_code'];
+			$body           = $fetch['body'];
+			$h              = $fetch['headers'];
+			$transport_url  = $redirect_url;
+			$canonical_url  = $redirect_url;
+			$reported_url   = $redirect_url;
 		}
 
 		// Detect caching
@@ -216,9 +339,9 @@ class PressArk_Diagnostics {
 		// Page size
 		$page_size_kb = round( strlen( $body ) / 1024, 1 );
 
-		// Resource counting
+		// Resource counting (parsing a fetched HTML body, not emitting markup).
 		$script_count = substr_count( $body, '<script' );
-		$style_count  = substr_count( $body, '<link rel="stylesheet"' );
+		$style_count  = (int) preg_match_all( '/<link\b[^>]*\brel\s*=\s*["\']stylesheet["\']/i', $body );
 
 		// DOM element estimate (opening tags).
 		$dom_elements  = preg_match_all( '/<[a-zA-Z][a-zA-Z0-9]*/', $body );
@@ -236,7 +359,7 @@ class PressArk_Diagnostics {
 					:                     'Very slow — caching or server issue likely' ) );
 
 		$result = [
-			'url'            => $url,
+			'url'            => $reported_url,
 			'response_code'  => $code,
 			'load_time_ms'   => $elapsed,
 			'load_time_s'    => round( $elapsed / 1000, 2 ),
@@ -255,6 +378,10 @@ class PressArk_Diagnostics {
 			'style_tags'     => $style_count,
 			'recommendations' => $this->speed_recommendations( $elapsed, $cache_status, $script_count ),
 		];
+
+		if ( $reported_url !== $url ) {
+			$result['followed_redirect_from'] = $url;
+		}
 
 		if ( $canonical_url !== $url ) {
 			$result['canonical_url'] = $canonical_url;
@@ -509,62 +636,15 @@ class PressArk_Diagnostics {
 	}
 
 	/**
-	 * Fetch a URL with timing data. Uses cURL directly when available for
-	 * TTFB (CURLINFO_STARTTRANSFER_TIME), otherwise falls back to wp_remote_get.
+	 * Fetch a same-site URL with WordPress HTTP API timing data.
+	 *
+	 * WordPress does not expose transport-level TTFB, so ttfb_ms is retained
+	 * in the return shape for backward compatibility and reported as null.
 	 *
 	 * @param string $url Same-site URL to fetch.
 	 * @return array{total_ms:int,ttfb_ms:?int,http_code:int,body:string,headers:array<string,string>}|array{error:string}
 	 */
 	private function timed_fetch( string $url, array $headers = array() ): array {
-		if ( function_exists( 'curl_init' ) ) {
-			$ch = curl_init( $url );
-			$curl_headers = array();
-			foreach ( $headers as $key => $value ) {
-				$curl_headers[] = $key . ': ' . $value;
-			}
-			curl_setopt_array( $ch, [
-				CURLOPT_RETURNTRANSFER => true,
-				CURLOPT_HEADER         => true,
-				CURLOPT_TIMEOUT        => 15,
-				CURLOPT_SSL_VERIFYPEER => false,
-				CURLOPT_USERAGENT      => 'PressArk-Diagnostics/1.0',
-				CURLOPT_FOLLOWLOCATION => false,
-				CURLOPT_HTTPHEADER     => $curl_headers,
-			] );
-
-			$start = microtime( true );
-			$raw   = curl_exec( $ch );
-			$total = (int) round( ( microtime( true ) - $start ) * 1000 );
-
-			if ( curl_errno( $ch ) ) {
-				$err = curl_error( $ch );
-				curl_close( $ch );
-				return [ 'error' => 'Request failed: ' . $err ];
-			}
-
-			$http_code   = (int) curl_getinfo( $ch, CURLINFO_HTTP_CODE );
-			$ttfb        = (int) round( curl_getinfo( $ch, CURLINFO_STARTTRANSFER_TIME ) * 1000 );
-			$header_size = (int) curl_getinfo( $ch, CURLINFO_HEADER_SIZE );
-			curl_close( $ch );
-
-			$headers = [];
-			foreach ( explode( "\r\n", substr( $raw, 0, $header_size ) ) as $line ) {
-				if ( str_contains( $line, ':' ) ) {
-					[ $key, $val ] = explode( ':', $line, 2 );
-					$headers[ strtolower( trim( $key ) ) ] = trim( $val );
-				}
-			}
-
-			return [
-				'total_ms'  => $total,
-				'ttfb_ms'   => $ttfb,
-				'http_code' => $http_code,
-				'body'      => substr( $raw, $header_size ),
-				'headers'   => $headers,
-			];
-		}
-
-		// Fallback: wp_remote_get (no TTFB available).
 		$start = microtime( true );
 		// wp_remote_get intentional: diagnostics hit the site's own URLs (loopback).
 		// wp_safe_remote_get blocks loopback by design, so it cannot be used here.
@@ -581,18 +661,59 @@ class PressArk_Diagnostics {
 			return [ 'error' => $response->get_error_message() ];
 		}
 
-		$headers = [];
+		$headers            = [];
+		$set_cookie_headers = [];
 		foreach ( wp_remote_retrieve_headers( $response ) as $key => $val ) {
-			$headers[ strtolower( $key ) ] = is_array( $val ) ? end( $val ) : $val;
+			$header_key = strtolower( $key );
+			if ( 'set-cookie' === $header_key ) {
+				foreach ( (array) $val as $cookie_val ) {
+					$set_cookie_headers[] = (string) $cookie_val;
+				}
+			}
+			$headers[ $header_key ] = is_array( $val ) ? end( $val ) : $val;
 		}
 
-		return [
+		$result = [
 			'total_ms'  => $total,
 			'ttfb_ms'   => null,
 			'http_code' => (int) wp_remote_retrieve_response_code( $response ),
 			'body'      => wp_remote_retrieve_body( $response ),
 			'headers'   => $headers,
 		];
+		if ( ! empty( $set_cookie_headers ) ) {
+			$result['set_cookie_headers'] = $set_cookie_headers;
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Build a Cookie header from a same-host redirect response.
+	 *
+	 * @param array $fetch Timed fetch result.
+	 * @return string
+	 */
+	private function build_cookie_header_from_fetch( array $fetch ): string {
+		$set_cookie_headers = $fetch['set_cookie_headers'] ?? array();
+		$set_cookie_headers = is_array( $set_cookie_headers ) ? $set_cookie_headers : array( $set_cookie_headers );
+		$cookies            = array();
+
+		foreach ( $set_cookie_headers as $header ) {
+			$pair = trim( explode( ';', (string) $header, 2 )[0] ?? '' );
+			if ( '' === $pair || ! str_contains( $pair, '=' ) ) {
+				continue;
+			}
+
+			[ $name, $value ] = explode( '=', $pair, 2 );
+			$name = trim( $name );
+			if ( '' === $name || preg_match( '/[\s;,=]/', $name ) ) {
+				continue;
+			}
+
+			$cookies[ $name ] = $name . '=' . trim( $value );
+		}
+
+		return implode( '; ', array_values( $cookies ) );
 	}
 
 	/**
@@ -1015,8 +1136,8 @@ class PressArk_Diagnostics {
 
 		$result = array(
 			'orders'            => $order_counts,
-			'revenue_30d'       => strip_tags( wc_price( $revenue ) ),
-			'revenue_alltime'   => strip_tags( wc_price( $revenue_alltime ) ),
+			'revenue_30d'       => wp_strip_all_tags( wc_price( $revenue ) ),
+			'revenue_alltime'   => wp_strip_all_tags( wc_price( $revenue_alltime ) ),
 			'stuck_orders'      => $stuck,
 			'out_of_stock'      => (int) $out_of_stock,
 			'products_no_image' => (int) $no_image,
@@ -1038,6 +1159,7 @@ class PressArk_Diagnostics {
 		if ( class_exists( 'ActionScheduler' ) ) {
 			$as_table = $wpdb->prefix . 'actionscheduler_actions';
 
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- $as_table is the wpdb-prefixed literal 'actionscheduler_actions'; status values are hardcoded literals bound via %s.
 			$pending = (int) $wpdb->get_var( $wpdb->prepare(
 				"SELECT COUNT(*) FROM {$as_table} WHERE status = %s", 'pending'
 			) );
@@ -1047,6 +1169,7 @@ class PressArk_Diagnostics {
 			$oldest  = $wpdb->get_var( $wpdb->prepare(
 				"SELECT MIN(scheduled_date_gmt) FROM {$as_table} WHERE status = %s", 'pending'
 			) );
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
 			$result['action_scheduler'] = array(
 				'pending'        => $pending,
@@ -1479,3 +1602,4 @@ class PressArk_Diagnostics {
 		return mb_substr( trim( $last ), 0, 100 );
 	}
 }
+// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching

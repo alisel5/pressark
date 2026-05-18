@@ -198,6 +198,21 @@ class PressArk_Handler_Diagnostics extends PressArk_Handler_Base {
 		if ( isset( $data['error'] ) ) {
 			return array( 'success' => false, 'message' => $data['error'], 'data' => $data );
 		}
+		// v5.8.5 (2026-05-14, iter-41): redirect-info is a tool stop,
+		// not a 0ms success; tell the model how to continue.
+		$redirect_code = (int) ( $data['http_code'] ?? 0 );
+		if ( isset( $data['redirect'] ) && ! isset( $data['load_time_ms'] ) && $redirect_code >= 300 ) {
+			$redirect_target = (string) $data['redirect'];
+			return array(
+				'success' => false,
+				'message' => sprintf(
+					/* translators: %s: redirect target URL */
+					__( 'Page redirected to %1$s without being measured. Call measure_page_speed again with url=%1$s to measure the destination, OR proceed without speed numbers.', 'pressark' ),
+					'' !== $redirect_target ? $redirect_target : __( 'the Location header destination', 'pressark' )
+				),
+				'data'    => $data,
+			);
+		}
 		return array(
 			'success' => true,
 			'message' => sprintf(

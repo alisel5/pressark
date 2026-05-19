@@ -1,6 +1,11 @@
 PressArk Changelog
 ==================
 
+5.8.16
+------
+- Maintenance: Aligned the plugin header, version constant, and WordPress readme stable tag with the current 5.8.x release line.
+- Fix: Plan card step numbers now render as an increasing sequence instead of all showing 0.
+
 5.0.5
 -----
 - Compliance: Aligned the main plugin version and readme stable tag.

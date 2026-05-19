@@ -647,7 +647,7 @@ class PressArk_Token_Bank {
 		$map = array(
 			'43678' => 'free',
 			'43681' => 'pro',
-			'43682' => 'team',
+			'43682' => 'agency',
 			'43683' => 'agency',
 			'43685' => 'enterprise',
 		);
@@ -657,14 +657,20 @@ class PressArk_Token_Bank {
 
 	private function normalize_freemius_tier( string $tier ): string {
 		$tier = strtolower( trim( $tier ) );
-		return in_array( $tier, array( 'free', 'pro', 'team', 'agency', 'enterprise' ), true ) ? $tier : '';
+		$aliases = array(
+			'team'       => 'agency',
+			'business'   => 'agency',
+			'entreprise' => 'enterprise',
+		);
+		$tier = $aliases[ $tier ] ?? $tier;
+		return in_array( $tier, array( 'free', 'go', 'pro', 'agency', 'enterprise' ), true ) ? $tier : '';
 	}
 
 	private function freemius_tier_title( string $tier ): string {
 		$titles = array(
 			'free'       => 'Free',
+			'go'         => 'Go',
 			'pro'        => 'Pro',
-			'team'       => 'Team',
 			'agency'     => 'Agency',
 			'enterprise' => 'Enterprise',
 		);
@@ -2163,7 +2169,7 @@ class PressArk_Token_Bank {
 	}
 
 	private function normalize_billing_catalog( array $data ): array {
-		if ( empty( $data['credit_packs'] ) || ! is_array( $data['credit_packs'] ) ) {
+		if ( ! array_key_exists( 'credit_packs', $data ) || ! is_array( $data['credit_packs'] ) ) {
 			return array();
 		}
 

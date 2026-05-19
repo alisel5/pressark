@@ -58,8 +58,8 @@ PressArk routes to the best model for each task automatically:
 | Tier | Default Model | Also Available |
 |------|--------------|----------------|
 | Free | DeepSeek V3.2 | MiniMax M2.7 |
-| Pro | Claude Sonnet 4.6 | Claude Haiku 4.5, Kimi K2.5, GLM-5, GPT-5.4 Mini |
-| Team+ | Claude Sonnet 4.6 | Claude Opus 4.6, GPT-5.4, GPT-5.3 Codex |
+| Go | Claude Sonnet 4.6 | Claude Haiku 4.5, Kimi K2.5, GLM-5, GPT-5.4 Mini |
+| Pro+ | Claude Sonnet 4.6 | Claude Opus 4.6, GPT-5.4, GPT-5.3 Codex |
 
 **BYOK (Bring Your Own Key):** Connect your own OpenRouter, OpenAI, Anthropic, or DeepSeek API key and use any model your provider supports.
 

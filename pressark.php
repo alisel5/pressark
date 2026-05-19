@@ -3,7 +3,7 @@
  * Plugin Name: PressArk
  * Plugin URI:  https://pressark.com
  * Description: AI co-pilot for WordPress. Requires the PressArk AI service or your own supported AI provider key.
- * Version:     5.1.0
+ * Version:     5.8.16
  * Author:      PressArk
  * Author URI:  https://pressark.com/docs
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'PRESSARK_VERSION', '5.1.0' );
+define( 'PRESSARK_VERSION', '5.8.16' );
 define( 'PRESSARK_PATH', plugin_dir_path( __FILE__ ) );
 define( 'PRESSARK_URL', plugin_dir_url( __FILE__ ) );
 define( 'PRESSARK_BASENAME', plugin_basename( __FILE__ ) );
@@ -1276,6 +1276,7 @@ function pressark_activate( bool $network_wide = false ): void {
 	PressArk_Capabilities::register();
 	PressArk_Capabilities::migrate_existing_users();
 	PressArk_Uninstall_Helper::remember_activated_site();
+	PressArk_Handler_Content::cleanup_legacy_public_report_exports();
 
 	PressArk_Cron_Manager::activate();
 
@@ -1399,6 +1400,13 @@ function pressark_init(): void {
 	PressArk_Cron_Manager::register_hooks();
 	PressArk_Frontend_SEO::register_hooks();
 	PressArk_WC_Events::register_hooks();
+
+	add_action( 'wp_ajax_pressark_download_report', array( 'PressArk_Handler_Content', 'ajax_download_report' ) );
+
+	if ( ! get_option( 'pressark_legacy_report_exports_cleaned_v1', false ) ) {
+		PressArk_Handler_Content::cleanup_legacy_public_report_exports();
+		update_option( 'pressark_legacy_report_exports_cleaned_v1', true, false );
+	}
 
 	// Watchdog feature removed — clear any orphan flush schedule from prior versions.
 	if ( ! get_option( 'pressark_watchdog_flush_cleared', false ) ) {

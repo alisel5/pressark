@@ -3280,6 +3280,7 @@ body:not(.pressark-frontend) .interface-interface-skeleton {
 }
 
 .pressark-plan-steps {
+	counter-reset: pressark-plan-step;
 	list-style: none;
 	margin: 0;
 	padding: 0;
@@ -3289,6 +3290,7 @@ body:not(.pressark-frontend) .interface-interface-skeleton {
 }
 
 .pressark-plan-steps li {
+	counter-increment: pressark-plan-step;
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -3314,7 +3316,7 @@ body:not(.pressark-frontend) .interface-interface-skeleton {
 	font-size: 9px;
 	font-family: 'JetBrains Mono', monospace;
 	font-weight: 600;
-	content: counter(list-item);
+	content: counter(pressark-plan-step);
 	background: rgba(255, 255, 255, 0.06);
 	color: #6F88BD;
 }

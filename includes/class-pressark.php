@@ -253,7 +253,7 @@ class PressArk {
 			'images'         => $this->get_brand_images(),
 			'upgrade_url'    => pressark_get_upgrade_url(),
 			'settings_url'   => admin_url( 'admin.php?page=pressark' ),
-			'creditStoreUrl' => admin_url( 'admin.php?page=pressark#pressark-credit-store' ),
+			'creditStoreUrl' => pressark_get_upgrade_url(),
 			'creditPacks'    => $credit_packs,
 			'creditsProduct' => array(
 				'product_id'    => (int) $checkout_config['product_id'],
@@ -366,7 +366,7 @@ class PressArk {
 			'images'         => $this->get_brand_images(),
 			'upgrade_url'    => pressark_get_upgrade_url(),
 			'settings_url'   => admin_url( 'admin.php?page=pressark' ),
-			'creditStoreUrl' => admin_url( 'admin.php?page=pressark#pressark-credit-store' ),
+			'creditStoreUrl' => pressark_get_upgrade_url(),
 			'creditPacks'    => $credit_packs,
 			'creditsProduct' => array(
 				'product_id'    => (int) $checkout_config['product_id'],

@@ -2305,7 +2305,7 @@ class PressArk_Orchestration_Service {
 					'message'          => PressArk_Entitlements::limit_message( 'token_budget', $tier ),
 					'percent_used'     => $status['percent_used'] ?? 100,
 					'upgrade_url'      => pressark_get_upgrade_url(),
-					'credit_store_url' => admin_url( 'admin.php?page=pressark#pressark-credit-store' ),
+					'credit_store_url' => pressark_get_upgrade_url(),
 					'usage'            => $status,
 					'plan_info'        => PressArk_Entitlements::get_plan_info( $tier ),
 				), 429 );

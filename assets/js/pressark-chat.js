@@ -3583,23 +3583,6 @@
 			return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 		},
 
-		renderCreditPackLinks: function () {
-			var packs = (window.pressarkData || {}).creditPacks || [];
-			if (!packs.length) return '';
-
-			var html = '<div class="pressark-upgrade-prompt"><strong>' + this.escapeHtml(__( 'Your billing-cycle credits are used up.', 'pressark' )) + '</strong>';
-			for (var i = 0; i < packs.length; i++) {
-				var pack = packs[i];
-				var dollars = '$' + ((pack.price_cents || 0) / 100).toFixed(0);
-				html += '<p><a href="' + this.escapeHtml(pack.checkoutUrl || (window.pressarkData || {}).creditStoreUrl || '#') + '" target="_blank" class="pressark-upgrade-btn">' +
-					/* translators: 1: credit pack label, 2: credit pack price. */
-					sprintf( this.escapeHtml(__( 'Buy %1$s - %2$s', 'pressark' )), this.escapeHtml(pack.label || ''), this.escapeHtml(dollars) ) +
-					'</a></p>';
-			}
-			html += '<p>' + this.escapeHtml(__( 'Purchased credits last 12 months.', 'pressark' )) + '</p></div>';
-			return html;
-		},
-
 		getBillingState: function (info) {
 			var state = (info && info.billing_state) || {};
 			var isByok = !!(info && info.is_byok);
@@ -3652,8 +3635,6 @@
 
 			var billingState = this.getBillingState(info);
 			var settingsUrl = (window.pressarkData || {}).settings_url || '#';
-			var creditStoreUrl = (window.pressarkData || {}).creditStoreUrl || settingsUrl;
-
 			var countLabel = '';
 			var linkHtml = '';
 			var progressPct = 0;
@@ -3676,11 +3657,7 @@
 
 				if (info.monthly_exhausted && totalRemainingNum <= 0 && purchasedRemainingNum <= 0 && legacyRemainingNum <= 0) {
 					depleted = true;
-					linkHtml = info.can_buy_credits
-						? '<a href="' + this.escapeHtml(creditStoreUrl) + '">' + this.escapeHtml(__( 'Buy credits', 'pressark' )) + '</a>'
-						: '<a href="' + this.escapeHtml(info.upgrade_url || settingsUrl) + '">' + this.escapeHtml(__( 'Manage billing', 'pressark' )) + '</a>';
-				} else if (info.monthly_exhausted && info.can_buy_credits) {
-					linkHtml = '<a href="' + this.escapeHtml(creditStoreUrl) + '">' + this.escapeHtml(__( 'Buy credits', 'pressark' )) + '</a>';
+					linkHtml = '<a href="' + this.escapeHtml(info.upgrade_url || settingsUrl) + '">' + this.escapeHtml(__( 'Manage billing', 'pressark' )) + '</a>';
 				} else {
 					linkHtml = '<a href="' + this.escapeHtml(settingsUrl) + '">' + this.escapeHtml(__( 'Usage', 'pressark' )) + '</a>';
 				}
@@ -4368,22 +4345,11 @@
 							self.finishRequest();
 							var planInfo = result.plan_info || (window.pressarkData || {}).plan_info || {};
 							var settingsUrl = (window.pressarkData || {}).settings_url || '#';
-							var creditStoreUrl = result.credit_store_url || (window.pressarkData || {}).creditStoreUrl || settingsUrl;
-
-							if (planInfo.can_buy_credits && !planInfo.is_byok) {
-								self.addMessage('ai', result.message + '\n\n[' + __( 'Open Credit Store', 'pressark' ) + '](' + creditStoreUrl + ')\n[' + __( 'Manage billing', 'pressark' ) + '](' + (result.upgrade_url || '#') + ')');
-								var creditPrompt = document.createElement('div');
-								creditPrompt.className = 'pressark-message pressark-message-system';
-								creditPrompt.innerHTML = self.renderCreditPackLinks();
-								self.messagesEl.appendChild(creditPrompt);
-								self.scrollToBottom();
-							} else {
-								self.addMessage('ai',
-									result.message + '\n\n' +
-									'[' + __( 'Manage billing', 'pressark' ) + '](' + (result.upgrade_url || '#') + ')\n' +
-									'[' + __( 'Use your own API key', 'pressark' ) + '](' + settingsUrl + ')'
-								);
-							}
+							self.addMessage('ai',
+								result.message + '\n\n' +
+								'[' + __( 'Manage billing', 'pressark' ) + '](' + (result.upgrade_url || settingsUrl) + ')\n' +
+								'[' + __( 'Use your own API key', 'pressark' ) + '](' + settingsUrl + ')'
+							);
 							if (result.usage) {
 								self.updateTokenDisplay(result.usage);
 							}

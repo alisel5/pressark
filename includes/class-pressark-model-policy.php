@@ -875,7 +875,7 @@ class PressArk_Model_Policy {
 	 * @return bool
 	 */
 	private static function is_team_tier( string $tier ): bool {
-		return in_array( $tier, array( 'team', 'agency', 'enterprise' ), true );
+		return in_array( $tier, array( 'agency', 'enterprise' ), true );
 	}
 
 	/**

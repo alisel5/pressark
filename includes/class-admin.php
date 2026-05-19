@@ -158,14 +158,6 @@ class PressArk_Admin {
 			'pressark_license_section'
 		);
 
-		add_settings_field(
-			'pressark_credit_store',
-			__( 'Credit Store', 'pressark' ),
-			array( $this, 'render_credit_store_field' ),
-			'pressark',
-			'pressark_license_section'
-		);
-
 		// BYOK section.
 		register_setting( 'pressark_settings', 'pressark_byok_enabled', array(
 			'type'              => 'boolean',
@@ -1368,10 +1360,10 @@ class PressArk_Admin {
 				/* translators: %s: plan tier label (e.g., Pro, Agency) */
 				printf( esc_html__( '%s Plan Active', 'pressark' ), esc_html( $tier_label ) );
 			?></strong>
-				<p style="margin:12px 0 0;font-size:14px;color:#475569;"><?php esc_html_e( 'Billing, subscription changes, credit purchases, and site activations are managed through Freemius.', 'pressark' ); ?></p>
+				<p style="margin:12px 0 0;font-size:14px;color:#475569;"><?php esc_html_e( 'Billing, subscription changes, and site activations are managed through Freemius.', 'pressark' ); ?></p>
 			<?php else : ?>
 				<strong style="font-size:14px; color:#0f172a;"><?php esc_html_e( 'Plan Pricing', 'pressark' ); ?></strong>
-				<p style="margin:8px 0 4px; color:#64748b;"><?php esc_html_e( 'Free: 100K credits/mo · Pro ($19): 5M · Team ($49): 15M · Agency ($99): 40M · Enterprise ($199): 100M', 'pressark' ); ?></p>
+				<p style="margin:8px 0 4px; color:#64748b;"><?php esc_html_e( 'Free: 200K credits/mo - Go ($9): 2M - Pro ($19): 6M - Agency ($49): 15M - Enterprise: custom from $299, 100M', 'pressark' ); ?></p>
 				<p style="margin:4px 0 0; color:#64748b;"><?php esc_html_e( 'Paid plans add larger included PressArk service-credit allowances. Local plugin tools remain available; bundled AI usage is metered by credits.', 'pressark' ); ?></p>
 			<?php endif; ?>
 		</div>
@@ -1756,203 +1748,13 @@ class PressArk_Admin {
 			$account_url = (string) $fs->get_account_url();
 		}
 
-		echo '<p>' . esc_html__( 'PressArk uses Freemius for billing, subscriptions, credit purchases, and site activations.', 'pressark' ) . '</p>';
+		echo '<p>' . esc_html__( 'PressArk uses Freemius for billing, subscriptions, and site activations.', 'pressark' ) . '</p>';
 		printf(
 			'<p><a class="button button-secondary" href="%s" target="_blank" rel="noopener noreferrer">%s</a></p>',
 			esc_url( $account_url ),
 			esc_html__( 'Open Billing Account', 'pressark' )
 		);
-		echo '<p class="description">' . esc_html__( 'Use your Freemius account to manage renewals, credit purchases, and site activations.', 'pressark' ) . '</p>';
-	}
-
-	public function render_credit_store_field(): void {
-		$tier      = ( new PressArk_License() )->get_tier();
-		$plan_info = PressArk_Entitlements::get_plan_info( $tier );
-		$is_byok   = ! empty( $plan_info['is_byok'] );
-		$can_buy_credits = ! empty( $plan_info['can_buy_credits'] );
-		$bank      = new PressArk_Token_Bank();
-		$credits   = $bank->get_credits();
-		$active    = (array) ( $credits['credits'] ?? array() );
-		$pack_catalog = PressArk_Entitlements::get_credit_pack_catalog();
-		$checkout_config = PressArk_Entitlements::get_credit_checkout_config();
-
-		echo '<div id="pressark-credit-store">';
-
-		if ( $is_byok ) {
-			echo '<p class="description">' . esc_html__( 'Credit packs are hidden while BYOK mode is active because bundled credits are not used with your own API key.', 'pressark' ) . '</p>';
-			echo '</div>';
-			return;
-		}
-
-		if ( ! $can_buy_credits ) {
-			printf(
-				'<p>%s <a href="%s">%s</a></p>',
-				esc_html__( 'Credit packs are temporarily unavailable for this account.', 'pressark' ),
-				esc_url( pressark_get_upgrade_url() ),
-				esc_html__( 'Manage billing', 'pressark' )
-			);
-			echo '</div>';
-			return;
-		}
-
-		echo '<p>' . esc_html__( 'Purchased credits are used after your monthly included allowance is exhausted. Credit packs expire 12 months after purchase.', 'pressark' ) . '</p>';
-		if ( ! empty( $plan_info['billing_contract_mismatch'] ) ) {
-			echo '<p class="description" style="color:#92400e;">' . esc_html__( 'The bank is using a newer billing catalog than this plugin build. Checkout uses the bank catalog automatically.', 'pressark' ) . '</p>';
-		}
-		echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0 20px;">';
-		foreach ( $pack_catalog as $pack_type => $pack ) {
-			$pricing_id = (int) ( $pack['pricing_id'] ?? $pack['freemius_pricing_id'] ?? 0 );
-			echo '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">';
-			echo '<strong style="display:block;color:#0f172a;margin-bottom:6px;">' . esc_html( (string) ( $pack['label'] ?? '' ) ) . '</strong>';
-			echo '<p style="margin:0 0 12px;color:#64748b;">$' . esc_html( number_format( (int) ( $pack['price_cents'] ?? 0 ) / 100, 0 ) ) . '</p>';
-			printf(
-				'<button type="button" class="button button-secondary pressark-buy-credits" data-pricing-id="%s" data-pack="%s">%s</button>',
-				esc_attr( (string) $pricing_id ),
-				esc_attr( $pack_type ),
-				esc_html__( 'Buy Credits', 'pressark' )
-			);
-			echo '</div>';
-		}
-		echo '</div>';
-
-		// Freemius Checkout JS for credit purchases.
-		$current_user = wp_get_current_user();
-		$nonce        = wp_create_nonce( 'pressark_credit_purchase' );
-		$install_id   = '';
-		if ( function_exists( 'pressark_fs' ) ) {
-			$site_obj = pressark_fs()->get_site();
-			if ( $site_obj && ! empty( $site_obj->id ) ) {
-				$install_id = (string) $site_obj->id;
-			}
-		}
-		$site_domain = wp_parse_url( home_url(), PHP_URL_HOST ) ?: '';
-
-		// Sandbox support for SaaS checkout (Freemius hosted checkout).
-		$sandbox_json = 'null';
-		if ( defined( 'WP_FS__DEV_MODE' ) && WP_FS__DEV_MODE ) {
-			$secret_key = defined( 'PRESSARK_CREDITS_SECRET_KEY' ) ? PRESSARK_CREDITS_SECRET_KEY
-			: ( defined( 'WP_FS__pressark_SECRET_KEY' ) ? WP_FS__pressark_SECRET_KEY : '' );
-			if ( $secret_key ) {
-				$ctx           = (string) time();
-				$product_id    = (string) $checkout_config['product_id'];
-				$public_key    = (string) $checkout_config['public_key'];
-				$sandbox_token = md5( $ctx . $product_id . $secret_key . $public_key . 'checkout' );
-				$sandbox_json  = wp_json_encode( array(
-					'token' => $sandbox_token,
-					'ctx'   => $ctx,
-				) );
-			}
-		}
-
-		// Register the Freemius Checkout SDK as an enqueued script so WordPress prints it
-		// (in the admin footer) rather than embedding a literal <script src> tag here.
-		wp_enqueue_script(
-			'pressark-freemius-checkout',
-			'https://checkout.freemius.com/js/v1/',
-			array(),
-			'v1',
-			true
-		);
-		?>
-		<script>
-		(function() {
-			var sandboxParams = <?php echo $sandbox_json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
-			var buttons = document.querySelectorAll('.pressark-buy-credits');
-			buttons.forEach(function(btn) {
-				btn.addEventListener('click', function(e) {
-					e.preventDefault();
-					var pricingId = parseInt(btn.getAttribute('data-pricing-id'), 10);
-					var packType  = btn.getAttribute('data-pack');
-					if (!pricingId) return;
-
-					var checkoutConfig = {
-						product_id:  '<?php echo (int) $checkout_config['product_id']; ?>',
-						plan_id:     '<?php echo (int) $checkout_config['plan_id']; ?>',
-						public_key:  <?php echo wp_json_encode( $checkout_config['public_key'] ); ?>,
-						image:       <?php echo wp_json_encode( PRESSARK_URL . 'assets/imgs/PNG-LOGO.png' ); ?>
-					};
-
-					if (sandboxParams) {
-						checkoutConfig.sandbox = sandboxParams;
-					}
-
-					var handler = new FS.Checkout(checkoutConfig);
-
-					var openCheckout = function(checkoutIntent) {
-						var metadata = {
-							pressark_install_id: <?php echo wp_json_encode( $install_id ); ?>,
-							pressark_site_domain: <?php echo wp_json_encode( $site_domain ); ?>
-						};
-						if (checkoutIntent) {
-							metadata.pressark_checkout_intent = checkoutIntent;
-						}
-
-						handler.open({
-							name:         <?php echo wp_json_encode( $current_user->display_name ); ?>,
-							email:        <?php echo wp_json_encode( $current_user->user_email ); ?>,
-							pricing_id:   pricingId,
-							billing_cycle: 'lifetime',
-							licenses:     1,
-							title:        'Buy Credits',
-							metadata:     metadata,
-							purchaseCompleted: function(response) {
-								if (!response || !response.payment) return;
-								jQuery.post(window.ajaxurl || '/wp-admin/admin-ajax.php', {
-									action:       'pressark_confirm_credit_purchase',
-									_ajax_nonce:  <?php echo wp_json_encode( $nonce ); ?>,
-									payment_id:   String(response.payment.id || ''),
-									pricing_id:   pricingId,
-									gross:        String(response.payment.gross || 0),
-									plan_name:    packType,
-									product_name: 'pressark-credits',
-									checkout_intent: checkoutIntent || ''
-								}).done(function() { location.reload(); });
-							},
-							success: function() { location.reload(); }
-						});
-					};
-
-					jQuery.post(window.ajaxurl || '/wp-admin/admin-ajax.php', {
-						action:      'pressark_prepare_credit_checkout',
-						_ajax_nonce: <?php echo wp_json_encode( $nonce ); ?>,
-						pack_type:   packType,
-						pricing_id:  pricingId
-					}).done(function(response) {
-						var checkoutIntent = '';
-						if (response && response.success && response.data && response.data.checkout_intent) {
-							checkoutIntent = String(response.data.checkout_intent);
-						}
-						openCheckout(checkoutIntent);
-					}).fail(function() {
-						openCheckout('');
-					});
-				});
-			});
-		})();
-		</script>
-		<?php
-
-		if ( ! empty( $active ) ) {
-			echo '<div style="background:#fff;border:1px solid rgba(226,232,240,0.8);border-radius:12px;padding:20px;">';
-			echo '<strong style="display:block;color:#0f172a;margin-bottom:12px;">' . esc_html__( 'Active Credit Packs', 'pressark' ) . '</strong>';
-			echo '<table style="width:100%;border-collapse:collapse;">';
-			echo '<thead><tr>';
-			echo '<th style="text-align:left;padding:0 0 10px;color:#64748b;font-size:12px;">' . esc_html__( 'Pack', 'pressark' ) . '</th>';
-			echo '<th style="text-align:left;padding:0 0 10px;color:#64748b;font-size:12px;">' . esc_html__( 'Remaining', 'pressark' ) . '</th>';
-			echo '<th style="text-align:left;padding:0 0 10px;color:#64748b;font-size:12px;">' . esc_html__( 'Expires', 'pressark' ) . '</th>';
-			echo '</tr></thead><tbody>';
-			foreach ( $active as $pack ) {
-				$remaining = max( 0, (int) ( $pack['icus_remaining'] ?? 0 ) );
-				echo '<tr>';
-				echo '<td style="padding:10px 0;border-top:1px solid #f1f5f9;">' . esc_html( (string) ( $pack['pack_type'] ?? '' ) ) . '</td>';
-				echo '<td style="padding:10px 0;border-top:1px solid #f1f5f9;">' . esc_html( number_format( $remaining ) ) . ' ' . esc_html__( 'credits', 'pressark' ) . '</td>';
-				echo '<td style="padding:10px 0;border-top:1px solid #f1f5f9;">' . esc_html( (string) ( $pack['expires_at'] ?? '' ) ) . '</td>';
-				echo '</tr>';
-			}
-			echo '</tbody></table></div>';
-		}
-
-		echo '</div>';
+		echo '<p class="description">' . esc_html__( 'Use your Freemius account to manage renewals and site activations.', 'pressark' ) . '</p>';
 	}
 
 	public function render_license_key_field(): void {
@@ -2357,7 +2159,6 @@ class PressArk_Admin {
 		$next_reset_at = (string) ( $plan_info['next_reset_at'] ?? '' );
 		$reset_label   = $next_reset_at ? wp_date( 'M j', strtotime( $next_reset_at ) ) : '';
 		$upgrade_url  = pressark_get_upgrade_url();
-		$store_anchor = admin_url( 'admin.php?page=pressark#pressark-credit-store' );
 		$pressure_label = ucfirst( (string) ( $plan_info['budget_pressure_state'] ?? 'normal' ) );
 		$authority_label = (string) ( $billing_state['authority_label'] ?? 'Bank provisional' );
 		$service_state = (string) ( $billing_state['service_state'] ?? ( ! empty( $plan_info['offline'] ) ? 'offline_assisted' : 'normal' ) );
@@ -2459,8 +2260,6 @@ class PressArk_Admin {
 			<?php endif; ?>
 			<?php if ( $monthly_exhausted && $credits_left > 0 ) : ?>
 				<p style="margin:10px 0 0;color:#2563eb;"><?php esc_html_e( 'Your billing-cycle credits are exhausted. PressArk is now using your purchased credits.', 'pressark' ); ?></p>
-			<?php elseif ( $at_limit && ! empty( $plan_info['can_buy_credits'] ) ) : ?>
-				<p style="margin:10px 0 0;"><a href="<?php echo esc_url( $store_anchor ); ?>" style="color:#2563EB;text-decoration:none;font-weight:600;"><?php esc_html_e( 'Buy more credits', 'pressark' ); ?></a></p>
 			<?php elseif ( $at_limit ) : ?>
 				<p style="margin:10px 0 0;"><a href="<?php echo esc_url( $upgrade_url ); ?>" style="color:#2563EB;text-decoration:none;font-weight:600;"><?php esc_html_e( 'Manage billing', 'pressark' ); ?></a></p>
 			<?php endif; ?>
@@ -2504,8 +2303,8 @@ class PressArk_Admin {
 				<?php esc_html_e( 'Local plugin tools are available without per-group local limits. Bundled AI usage is governed by your service-credit balance.', 'pressark' ); ?>
 			</p>
 			<p style="margin-top:24px;">
-				<a href="<?php echo esc_url( admin_url( 'admin.php?page=pressark#pressark-credit-store' ) ); ?>" class="button button-primary">
-					<?php esc_html_e( 'Manage Credits', 'pressark' ); ?>
+				<a href="<?php echo esc_url( pressark_get_upgrade_url() ); ?>" class="button button-primary">
+					<?php esc_html_e( 'Manage Billing', 'pressark' ); ?>
 				</a>
 			</p>
 		</div>

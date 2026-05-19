@@ -1,10 +1,10 @@
 === PressArk ===
-Contributors: pressark
+Contributors: michaelwilliamsme
 Tags: ai, assistant, chat, woocommerce, content
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
-Stable tag: 5.1.0
+Stable tag: 5.8.16
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -63,19 +63,13 @@ PressArk is serviceware. Core AI features require either the bundled PressArk AI
 
 **Plans**
 
-* Free - 100,000 included PressArk service credits per month
-* Pro - 5,000,000 included PressArk service credits per month
-* Team - 15,000,000 included PressArk service credits per month
-* Agency - 40,000,000 included PressArk service credits per month
-* Enterprise - 100,000,000 included PressArk service credits per month
+* Free - 200,000 included PressArk service credits per month
+* Go - 2,000,000 included PressArk service credits per month
+* Pro - 6,000,000 included PressArk service credits per month
+* Agency - 15,000,000 included PressArk service credits per month
+* Enterprise - custom plan from $299/month with 100,000,000 included PressArk service credits per month
 
 All plugin tools, deep mode, model selection, BYOK configuration, and scheduled prompts are available in the directory build. Bundled PressArk AI service usage is metered by credits; higher-cost models and longer requests consume more credits.
-
-**Credit Packs**
-
-* $5 = 800,000 credits
-* $15 = 2,600,000 credits
-* $30 = 6,000,000 credits
 
 Readable source files for PressArk's distributed minified JS and CSS assets are bundled in this plugin package.
 
@@ -95,16 +89,16 @@ PressArk is a Software as a Service plugin. The remote PressArk AI service provi
 
 = Freemius SDK =
 
-PressArk uses the Freemius SDK for licensing, plan management, billing, and opt-in usage analytics. The SDK communicates with Freemius servers to validate licenses, process upgrades, and handle checkout. Data transmitted includes your site URL, WordPress version, PHP version, plugin version, and license key. No site content is transmitted.
+PressArk uses the Freemius SDK for licensing, plan and account management, opt-in usage analytics, subscriptions, hosted checkout, and software update/account screens. Freemius is contacted when you activate or connect Freemius, validate or manage a license, view account/pricing/checkout screens, or check updates. Data transmitted by the SDK and checkout flow may include the site URL/domain, WordPress version, PHP version, plugin version, plugin slug, Freemius install ID, license/subscription identifiers, license keys/tokens, the administrator name and email address supplied to Freemius, selected plan/pricing ID, billing cycle, license quantity, payment ID and gross amount after checkout, and related purchase metadata. PressArk does not intentionally send site content to Freemius.
 
-* Service URLs: [https://wp.freemius.com](https://wp.freemius.com), [https://checkout.freemius.com](https://checkout.freemius.com)
+* Service URLs: [https://api.freemius.com](https://api.freemius.com), [https://wp.freemius.com](https://wp.freemius.com), [https://checkout.freemius.com](https://checkout.freemius.com), [https://users.freemius.com](https://users.freemius.com)
 * Provider: Freemius, Inc.
 * Terms of Service: [https://freemius.com/terms/](https://freemius.com/terms/)
 * Privacy Policy: [https://freemius.com/privacy/](https://freemius.com/privacy/)
 
 = PressArk Token Bank =
 
-The PressArk Token Bank manages credit tracking, reservation, and AI proxy routing for bundled-billing users. It sends your site domain, WordPress user ID, and credit-usage data. When AI proxy mode is active, chat messages and site context are routed through this service to the selected AI provider. It is not used when BYOK mode is enabled.
+The PressArk Token Bank manages site registration, credit status, credit reservation, settlement, release, trace diagnostics, and AI proxy routing for bundled-billing users. It is contacted when bundled service mode is used, when credit/status/catalog screens are loaded, and when a bundled AI request is streamed through the proxy. Data transmitted may include the site URL, site domain, installation UUID, site nonce, Freemius install ID when available, PressArk site token, correlation/reservation IDs, WordPress user ID, plan tier, selected AI provider/model, estimated and actual ICUs/tokens, input/output/cache token counts, and diagnostic trace metadata. When bundled AI proxy mode is active, the AI request body is sent to the Token Bank and forwarded to the selected AI provider; this may include chat messages, conversation history, system prompts, tool schemas, and selected site/screen/content context. Token Bank is not used for AI requests when BYOK mode is enabled.
 
 * Service URL: [https://tokens.pressark.com](https://tokens.pressark.com)
 * Provider: PressArk
@@ -113,7 +107,7 @@ The PressArk Token Bank manages credit tracking, reservation, and AI proxy routi
 
 = AI Providers =
 
-Chat messages and site context are sent to the AI provider you select. In proxy mode, requests are routed through the PressArk Token Bank which forwards them to the provider. In BYOK mode, requests go directly to your chosen provider.
+Chat messages and site context are sent to the AI provider you select to generate assistant responses. In bundled proxy mode, requests are routed through the PressArk Token Bank and then forwarded to the provider. In BYOK mode, requests go directly from your site to your chosen provider using the API key you configure. Data sent to providers may include chat messages, conversation history, system prompts, tool schemas, model name, streaming options, and selected site/screen/content context. For OpenRouter BYOK requests, PressArk also sends an HTTP referrer based on your site URL. Your BYOK API keys are stored encrypted on your site and are not sent to PressArk services for AI billing.
 
 * OpenRouter - [https://openrouter.ai](https://openrouter.ai) - [Privacy Policy](https://openrouter.ai/privacy)
 * OpenAI - [https://openai.com](https://openai.com) - [Privacy Policy](https://openai.com/policies/privacy-policy)
@@ -125,7 +119,7 @@ All API keys are encrypted at rest using Sodium authenticated encryption.
 
 = Telegram Bot API (optional) =
 
-If you enable Telegram notifications for scheduled automations, PressArk sends automation status messages to the Telegram Bot API using a chat ID you configure. Notifications may include summaries of actions performed.
+If you enable Telegram notifications for scheduled automations, PressArk sends automation status messages to the Telegram Bot API using the bot token and chat ID you configure. The bot token is included in the Telegram API request URL, and request data includes the chat ID, message subject and body, optional wp-admin link, Markdown parse mode, and web-preview setting. Notifications may include summaries of actions performed.
 
 * Service URL: [https://api.telegram.org](https://api.telegram.org)
 * Privacy Policy: [https://telegram.org/privacy](https://telegram.org/privacy)
@@ -166,7 +160,7 @@ All plugin data is removed, including custom database tables, plugin options, tr
 
 == Changelog ==
 
-= 5.1.0 =
+= 5.8.16 =
 
 * New: Updated AI model lineup — DeepSeek V3.2, MiniMax M2.7, Claude Haiku 4.5, Kimi K2.5, GLM-5, GPT-5.4 Mini, Claude Sonnet 4.6, Claude Opus 4.6, GPT-5.4, GPT-5.3 Codex
 * New: Credit-metered model access — higher-cost models consume more credits instead of being locally plan-locked

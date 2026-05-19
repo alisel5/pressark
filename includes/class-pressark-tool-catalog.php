@@ -367,7 +367,7 @@ class PressArk_Tool_Catalog {
 			'scheduled'     => 'list_scheduled_tasks, manage_scheduled_task → WP-Cron management',
 			'generation'    => 'generate_content, rewrite_content, generate_bulk_meta → AI content creation',
 			'bulk'          => 'bulk_edit, find_and_replace → mass post changes, search-replace',
-			'export'        => 'export_report → downloadable HTML/CSV reports',
+			'export'        => 'export_report → authenticated HTML reports',
 			'profile'       => 'view_site_profile, refresh_site_profile → brand voice, tone analysis',
 			'logs'          => 'list_logs, read_log, analyze_logs → debug.log, error analysis',
 			'index'         => 'search_knowledge, index_status, rebuild_index → content search index',

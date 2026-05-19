@@ -541,7 +541,7 @@ REFERENCE (use when relevant tools are loaded):
 - Comments: approved|pending|spam|trash. Bulk moderation available
 - Media: attachment CPT. Alt text in _wp_attachment_image_alt (SEO-critical). Featured via _thumbnail_id
 - Site profile: tone/voice/style guide — not proof of latest content
-- Reports: downloadable HTML (SEO, security, content)
+- Reports: authenticated HTML downloads (SEO, security, content)
 - Site health: PHP, HTTPS, debug, updates, REST, loopback, cron checks
 SKILL;
 	}
@@ -670,7 +670,7 @@ SKILL;
 	public static function export(): string {
 		return <<<'SKILL'
 EXPORT/REPORT KNOWLEDGE:
-- Reports can be generated as downloadable HTML files
+- Reports are generated as authenticated, short-lived HTML downloads
 - SEO reports include per-page scores and recommendations
 - Security reports list all checks and their pass/fail status
 - Content exports can include all posts, pages, and their meta data

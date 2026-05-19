@@ -956,7 +956,7 @@ class PressArk_Operation_Registry {
 
 		// ── Export ───────────────────────────────────────────────
 		self::register_all( array(
-			array( 'export_report', 'export', 'read', 'content', 'export_report', 'none', null, 'Generate HTML report: SEO, security, site overview, WooCommerce' ),
+			array( 'export_report', 'export', 'confirm', 'content', 'export_report', 'none', null, 'Generate authenticated HTML report: SEO, security, site overview, WooCommerce' ),
 		) );
 
 		// ── Site Profile ────────────────────────────────────────

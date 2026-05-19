@@ -939,7 +939,7 @@ class PressArk_Onboarding {
 								<div class="pa-modes">
 									<button type="button" class="pa-mode" data-pa-mode="managed">
 										<h3><?php esc_html_e( 'Use PressArk credits', 'pressark' ); ?></h3>
-										<p><?php esc_html_e( 'No API key needed. Start free with 100K credits while PressArk handles the AI infrastructure.', 'pressark' ); ?></p>
+										<p><?php esc_html_e( 'No API key needed. Start free with 200K credits while PressArk handles the AI infrastructure.', 'pressark' ); ?></p>
 										<small><?php esc_html_e( 'Free credit to try real PressArk workflows before you choose a plan.', 'pressark' ); ?></small>
 									</button>
 

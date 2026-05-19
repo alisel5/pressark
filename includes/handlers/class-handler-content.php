@@ -14,6 +14,15 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class PressArk_Handler_Content extends PressArk_Handler_Base {
 
+	private const REPORT_EXPORT_TTL = 900;
+	private const REPORT_TRANSIENT_PREFIX = 'pressark_report_export_';
+	private const REPORT_TYPES = array(
+		'seo',
+		'security',
+		'site_overview',
+		'woocommerce',
+	);
+
 	/**
 	 * Fast pre-execution permission probe for content tools.
 	 *
@@ -113,9 +122,209 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 					null,
 					__( 'You do not have permission to edit content.', 'pressark' )
 				);
+
+			case 'export_report':
+				return $this->permission_for_export_report( $tool_name, $params, $context );
 		}
 
 		return $this->entitlement_permission( $tool_name, $params, $context );
+	}
+
+	/**
+	 * Normalize a requested report type.
+	 */
+	private static function normalize_report_type( mixed $report_type ): string {
+		$report_type = sanitize_key( (string) $report_type );
+
+		return in_array( $report_type, self::REPORT_TYPES, true ) ? $report_type : '';
+	}
+
+	/**
+	 * Capability needed to generate or download a report type.
+	 */
+	private static function report_capability( string $report_type ): string {
+		return match ( $report_type ) {
+			'seo'         => 'edit_posts',
+			'woocommerce' => 'manage_woocommerce',
+			default       => 'manage_options',
+		};
+	}
+
+	/**
+	 * User-facing denial copy for report access.
+	 */
+	private static function report_permission_message( string $report_type ): string {
+		return match ( $report_type ) {
+			'seo'         => __( 'You do not have permission to export site SEO reports.', 'pressark' ),
+			'woocommerce' => __( 'You do not have permission to export WooCommerce reports.', 'pressark' ),
+			default       => __( 'You do not have permission to export site reports.', 'pressark' ),
+		};
+	}
+
+	/**
+	 * Check whether the current user can generate or download a report.
+	 */
+	public static function current_user_can_export_report( string $report_type ): bool {
+		$report_type = self::normalize_report_type( $report_type );
+		if ( '' === $report_type ) {
+			return false;
+		}
+
+		if ( 'woocommerce' === $report_type && ! class_exists( 'WooCommerce' ) ) {
+			return false;
+		}
+
+		return current_user_can( self::report_capability( $report_type ) );
+	}
+
+	/**
+	 * Permission probe for export_report with report-type specific caps.
+	 */
+	private function permission_for_export_report( string $tool_name, array $params, array $context ): array {
+		$report_type = self::normalize_report_type( $params['report_type'] ?? 'site_overview' );
+		if ( '' === $report_type ) {
+			return $this->permission_block(
+				__( 'Invalid report type.', 'pressark' ),
+				array( 'tool_name' => $tool_name )
+			);
+		}
+
+		if ( 'woocommerce' === $report_type && ! class_exists( 'WooCommerce' ) ) {
+			return $this->permission_block(
+				__( 'WooCommerce is not active.', 'pressark' ),
+				array( 'tool_name' => $tool_name )
+			);
+		}
+
+		return $this->permission_require_capability(
+			$tool_name,
+			$params,
+			$context,
+			self::report_capability( $report_type ),
+			null,
+			self::report_permission_message( $report_type )
+		);
+	}
+
+	/**
+	 * Build the transient key for a report token without storing the raw token.
+	 */
+	private static function report_transient_key( string $token ): string {
+		return self::REPORT_TRANSIENT_PREFIX . hash( 'sha256', $token );
+	}
+
+	/**
+	 * Build the authenticated report download URL.
+	 */
+	private static function report_download_url( string $token ): string {
+		return add_query_arg(
+			array(
+				'action'       => 'pressark_download_report',
+				'report_token' => $token,
+				'_wpnonce'     => wp_create_nonce( 'pressark_download_report_' . $token ),
+			),
+			admin_url( 'admin-ajax.php' )
+		);
+	}
+
+	/**
+	 * Remove old publicly reachable uploads-based reports from earlier builds.
+	 */
+	public static function cleanup_legacy_public_report_exports(): void {
+		$upload_dir = wp_get_upload_dir();
+		$base_dir   = (string) ( $upload_dir['basedir'] ?? '' );
+
+		if ( '' === $base_dir ) {
+			return;
+		}
+
+		$report_dir = trailingslashit( $base_dir ) . 'pressark-reports/';
+		if ( ! is_dir( $report_dir ) ) {
+			return;
+		}
+
+		$reports = glob( $report_dir . '*.html' );
+		if ( is_array( $reports ) ) {
+			foreach ( $reports as $report_file ) {
+				wp_delete_file( $report_file );
+			}
+		}
+
+		if ( ! function_exists( 'WP_Filesystem' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+
+		WP_Filesystem();
+		global $wp_filesystem;
+
+		if ( $wp_filesystem ) {
+			$wp_filesystem->put_contents(
+				$report_dir . '.htaccess',
+				"<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n",
+				FS_CHMOD_FILE
+			);
+			$wp_filesystem->put_contents(
+				$report_dir . 'index.php',
+				"<?php\n// Silence is golden.\n",
+				FS_CHMOD_FILE
+			);
+		}
+	}
+
+	/**
+	 * Stream a transient-backed report after nonce, user, and capability checks.
+	 */
+	public static function ajax_download_report(): void {
+		$token = sanitize_text_field( wp_unslash( $_GET['report_token'] ?? '' ) );
+		$nonce = sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ?? '' ) );
+
+		if ( '' === $token || ! wp_verify_nonce( $nonce, 'pressark_download_report_' . $token ) ) {
+			self::report_download_die( __( 'Invalid or expired report link.', 'pressark' ), 403 );
+		}
+
+		$payload = get_transient( self::report_transient_key( $token ) );
+		if ( ! is_array( $payload ) ) {
+			self::report_download_die( __( 'This report link has expired. Generate a new report and try again.', 'pressark' ), 410 );
+		}
+
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 || (int) ( $payload['user_id'] ?? 0 ) !== $user_id ) {
+			self::report_download_die( __( 'You do not have permission to download this report.', 'pressark' ), 403 );
+		}
+
+		$report_type = self::normalize_report_type( $payload['report_type'] ?? '' );
+		if ( '' === $report_type || ! self::current_user_can_export_report( $report_type ) ) {
+			self::report_download_die( self::report_permission_message( $report_type ), 403 );
+		}
+
+		$filename = sanitize_file_name( (string) ( $payload['filename'] ?? 'pressark-report.html' ) );
+		if ( '' === $filename ) {
+			$filename = 'pressark-report.html';
+		}
+
+		$html = (string) ( $payload['html'] ?? '' );
+		if ( '' === $html ) {
+			self::report_download_die( __( 'The report content is no longer available.', 'pressark' ), 410 );
+		}
+
+		nocache_headers();
+		header( 'Content-Type: text/html; charset=UTF-8' );
+		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+		header( 'X-Content-Type-Options: nosniff' );
+
+		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- HTML was generated by this handler and is delivered as a file download.
+		exit;
+	}
+
+	/**
+	 * Terminate report downloads with a consistent response code.
+	 */
+	private static function report_download_die( string $message, int $status_code ): void {
+		wp_die(
+			esc_html( $message ),
+			esc_html__( 'PressArk Report Download', 'pressark' ),
+			array( 'response' => $status_code )
+		);
 	}
 
 	/**
@@ -2029,10 +2238,18 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 	}
 
 	/**
-	 * Generate an exportable HTML report.
+	 * Generate an authenticated HTML report export.
 	 */
 	public function export_report( array $params ): array {
-		$report_type  = $params['report_type'] ?? 'site_overview';
+		$report_type  = self::normalize_report_type( $params['report_type'] ?? 'site_overview' );
+		if ( '' === $report_type ) {
+			return array( 'success' => false, 'message' => __( 'Invalid report type.', 'pressark' ) );
+		}
+
+		if ( ! self::current_user_can_export_report( $report_type ) ) {
+			return array( 'success' => false, 'message' => self::report_permission_message( $report_type ) );
+		}
+
 		$site_name    = get_bloginfo( 'name' );
 		$site_url     = home_url();
 		$date         = current_time( 'F j, Y' );
@@ -2185,37 +2402,28 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 		$report_html .= "<div class='footer'>Generated by PressArk &mdash; AI Site Management for WordPress &middot; pressark.ai</div>";
 		$report_html .= "</body></html>";
 
-		// Save to a temp file for download.
-		$upload_dir = wp_upload_dir();
-		$report_dir = $upload_dir['basedir'] . '/pressark-reports/';
+		self::cleanup_legacy_public_report_exports();
 
-		if ( ! function_exists( 'WP_Filesystem' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-		}
-		WP_Filesystem();
-		global $wp_filesystem;
-
-		if ( ! file_exists( $report_dir ) ) {
-			wp_mkdir_p( $report_dir );
-			$wp_filesystem->put_contents( $report_dir . '.htaccess', "Options -Indexes\n", FS_CHMOD_FILE );
-		}
-
+		$token    = wp_generate_password( 32, false, false );
 		$filename = 'pressark-' . sanitize_file_name( $report_type ) . '-report-' . gmdate( 'Y-m-d-His' ) . '.html';
-		$filepath = $report_dir . $filename;
-		$wp_filesystem->put_contents( $filepath, $report_html, FS_CHMOD_FILE );
 
-		$download_url = $upload_dir['baseurl'] . '/pressark-reports/' . $filename;
+		$stored = set_transient(
+			self::report_transient_key( $token ),
+			array(
+				'user_id'     => get_current_user_id(),
+				'report_type' => $report_type,
+				'filename'    => $filename,
+				'html'        => $report_html,
+				'created_at'  => time(),
+			),
+			self::REPORT_EXPORT_TTL
+		);
 
-		// Clean up old reports (keep last 10).
-		$existing = glob( $report_dir . '*.html' );
-		if ( is_array( $existing ) && count( $existing ) > 10 ) {
-			usort( $existing, function ( $a, $b ) {
-				return filemtime( $a ) - filemtime( $b );
-			} );
-			$to_delete = array_slice( $existing, 0, count( $existing ) - 10 );
-			foreach ( $to_delete as $f ) {
-				wp_delete_file( $f );
-			}
+		if ( ! $stored ) {
+			return array(
+				'success' => false,
+				'message' => __( 'Could not prepare a secure report download. Please try again.', 'pressark' ),
+			);
 		}
 
 		return array(
@@ -2226,8 +2434,9 @@ class PressArk_Handler_Content extends PressArk_Handler_Base {
 				ucfirst( $report_type )
 			),
 			'data'    => array(
-				'download_url' => $download_url,
+				'download_url' => self::report_download_url( $token ),
 				'filename'     => $filename,
+				'expires_in'   => self::REPORT_EXPORT_TTL,
 			),
 		);
 	}

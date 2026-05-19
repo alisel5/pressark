@@ -26,21 +26,25 @@ class PressArk_Entitlements {
 
 	public const LEGACY_TIER_MAP = array(
 		'business' => 'agency',
+		'team'     => 'agency',
 	);
 
 	public const FREEMIUS_PLAN_MAP = array(
 		'free'       => 'free',
+		'go'         => 'go',
 		'pro'        => 'pro',
-		'team'       => 'team',
+		'team'       => 'agency',
 		'agency'     => 'agency',
+		'entreprise' => 'enterprise',
 		'enterprise' => 'enterprise',
 	);
 
 	/** Freemius plan IDs — for reference / checkout links. */
 	public const FREEMIUS_PLAN_IDS = array(
 		'free'       => 43678,
+		// Go is resolved by Freemius plan name or the bank catalog once its
+		// generated Freemius plan ID is known.
 		'pro'        => 43681,
-		'team'       => 43682,
 		'agency'     => 43683,
 		'enterprise' => 43685,
 	);
@@ -52,26 +56,9 @@ class PressArk_Entitlements {
 	public const CREDITS_PUBLIC_KEY = 'pk_0ea7686cd81ea4e278f5c183b22cf';
 	public const CREDITS_PLAN_ID   = 43699;
 
-	public const CREDIT_PACKS = array(
-		'pack_1' => array(
-			'icus'               => 800000,
-			'price_cents'        => 500,
-			'label'              => '800K credits',
-			'freemius_pricing_id' => 57278,
-		),
-		'pack_2' => array(
-			'icus'               => 2600000,
-			'price_cents'        => 1500,
-			'label'              => '2.6M credits',
-			'freemius_pricing_id' => 57279,
-		),
-		'pack_3' => array(
-			'icus'               => 6000000,
-			'price_cents'        => 3000,
-			'label'              => '6M credits',
-			'freemius_pricing_id' => 57280,
-		),
-	);
+	public const CREDIT_PACKS_ENABLED = false;
+
+	public const CREDIT_PACKS = array();
 
 	// ── Tier Configuration ────────────────────────────────────────
 	// ONE place for every tier-specific number in the system.
@@ -92,8 +79,8 @@ class PressArk_Entitlements {
 	 */
 	public const TIER_CONFIG = array(
 		'free' => array(
-			'icu_budget'              => 100000,
-			'token_budget'            => 100000,
+			'icu_budget'              => 200000,
+			'token_budget'            => 200000,
 			'output_buffer'           => 3000,
 			'group_limit'             => 0,
 			'write_limit'             => 0,
@@ -110,14 +97,38 @@ class PressArk_Entitlements {
 			'label'                   => 'Free',
 			'max_automations'         => -1,
 			'min_automation_interval' => 0,
+			'max_request_icus'        => 200000,
+			'watchdog_alerts'         => false,
+			'watchdog_digest'         => false,
+			'watchdog_triggers'       => false,
+		),
+		'go' => array(
+			'icu_budget'              => 2000000,
+			'token_budget'            => 2000000,
+			'output_buffer'           => 6000,
+			'group_limit'             => 0,
+			'write_limit'             => 0,
+			'deep_mode'               => true,
+			'max_agent_rounds'        => 30,
+			'agent_token_budget'      => 8000,
+			'workflow_token_budget'   => 5000,
+			'burst_per_min'           => 8,
+			'hourly_limit'            => 80,
+			'ip_per_min'              => 15,
+			'max_sites'               => 1,
+			'concurrency'             => 1,
+			'default_model'           => 'anthropic/claude-sonnet-4.6',
+			'label'                   => 'Go',
+			'max_automations'         => -1,
+			'min_automation_interval' => 0,
 			'max_request_icus'        => 300000,
 			'watchdog_alerts'         => false,
 			'watchdog_digest'         => false,
 			'watchdog_triggers'       => false,
 		),
 		'pro' => array(
-			'icu_budget'              => 5000000,
-			'token_budget'            => 5000000,
+			'icu_budget'              => 6000000,
+			'token_budget'            => 6000000,
 			'output_buffer'           => 8000,
 			'group_limit'             => 0,
 			'write_limit'             => 0,
@@ -139,7 +150,7 @@ class PressArk_Entitlements {
 			'watchdog_digest'         => false,
 			'watchdog_triggers'       => false,
 		),
-		'team' => array(
+		'agency' => array(
 			'icu_budget'              => 15000000,
 			'token_budget'            => 15000000,
 			'output_buffer'           => 15000,
@@ -152,37 +163,13 @@ class PressArk_Entitlements {
 			'burst_per_min'           => 15,
 			'hourly_limit'            => 200,
 			'ip_per_min'              => 30,
-			'max_sites'               => 5,
-			'concurrency'             => 3,
-			'default_model'           => 'anthropic/claude-sonnet-4.6',
-			'label'                   => 'Team',
-			'max_automations'         => -1,
-			'min_automation_interval' => 0,
-			'max_request_icus'        => 500000,
-			'watchdog_alerts'         => false,
-			'watchdog_digest'         => false,
-			'watchdog_triggers'       => false,
-		),
-		'agency' => array(
-			'icu_budget'              => 40000000,
-			'token_budget'            => 40000000,
-			'output_buffer'           => 20000,
-			'group_limit'             => 0,
-			'write_limit'             => 0,
-			'deep_mode'               => true,
-			'max_agent_rounds'        => 30,
-			'agent_token_budget'      => 20000,
-			'workflow_token_budget'   => 15000,
-			'burst_per_min'           => 20,
-			'hourly_limit'            => 300,
-			'ip_per_min'              => 40,
 			'max_sites'               => 25,
-			'concurrency'             => 5,
+			'concurrency'             => 3,
 			'default_model'           => 'anthropic/claude-sonnet-4.6',
 			'label'                   => 'Agency',
 			'max_automations'         => -1,
 			'min_automation_interval' => 0,
-			'max_request_icus'        => 1000000,
+			'max_request_icus'        => 500000,
 			'watchdog_alerts'         => false,
 			'watchdog_digest'         => false,
 			'watchdog_triggers'       => false,
@@ -220,7 +207,7 @@ class PressArk_Entitlements {
 	public const UNLIMITED_GROUPS = array( 'discovery', 'core' );
 
 	/** Tier hierarchy — ordered from lowest to highest. */
-	public const TIER_ORDER = array( 'free', 'pro', 'team', 'agency', 'enterprise' );
+	public const TIER_ORDER = array( 'free', 'go', 'pro', 'agency', 'enterprise' );
 
 	// ── Tier Accessors ────────────────────────────────────────────
 
@@ -290,7 +277,7 @@ class PressArk_Entitlements {
 
 	public static function get_credit_pack_catalog( bool $prefer_bank = true ): array {
 		$catalog = self::get_billing_catalog( $prefer_bank );
-		if ( ! empty( $catalog['credit_packs'] ) && is_array( $catalog['credit_packs'] ) ) {
+		if ( array_key_exists( 'credit_packs', $catalog ) && is_array( $catalog['credit_packs'] ) ) {
 			return $catalog['credit_packs'];
 		}
 
@@ -618,7 +605,7 @@ class PressArk_Entitlements {
 			'token_budget'               => (int) $config['token_budget'],
 			'is_byok'                    => self::is_byok(),
 			'upgrade_url'                => pressark_get_upgrade_url(),
-			'can_buy_credits'            => ! self::is_byok(),
+			'can_buy_credits'            => self::CREDIT_PACKS_ENABLED && ! self::is_byok(),
 			'credits_remaining'          => 0,
 			'purchased_credits_remaining' => 0,
 			'legacy_bonus_remaining'     => 0,
@@ -674,7 +661,7 @@ class PressArk_Entitlements {
 			$info['billing_contract_mismatch'] = ! empty( $info['billing_contract_hash'] ) && $info['billing_contract_hash'] !== $info['local_billing_contract_hash'];
 			$info['verified_handshake']  = ! empty( $status['verified_handshake'] );
 			$info['provisional_handshake'] = ! empty( $status['provisional_handshake'] );
-			$info['can_buy_credits']    = true;
+			$info['can_buy_credits']    = self::CREDIT_PACKS_ENABLED && ! empty( self::get_credit_pack_catalog( true ) );
 			$info['tokens_used']       = $info['icus_used'];
 			$info['tokens_remaining']  = $info['icus_remaining'];
 		} else {
@@ -731,7 +718,7 @@ class PressArk_Entitlements {
 				}
 
 				if ( 'free' === $tier ) {
-					return 'Your monthly included credits are used up. Buy more credits or choose a plan with a larger included credit allowance.';
+					return 'Your monthly included credits are used up. Choose a plan with a larger included credit allowance.';
 				}
 
 				$bank            = new PressArk_Token_Bank();
@@ -740,11 +727,11 @@ class PressArk_Entitlements {
 				$total_purchased = (int) ( $credits['total_purchased'] ?? 0 );
 
 				if ( ! empty( $status['monthly_exhausted'] ) && $total_purchased > 0 && (int) ( $status['credits_remaining'] ?? 0 ) <= 0 ) {
-					return 'All credits used - billing-cycle and purchased. Buy more or wait for your next billing-cycle reset.';
+					return 'All credits used - billing-cycle and purchased. Choose a larger plan or wait for your next billing-cycle reset.';
 				}
 
 				return sprintf(
-					'Your billing-cycle credits are used up on the %s plan. Buy more credits or choose a plan with a larger included credit allowance.',
+					'Your billing-cycle credits are used up on the %s plan. Choose a plan with a larger included credit allowance.',
 					$label
 				);
 			case 'group_limit':
@@ -752,7 +739,7 @@ class PressArk_Entitlements {
 			case 'write_limit':
 				return 'Local plugin edits are available without a plan gate; remote AI requests are limited only by credits.';
 			default:
-				return 'Usage limit reached for the current billing period. Buy more credits or choose a larger included credit allowance.';
+				return 'Usage limit reached for the current billing period. Choose a plan with a larger included credit allowance.';
 		}
 	}
 
@@ -884,8 +871,9 @@ class PressArk_Entitlements {
 	 */
 	public const TIER_LABELS = array(
 		'free'       => 'Free',
+		'go'         => 'Go',
 		'pro'        => 'Pro',
-		'team'       => 'Team',
+		'team'       => 'Agency',
 		'agency'     => 'Agency',
 		'business'   => 'Agency',
 		'enterprise' => 'Enterprise',

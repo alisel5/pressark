@@ -58,7 +58,6 @@ class PressArk_Usage_Tracker {
 		'generate_content',
 		'rewrite_content',
 		'generate_bulk_meta',
-		'export_report',
 		// Prompt 9 reads.
 		'view_site_profile',
 		'list_logs',

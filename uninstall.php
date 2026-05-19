@@ -92,6 +92,7 @@ function pressark_uninstall_site(): void {
 		'pressark_cleanup_tasks',
 		'pressark_retention_cleanup',
 		'pressark_reconcile_reservations',
+		'pressark_consolidate_site_notes',
 		'pressark_dispatch_automations',
 		'pressark_automation_wake',
 		'pressark_kick_as_runner',
